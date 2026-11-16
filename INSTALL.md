@@ -1,6 +1,6 @@
-# Installing JARVIS
+# Installing AL-76
 
-This guide takes you from a clean Mac to JARVIS running on the Mac, and its companion app on your iPhone and iPad.
+This guide takes you from a clean Mac to AL-76 running on the Mac, and its companion app on your iPhone and iPad.
 Everything personal (your Apple account, your Team ID, your keys, your passwords) is yours to enter: nothing of
 the kind is in this repository, and nothing you enter is sent to it.
 
@@ -8,7 +8,7 @@ the kind is in this repository, and nothing you enter is sent to it.
 - [1. Prepare the Mac](#1-prepare-the-mac)
 - [2. Your Apple account in Xcode](#2-your-apple-account-in-xcode)
 - [3. Your local settings: `local.env`](#3-your-local-settings-localenv)
-- [4. Install JARVIS on the Mac](#4-install-jarvis-on-the-mac)
+- [4. Install AL-76 on the Mac](#4-install-al-76-on-the-mac)
 - [5. First launch and permissions](#5-first-launch-and-permissions)
 - [6. Your personal settings](#6-your-personal-settings)
 - [7. Install the app on iPhone and iPad](#7-install-the-app-on-iphone-and-ipad)
@@ -26,10 +26,10 @@ the kind is in this repository, and nothing you enter is sent to it.
 | Xcode | yes | free on the Mac App Store; it brings the Swift toolchain and builds the iPhone app |
 | Homebrew | yes | [brew.sh](https://brew.sh); the setup uses it for Ollama and `uv` |
 | An Apple account | yes | your own Apple ID, signed in to Xcode. A free account is enough; see the [7-day expiry](#9-the-7-day-expiry) |
-| A Claude subscription and Claude Code | optional | for the "Claude" brain; without it JARVIS uses only the local model |
+| A Claude subscription and Claude Code | optional | for the "Claude" brain; without it AL-76 uses only the local model |
 | iPhone or iPad | optional | iOS / iPadOS 18 or later, and a USB cable for installing |
 | Tailscale | optional | to use the phone app away from home, on both devices |
-| Picovoice AccessKey | optional | only if you prefer Porcupine to Whisper for the word "Jarvis" |
+| Picovoice AccessKey | optional | only for Porcupine instead of Whisper; Porcupine still knows only the word "Jarvis", not the call "Ehi Al" |
 
 Internet is needed during installation (downloads of the model, voices and Whisper); afterwards the core runs
 locally.
@@ -44,7 +44,7 @@ locally.
 
    ```bash
    git clone <repository address>
-   cd JARVIS
+   cd AL-76
    ```
 
 ## 2. Your Apple account in Xcode
@@ -84,7 +84,7 @@ Fill in your own values. `local.env` stays on your Mac: it is listed in `.gitign
 | `JARVIS_IPHONE_BUNDLE_ID` | an identifier for the phone app, e.g. `com.yourname.jarvis.iphone`. It must be unique to you: with a free account Apple refuses identifiers already used by someone else |
 | `JARVIS_TEAM` | your Team ID from step 2 |
 
-## 4. Install JARVIS on the Mac
+## 4. Install AL-76 on the Mac
 
 ```bash
 ./scripts/setup.sh
@@ -113,33 +113,33 @@ claude auth login --claudeai
 
 ## 5. First launch and permissions
 
-On the first launch JARVIS downloads **Whisper** by itself (about 800 MB) and spends about a minute
+On the first launch AL-76 downloads **Whisper** by itself (about 800 MB) and spends about a minute
 preparing it for the Neural Engine. Then macOS asks for permissions, each once:
 
 | Permission | When | What for |
 |---|---|---|
-| Microphone | first launch | hearing "Jarvis" and your commands |
+| Microphone | first launch | hearing "Ehi Al" and your commands |
 | Accessibility | first app control | clicking and typing in other apps, and the phone's control of the Mac |
 | Screen Recording | first "look at my screen" or phone screen view | reading the screen, sending it to the phone |
 | Calendar, Reminders, Contacts, Mail | first use | the matching commands |
 | Desktop, Documents, Downloads | first file command | finding and opening files |
-| Full Disk Access (optional) | set it yourself | fast mail search; without it JARVIS asks Mail, which is slower |
+| Full Disk Access (optional) | set it yourself | fast mail search; without it AL-76 asks Mail, which is slower |
 
 They are all in System Settings › Privacy & Security, where you can also withdraw them.
 
 ## 6. Your personal settings
 
-Open JARVIS's settings (⚙︎ on the HUD) and enter **your own** details. Nothing in the code is about you: the
+Open AL-76's settings (⚙︎ on the HUD) and enter **your own** details. Nothing in the code is about you: the
 defaults are neutral examples.
 
-- **Your name and how JARVIS addresses you**, a line about you, and the words Whisper should spell right
+- **Your name and how AL-76 addresses you**, a line about you, and the words Whisper should spell right
   (in `~/Library/Application Support/JARVIS/config.json`: `userName`, `userFullName`, `userAbout`,
   `vocabulary`).
 - **Notes folders** to search.
 - **iPhone app link**: off until you turn it on (step 8).
 - **Università** (optional): the name of your university, the server address of its student app and, if that
   server asks for it, the app's User-Agent; then **your** username and password. They are kept in the macOS
-  Keychain and sent only to that server. The addresses JARVIS reads are those of one student-app API: another
+  Keychain and sent only to that server. The addresses AL-76 reads are those of one student-app API: another
   university's server may need others.
 - **Bambu printer** (optional): IP address, serial number and access code shown on the printer.
 - **Picovoice AccessKey** (optional).
@@ -176,7 +176,7 @@ once per device.
 1. On the Mac: settings › **iPhone**: turn on **Collegamento con l'app iPhone**, press **Salva**, then
    **Mostra il codice di abbinamento**. The code is 20 characters, created on your Mac; it never travels over
    the network.
-2. On the phone: open JARVIS, tap **Abbina al Mac** and frame the QR code (or type the code).
+2. On the phone: open AL-76, tap **Abbina al Mac** and frame the QR code (or type the code).
 3. Away from home: install **Tailscale** on the Mac and the phone and sign both in to your own Tailscale account.
 
 Only one device is served at a time; the other shows "Usa qui" to take over.
@@ -184,7 +184,7 @@ Only one device is served at a time; the other shows "Usa qui" to take over.
 ## 9. The 7-day expiry
 
 With a **free** Apple account, Apple signs the phone app for **7 days**. After that the app no longer opens
-until you install it again. This is a limit of the free account, not of JARVIS.
+until you install it again. This is a limit of the free account, not of AL-76.
 
 - The app warns you two days before ("L'app scade tra 2 giorni: reinstallala dal Mac").
 - To renew, connect the device and run `Installa su iPhone e iPad.command` again. It sets aside an expiring
@@ -203,7 +203,7 @@ git pull
 ./"Installa su iPhone e iPad.command"         # the phone app, with the devices connected
 ```
 
-`build.sh --install` closes JARVIS, replaces it and opens it again; your settings and data in
+`build.sh --install` closes AL-76, replaces it and opens it again; your settings and data in
 `~/Library/Application Support/JARVIS` stay.
 
 ## Troubleshooting
@@ -220,4 +220,4 @@ git pull
 | Apple voice instead of the neural one | `./scripts/setup_tts.sh` |
 | Claude does not answer | `claude auth status`, then `claude auth login --claudeai` |
 
-More in the [README](README.md#troubleshooting) and in the full manual, [`Manual_JARVIS.pdf`](Manual_JARVIS.pdf).
+More in the [README](README.md#troubleshooting) and in the full manual, [`Manual_AL-76.pdf`](Manual_AL-76.pdf).

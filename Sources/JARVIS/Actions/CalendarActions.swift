@@ -19,7 +19,7 @@ final class CalendarActions {
         return remindersGranted
     }
 
-    private static let noAccess = "Accesso negato: abilita JARVIS in Impostazioni di Sistema › Privacy e sicurezza."
+    private static let noAccess = "Accesso negato: abilita AL-76 in Impostazioni di Sistema › Privacy e sicurezza."
 
     // MARK: Events
 

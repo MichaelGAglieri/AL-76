@@ -15,9 +15,9 @@ enum VisionActions {
         var errorDescription: String? {
             switch self {
             case .screenPermission:
-                return "Manca il permesso di registrazione dello schermo: Impostazioni di Sistema › Privacy e sicurezza › Registrazione schermo e audio › JARVIS."
+                return "Manca il permesso di registrazione dello schermo: Impostazioni di Sistema › Privacy e sicurezza › Registrazione schermo e audio › AL-76."
             case .cameraPermission:
-                return "Manca il permesso della fotocamera: Impostazioni di Sistema › Privacy e sicurezza › Fotocamera › JARVIS."
+                return "Manca il permesso della fotocamera: Impostazioni di Sistema › Privacy e sicurezza › Fotocamera › AL-76."
             case .noCamera: return "Nessuna fotocamera disponibile."
             case .captureFailed(let m): return "Acquisizione non riuscita: \(m)"
             }

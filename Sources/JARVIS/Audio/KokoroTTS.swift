@@ -121,7 +121,7 @@ final class KokoroTTS {
 extension KokoroTTS {
     /// A Qwen3 sentence in pieces of about 0.3 s, handed over as soon as they arrive: the first
     /// words play while the rest is still being generated. Cancelling the task stops the generation too.
-    func synthesizeStream(_ text: String, speed: Double) -> AsyncThrowingStream<AVAudioPCMBuffer, Error> {
+    func synthesizeStream(_ text: String, voice: String = "qwen3", speed: Double) -> AsyncThrowingStream<AVAudioPCMBuffer, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -131,7 +131,7 @@ extension KokoroTTS {
                     request.timeoutInterval = 90
                     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     request.httpBody = try JSONSerialization.data(withJSONObject: [
-                        "text": text, "voice": "qwen3", "lang": "it", "speed": speed, "stream": true])
+                        "text": text, "voice": voice, "lang": "it", "speed": speed, "stream": true])
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
                     guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw KokoroError.failed("stream") }
                     let piece = Int(Self.sampleRate * 0.3) * MemoryLayout<Float>.size

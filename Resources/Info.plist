@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>it</string>
 	<key>CFBundleDisplayName</key>
-	<string>JARVIS</string>
+	<string>AL-76</string>
 	<key>CFBundleExecutable</key>
 	<string>JARVIS</string>
 	<key>CFBundleIconFile</key>
@@ -15,11 +15,11 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>JARVIS</string>
+	<string>AL-76</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.30.61</string>
+	<string>1.30.64</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
@@ -27,42 +27,42 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>JARVIS controlla le app (Mail, Musica, Finder…) quando glielo chiedi.</string>
+	<string>AL-76 controlla le app (Mail, Musica, Finder…) quando glielo chiedi.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_jarvis._tcp</string>
 	</array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>JARVIS legge e crea i tuoi appuntamenti.</string>
+	<string>AL-76 legge e crea i tuoi appuntamenti.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>JARVIS guarda con la fotocamera ciò che gli mostri, per esempio un componente.</string>
+	<string>AL-76 guarda con la fotocamera ciò che gli mostri, per esempio un componente.</string>
 	<key>NSCameraUseContinuityCameraDeviceType</key>
 	<true/>
 	<key>NSContactsUsageDescription</key>
-	<string>JARVIS cerca l indirizzo email delle persone a cui vuoi scrivere.</string>
+	<string>AL-76 cerca l indirizzo email delle persone a cui vuoi scrivere.</string>
 	<key>NSDesktopFolderUsageDescription</key>
-	<string>JARVIS cerca e apre i file che gli chiedi, anche sulla Scrivania.</string>
+	<string>AL-76 cerca e apre i file che gli chiedi, anche sulla Scrivania.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>JARVIS cerca e apre i file che gli chiedi, anche in Documenti.</string>
+	<string>AL-76 cerca e apre i file che gli chiedi, anche in Documenti.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
-	<string>JARVIS cerca e apre i file che gli chiedi, anche in Download.</string>
+	<string>AL-76 cerca e apre i file che gli chiedi, anche in Download.</string>
 	<key>NSFileProviderDomainUsageDescription</key>
-	<string>JARVIS cerca e apre i file che gli chiedi, anche in iCloud Drive.</string>
+	<string>AL-76 cerca e apre i file che gli chiedi, anche in iCloud Drive.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>JARVIS legge lo stato della stampante 3D sulla rete di casa.</string>
+	<string>AL-76 legge lo stato della stampante 3D sulla rete di casa.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>JARVIS ascolta la parola "Jarvis" e i tuoi comandi vocali. L'audio resta sul Mac.</string>
+	<string>AL-76 ascolta «Ehi Al» e i tuoi comandi vocali. L'audio resta sul Mac.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
-	<string>JARVIS cerca e apre i file che gli chiedi, anche nelle cartelle di rete.</string>
+	<string>AL-76 cerca e apre i file che gli chiedi, anche nelle cartelle di rete.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>JARVIS legge e crea i tuoi promemoria.</string>
+	<string>AL-76 legge e crea i tuoi promemoria.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
-	<string>JARVIS cerca e apre i file che gli chiedi, anche su dischi esterni e chiavette.</string>
+	<string>AL-76 cerca e apre i file che gli chiedi, anche su dischi esterni e chiavette.</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>JARVIS guarda lo schermo quando gli chiedi di spiegarti cosa vedi.</string>
+	<string>AL-76 guarda lo schermo quando gli chiedi di spiegarti cosa vedi.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>JARVIS trascrive i tuoi comandi vocali in locale.</string>
+	<string>AL-76 trascrive i tuoi comandi vocali in locale.</string>
 </dict>
 </plist>

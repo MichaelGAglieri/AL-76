@@ -70,7 +70,7 @@ enum Security {
             return .refused("Indirizzo non valido.")
         }
         guard scheme == "https" || scheme == "http" else {
-            return .refused("Per sicurezza JARVIS apre solo indirizzi web http o https.")
+            return .refused("Per sicurezza AL-76 apre solo indirizzi web http o https.")
         }
         let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
         let mentioned = command.lowercased().contains(bare.split(separator: ".").first.map(String.init) ?? bare)

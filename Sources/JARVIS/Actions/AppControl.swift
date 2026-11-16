@@ -46,7 +46,7 @@ final class AppControl {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    private static let noPermission = "Manca il permesso Accessibilità: Impostazioni di Sistema › Privacy e sicurezza › Accessibilità › JARVIS. Chiedi all'utente di attivarlo."
+    private static let noPermission = "Manca il permesso Accessibilità: Impostazioni di Sistema › Privacy e sicurezza › Accessibilità › AL-76. Chiedi all'utente di attivarlo."
 
     /// Passwords, banks, system and terminals, plus what from a single app would lead to
     /// everything else: editors with a terminal, assistants that run commands, firewalls.
@@ -55,7 +55,7 @@ final class AppControl {
         "impostazioni", "system settings", "systemsettings", "systempreferences", "installer",
         "terminal", "iterm", "warp", "ghostty", "alacritty", "kitty", "wezterm",
         "visual studio code", "vscode", "xcode", "cursor", "script editor", "automator",
-        "jarvis", "claude", "chatgpt", "codex", "lulu",
+        "jarvis", "al-76", "claude", "chatgpt", "codex", "lulu",
     ] + blockedPages
 
     /// The same banks, plus sign-in and password pages, also inside a browser.
@@ -69,13 +69,13 @@ final class AppControl {
         guard !halted else { return (nil, "Interrotto dall'utente: fermati e non fare altre azioni.") }
         guard ensureTrusted() else { return (nil, Self.noPermission) }
         guard let name, !name.isEmpty else { return (nil, "Nome dell'app mancante.") }
-        if Self.isBlocked(name) { return (nil, "\(name) è tra le app che JARVIS non può controllare.") }
+        if Self.isBlocked(name) { return (nil, "\(name) è tra le app che AL-76 non può controllare.") }
         guard let app = MacActions.matchingApps(["name": name]).first else {
             return (nil, "\(name) non è aperta (o non è controllabile): aprila prima con open_app.")
         }
         let identity = MacActions.displayName(app) + " " + (app.bundleIdentifier ?? "")
-        if Self.isBlocked(identity) { return (nil, "\(MacActions.displayName(app)) è tra le app che JARVIS non può controllare.") }
-        if let page = blockedPage(app) { return (nil, "La pagina aperta (\(page)) è di quelle che JARVIS non può controllare.") }
+        if Self.isBlocked(identity) { return (nil, "\(MacActions.displayName(app)) è tra le app che AL-76 non può controllare.") }
+        if let page = blockedPage(app) { return (nil, "La pagina aperta (\(page)) è di quelle che AL-76 non può controllare.") }
         return (app, nil)
     }
 
@@ -109,7 +109,7 @@ final class AppControl {
         lastURL = result.url
         if let page = blockedPage(app) {
             elements = [:]
-            return "La pagina aperta (\(page)) è di quelle che JARVIS non può controllare."
+            return "La pagina aperta (\(page)) è di quelle che AL-76 non può controllare."
         }
         return Security.external("contenuto di \(MacActions.displayName(app))", result.lines.joined(separator: "\n"))
     }

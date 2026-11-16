@@ -87,13 +87,12 @@ enum Protocols {
         return nil
     }
 
-    /// Lowercase, without punctuation and without "jarvis" at the start or end.
+    /// Lowercase, without punctuation and without the call ("ehi al") at the start.
     static func clean(_ raw: String) -> String {
         var text = raw.lowercased().replacingOccurrences(of: ",", with: " ")
         text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".!?;: ").union(.whitespacesAndNewlines))
         text = text.split(separator: " ").joined(separator: " ")
-        if text.hasPrefix("jarvis ") { text.removeFirst(7) }
-        if text.hasSuffix(" jarvis") { text.removeLast(7) }
+        text = WakeVerifier.strippingCall(text)
         return text
     }
 }

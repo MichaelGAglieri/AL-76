@@ -3,6 +3,44 @@
 Every version was built, installed and tested on the Mac (and on the iPhone and iPad app when it was
 involved) before moving to the next one. All dates are in 2026.
 
+## 1.30.64 — 16 November
+
+- **JARVIS becomes AL-76.** The project is now the user's own, and they no longer wanted Iron Man's name. The new name comes from Isaac Asimov's story *Robot AL-76 Goes Astray* (1942): a robot built for mining on the Moon gets lost on Earth and, in a shack, builds itself a disintegrator out of the scrap it finds. Randolph Payne, the man who keeps it, simply calls it "Al".
+- **It is called with "Ehi Al".** The check (WakeVerifier) looks for the call at the start of a phrase, after a punctuation mark or after words like "ok" and "senti". It also takes the ways Whisper writes it: "Hey Al", "Eyal", "Eial", "Ehi, altri", and "E al" (only at the very start, since "e al mare" inside a sentence is not a call). Whisper is given " Ehi Al." as a hint: in a test with five Italian voices of the Mac this took the call from 1–2 phrases out of 5 to 4 out of 5. None of the 1,820 phrases heard in the room until then would have been a false wake. First live test: "Ehi Al, che ore sono?", written by the large Whisper as "Eyal, che ore sono?", answered instantly. "Jarvis" no longer wakes anything; ⌃⌥Space works as before.
+- **The new name wherever it is seen or heard:** the app (/Applications/AL-76.app), menus, HUD, satellite, ROBOTTINO, typing bar, panels, settings, permission texts, spoken sentences, the model's instructions (it introduces itself as AL-76, "Al", from Asimov's story), the ~/Desktop/Schemi AL-76 folder, the program name in Robot Console. The voice reads "AL-76" as "Al 76". Only the sentences that held the name were rewritten: every other sentence stayed as it was.
+- **iPhone and iPad app:** Home Screen name, texts, the "Parla con AL-76" shortcut, and listening for "Ehi Al" with Apple's recognition, with the same rules as the Mac.
+- **Internal names stay "jarvis",** because changing them would lose permissions and data: bundle id, data folder, Keychain, iPhone pairing, the jarvis:// scheme, the MCP server, the name the TV knows the app by. The same goes for Porcupine, which only knows "Jarvis": "Ehi Al" would need a keyword trained on Picovoice. Same signature and bundle id, so macOS keeps the permissions already granted; the login item is registered once more for the new path.
+- **Voiceprint to record again:** the old one was built on "Jarvis" and was moved to the Trash at the user's request. Guided enrolment now asks for "Ehi Al" and keeps only the phrases that hold it.
+
+## 1.30.63 — 16 November
+
+- **A third look for the NUCLEUS: the ROBOTTINO.** Besides reactor and satellite, a small 3D robot that floats on jet flames from its backpack and its feet (fire or ion colour). Its face is drawn live on its screen, and it acts out JARVIS's states:
+  - waiting: looks around, waves now and then;
+  - listening: leans in with hands together, eyes a little larger, a soft smile;
+  - thinking: a hologram gear drifts above its head, bubbles lead to it, and head and eyes follow it while it taps its fingers;
+  - speaking: the mouth follows the real voice;
+  - error: X eyes, smoke and sputtering engines.
+
+  Mouse and window:
+  - only the model catches the mouse: around it clicks go through to the windows below;
+  - a click is a pat (it beams and waves), a double click opens the HUD, a drag moves it.
+
+  Optional, in Settings › SATELLITE:
+  - it lands on the bottom edge of the display and lives in the bottom right corner. While JARVIS waits it takes a stroll along the edge now and then (about once a minute, every few minutes in deep idle), looks around and walks back, engines off, at a speed taken from its stride so the feet do not slide. It never sleeps;
+  - the larger size.
+
+  A gesture turns the edge walk on and off: pull it away from the edge and it flies free; drop or throw it towards the bottom right and it lands and walks again.
+
+  It has its own voice: young, calm and friendly, chosen by the user from samples. It was designed with Qwen3 VoiceDesign from a description and is cloned at runtime by the same Qwen3 0.6B as JARVIS's voice (`Resources/voce_robottino.wav`, a synthetic voice), so it keeps the same fluency, pronunciation and streaming. The voice server takes `"voice": "qwen3:robottino"`; saved sentences are kept apart for each voice, and JARVIS's own are still valid. With the reactor or the satellite JARVIS speaks with his usual voice.
+
+  Answers to typed questions (⌃⌥T) come out of its mouth in a comic speech bubble beside its head. The arms can never pass through the head or the body: a limit checked by a test over every state.
+
+  The 3D model is not part of JARVIS: it is a glTF file the user puts in `~/Library/Application Support/JARVIS/Companion` (the rig follows the parts of "Mini Robot" by Onur on Sketchfab, CC-BY 4.0). Without it, the satellite is shown.
+
+## 1.30.62 — 16 November
+
+- **JARVIS draws diagrams.** On 16 November "crea uno schema del pendolo semplice" got "non ho uno strumento per generare immagini". New tool `draw_diagram`: Claude draws the diagram as SVG (forces, components, angles, axes, legend) and writes the steps from the drawing to the formulas; JARVIS puts them on one page, saves it in ~/Desktop/Schemi JARVIS and opens it in the browser. The page fetches nothing from the internet: scripts, embedded HTML, event handlers, outside links and images are removed from the SVG, and the page forbids anything else. First diagram: the simple pendulum (T, mg, mg sinθ, mg cosθ, why −mg sinθ along the tangent and T − mg cosθ = mv²/L along the thread, small oscillations).
+
 ## 1.30.61 — 16 November
 
 - **Controlling the Mac from iPhone and iPad like a trackpad.** With control on, the screen stays still and one sliding finger only moves the cursor, with no button pressed: no more text selected by mistake or screen moving. To drag (select text, move windows) press and hold for a moment, feel a short tap, then slide; holding without moving is a right click. A tap clicks, two taps double click, two fingers scroll the Mac and pinch to zoom.

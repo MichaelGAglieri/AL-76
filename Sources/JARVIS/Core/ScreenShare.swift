@@ -53,7 +53,7 @@ final class ScreenShare {
                 size = streamSize
             } catch {
                 Diagnostics.log("iphone    schermo non catturato: \(error)")
-                failed("Non riesco a vedere lo schermo: serve il permesso Registrazione schermo per JARVIS, sul Mac.")
+                failed("Non riesco a vedere lo schermo: serve il permesso Registrazione schermo per AL-76, sul Mac.")
                 self?.task = nil
                 return
             }

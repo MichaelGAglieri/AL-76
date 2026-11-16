@@ -1,10 +1,13 @@
 import AVFoundation
 import Speech
 
-/// Recognition of the word "Jarvis": compares the text, so it can be tested without a microphone too.
+/// Recognition of the call "Ehi Al" (until 16 November the word "Jarvis"): compares the text,
+/// so it can be tested without a microphone too. Same rules as WakeVerifier on the Mac.
 enum WakeWord {
-    /// How the Italian recogniser may write "Jarvis".
-    private static let variants = ["jarvis", "jarvi", "jarviss", "giarvis", "giarvi", "gervis", "jervis", "jarvys", "garvis", "charvis", "giarviss"]
+    /// How the Italian recogniser may write the two words of "Ehi Al", and the call written as one word.
+    private static let callWords: Set<String> = ["ehi", "hey", "hei", "ei", "eh", "ey", "ehy"]
+    private static let nameWords: Set<String> = ["al", "all", "hal", "hall", "ahl"]
+    private static let fused: Set<String> = ["eyal", "eial", "ehial", "heyal", "heial", "ehyal"]
     private static let cancels = ["annulla", "stop", "ferma", "fermati", "basta", "lascia"]
 
     static func words(_ text: String) -> [String] {
@@ -13,18 +16,23 @@ enum WakeWord {
             .map(String.init)
     }
 
-    /// The words said after "Jarvis", or nil if it was not said.
+    /// The words said after "Ehi Al", or nil if it was not said. "E al" counts only at the very start
+    /// ("e al mare" inside a sentence is not a call).
     static func tail(_ text: String) -> [String]? {
-        var list = words(text)
-        // "Jar vis" sometimes arrives split in two.
-        if let index = list.indices.dropLast().first(where: { list[$0] == "jar" && ["vis", "wiz", "viz"].contains(list[$0 + 1]) }) {
-            list.replaceSubrange(index...index + 1, with: ["jarvis"])
+        let list = words(text)
+        for i in list.indices.reversed() {
+            if fused.contains(list[i]) { return Array(list[(i + 1)...]) }
+            guard i + 1 < list.count, nameWords.contains(list[i + 1]) else { continue }
+            if callWords.contains(list[i]) || (i == 0 && list[i] == "e") {
+                // "Ehi AL-76": the number belongs to the name.
+                let start = i + 2 < list.count && list[i + 2] == "76" ? i + 3 : i + 2
+                return Array(list[start...])
+            }
         }
-        guard let index = list.lastIndex(where: variants.contains) else { return nil }
-        return Array(list[(index + 1)...])
+        return nil
     }
 
-    /// After the sound: "annulla" or "stop" means it was not for JARVIS.
+    /// After the sound: "annulla" or "stop" means it was not for AL-76.
     static func wantsCancel(_ tail: [String]) -> Bool {
         tail.count <= 2 && tail.contains(where: cancels.contains)
     }
@@ -68,8 +76,8 @@ struct SilenceGate {
     }
 }
 
-/// Listens for "Jarvis" with Apple's recognition, on the phone only: if the on-device model
-/// is missing it does not listen, because the voice must not leave the phone until it is for JARVIS.
+/// Listens for "Ehi Al" with Apple's recognition, on the phone only: if the on-device model
+/// is missing it does not listen, because the voice must not leave the phone until it is for AL-76.
 @MainActor
 final class PhoneEar {
     /// The text understood so far.
@@ -140,7 +148,7 @@ final class PhoneEar {
         new.requiresOnDeviceRecognition = true
         #endif
         new.shouldReportPartialResults = true
-        new.contextualStrings = ["Jarvis"]
+        new.contextualStrings = ["Ehi Al", "Hey Al", "AL-76"]
         new.taskHint = .search
         lock.withLock { request = new }
         recognizer.queue = .main

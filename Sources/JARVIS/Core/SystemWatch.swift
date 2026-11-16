@@ -38,7 +38,7 @@ final class SystemWatch {
         for (name, text) in events {
             center.addObserver(forName: name, object: nil, queue: nil) { _ in Diagnostics.logSystem(text) }
         }
-        Diagnostics.logSystem("JARVIS avviato, \(Self.describe(lid: Self.lidClosed(), battery: Self.isOnBattery()))")
+        Diagnostics.logSystem("AL-76 avviato, \(Self.describe(lid: Self.lidClosed(), battery: Self.isOnBattery()))")
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 2, repeating: 1, leeway: .milliseconds(200))
         timer.setEventHandler { [weak self] in self?.tick() }

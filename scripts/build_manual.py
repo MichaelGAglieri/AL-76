@@ -81,86 +81,86 @@ def section(key, index_title, title, subtitle, *blocks):
 
 
 section("start", "First launch and permissions", "First launch and permissions", "Getting the app ready for everyday use.",
-    H("1. Open the app"), P("Open JARVIS from Applications. On first launch allow microphone access and wait for AVVIO SISTEMI (system start-up) to finish. The Whisper models are downloaded and optimised on first use: you need a connection during this preparation."),
-    H("2. Check that it is ready"), P("Open the Modules panel from the Schede menu (in the menu bar on the left while JARVIS is in front, or in the menu of the JARVIS icon in the menu bar). For the free wake word it must show “JARVIS” ATTIVA · WHISPER. The Control + Option + Space shortcut lets you speak even without the wake word."),
-    H("3. Try a simple request"), P("Say “Jarvis, what time is it?”. Check in the conversation that the phrase was transcribed correctly. Then try “open Reminders” and “quit Reminders”."),
+    H("1. Open the app"), P("Open AL-76 from Applications. On first launch allow microphone access and wait for AVVIO SISTEMI (system start-up) to finish. The Whisper models are downloaded and optimised on first use: you need a connection during this preparation."),
+    H("2. Check that it is ready"), P("Open the Modules panel from the Schede menu (in the menu bar on the left while AL-76 is in front, or in the menu of the AL-76 icon in the menu bar). For the free wake word it must show “EHI AL” ATTIVA · WHISPER. The Control + Option + Space shortcut lets you speak even without the wake word."),
+    H("3. Try a simple request"), P("Say “Ehi Al, what time is it?”. Check in the conversation that the phrase was transcribed correctly. Then try “open Reminders” and “quit Reminders”."),
     H("4. Enrol your voice"), P("From Settings › Riconoscimento della mia voce (voice recognition): 18 sentences read aloud, about 2 minutes. See the dedicated chapter."),
     H("5. Grant permissions when needed"),
     table([["Feature", "Permission or preparation"],
            ["Listening and voice commands", "Microphone: System Settings › Privacy & Security › Microphone."],
-           ["App control", "Accessibility: Privacy & Security › Accessibility › JARVIS."],
+           ["App control", "Accessibility: Privacy & Security › Accessibility › AL-76."],
            ["Calendar and Reminders", "Access to their data; the requests appear on first use."],
            ["Mail, Music and system", "Automation of the apps involved. Mail must have an account configured."],
-           ["Mail in under a second", "Full Disk Access: Privacy & Security › Full Disk Access › JARVIS. It then reads Mail’s index on disk; without it mail still works, but with a large inbox it can take tens of seconds."],
+           ["Mail in under a second", "Full Disk Access: Privacy & Security › Full Disk Access › AL-76. It then reads Mail’s index on disk; without it mail still works, but with a large inbox it can take tens of seconds."],
            ["Recipients by name", "Contacts, to look up the person’s address."],
            ["Screen analysis", "Screen & System Audio Recording, in Privacy & Security."],
            ["Photos of objects or circuits", "Camera; using the iPhone’s needs Continuity Camera."],
            ["Protected folders", "Desktop, Documents, Downloads and similar: macOS asks for permission on the first search."]]),
-    callout("Launch at login", "You can change this in Settings › System › Launch JARVIS at login.", warn=False))
+    callout("Launch at login", "You can change this in Settings › System › Launch AL-76 at login.", warn=False))
 
-section("voice", "Talking to Jarvis and using the interface", "Voice and interface", "How to wake it, talk to it and read the HUD.",
+section("voice", "Talking to AL-76 and using the interface", "Voice and interface", "How to wake it, talk to it and read the HUD.",
     table([["Action", "How"],
-           ["Command in one sentence", "“Jarvis, set a 25 minute study timer”."],
-           ["Call and request apart", "Say “Jarvis”, wait for the beep and speak right away. It does not answer “Yes, sir?”: it answers only at the end of the sentence."],
+           ["Command in one sentence", "“Ehi Al, set a 25 minute study timer”."],
+           ["Call and request apart", "Say “Ehi Al”, wait for the beep and speak right away. It does not answer “Yes, sir?”: it answers only at the end of the sentence."],
            ["Keyboard activation", "Control + Option + Space. Press it again to cancel listening or interrupt an answer."],
-           ["AirPods", "While JARVIS uses the AirPods’ microphone, a press on the stem works like Control + Option + Space."],
+           ["AirPods", "While AL-76 uses the AirPods’ microphone, a press on the stem works like Control + Option + Space."],
            ["Long sentences", "Take your time: a short command ends after 0.8 seconds of silence, a longer sentence waits up to 1.7 seconds, so you can pause to think. One sentence can last up to 30 seconds."],
            ["Immediate acknowledgment", "When you ask it to do or check something it answers at once, for example “Right away, sir” or “One moment, sir”, and then works. If it takes more than 10 seconds it warns once. During actions (apps, clicks, robot, printer, music) it does not narrate the steps: at the end it says only “Done”, the result, the error or the question it needs. Questions and conversation get a full answer. Greetings and small talk just get an answer."],
-           ["After the answer", "It goes back to waiting: you can talk freely, and for a new command say “Jarvis” again. It keeps listening for a few seconds only if it waits for a “yes” or “no”. After one of its questions it waits 8 seconds for your answer, without you saying “Jarvis” again."],
-           ["Interrupting it", "“Stop”, “basta”, “fermati”, “zitto” or “silenzio”, with or without “Jarvis”. They stop it in about a second and also stop connected robots."],
-           ["Hide / show", "Esc hides the sphere. A double click on the sphere shrinks it to the SATELLITE. From the JARVIS icon’s menu choose Show HUD."],
-           ["Reset the conversation", "Jarvis menu › New conversation. Saved memories stay."],
-           ["Quit the app", "Jarvis menu › Quit JARVIS."]]),
-    H("HUD"), P("The HUD is a neural sphere that looks like brain tissue: 44 neurons spread evenly through it, joined by straight and curved axons along which pulses run, with branching dendrites and a large neuron at the centre. It turns and breathes slowly; while JARVIS speaks its surface waves follow the voice. The window wraps the sphere closely, with no buttons and no state label around it: only privacy mode and errors are written. Drag it to move it; a double click shrinks it to the SATELLITE."),
-    H("Panels"), P("Phrases, Log, Activity, Modules, Protocol and Thought open from the Schede menu: in the menu bar on the left while JARVIS is in front, and in the menu of the JARVIS icon in the menu bar, which is always there. Each panel is its own window: drag it anywhere, resize it from the edges and close it with its button. It remembers where you left it, and the panels left open reopen at the next launch. They work with both the sphere and the SATELLITE. The Thought panel works like a terminal of JARVIS's reasoning: for each request it lists the route chosen (instant command, protocol, local core or Claude), the tools run with their arguments, web searches, files read, the sites found, results, errors and timings."),
+           ["After the answer", "It goes back to waiting: you can talk freely, and for a new command say “Ehi Al” again. It keeps listening for a few seconds only if it waits for a “yes” or “no”. After one of its questions it waits 8 seconds for your answer, without you saying “Ehi Al” again."],
+           ["Interrupting it", "“Stop”, “basta”, “fermati”, “zitto” or “silenzio”, with or without “Ehi Al”. They stop it in about a second and also stop connected robots."],
+           ["Hide / show", "Esc hides the sphere. A double click on the sphere shrinks it to the SATELLITE. From the AL-76 icon’s menu choose Show HUD."],
+           ["Reset the conversation", "AL-76 menu › New conversation. Saved memories stay."],
+           ["Quit the app", "AL-76 menu › Quit AL-76."]]),
+    H("HUD"), P("The HUD is a neural sphere that looks like brain tissue: 44 neurons spread evenly through it, joined by straight and curved axons along which pulses run, with branching dendrites and a large neuron at the centre. It turns and breathes slowly; while AL-76 speaks its surface waves follow the voice. The window wraps the sphere closely, with no buttons and no state label around it: only privacy mode and errors are written. Drag it to move it; a double click shrinks it to the SATELLITE."),
+    H("Panels"), P("Phrases, Log, Activity, Modules, Protocol and Thought open from the Schede menu: in the menu bar on the left while AL-76 is in front, and in the menu of the AL-76 icon in the menu bar, which is always there. Each panel is its own window: drag it anywhere, resize it from the edges and close it with its button. It remembers where you left it, and the panels left open reopen at the next launch. They work with both the sphere and the SATELLITE. The Thought panel works like a terminal of AL-76's reasoning: for each request it lists the route chosen (instant command, protocol, local core or Claude), the tools run with their arguments, web searches, files read, the sites found, results, errors and timings."),
     P("In the PROTOCOL panel the dot ● shows who is answering right now: LOCALE (local) or CLAUDE. Below you can choose HAIKU, SONNET or OPUS."),
     S("The sphere shows the state by its movement: calm while waiting, pulses running inwards while listening, more pulses while thinking or running a tool, waves while answering. ANOMALIA (error) is written with a short detail."),
-    H("SATELLITE and NUCLEUS"), P("A double click on the sphere, or Riduci a SATELLITE in the JARVIS icon’s menu, shrinks JARVIS to a small detailed 3D satellite, which you can drag. It floats above every window, on every desktop and over full-screen apps; it turns towards you when JARVIS listens or speaks. There is one on every display, and each stays within its own display. The other NUCLEUS styles, chosen in Settings, live above the wallpaper and below the windows instead. A click opens the HUD exactly around that NUCLEUS, like a magnification of it; if the HUD is open on another display it shrinks there first; the right button opens a small menu. When you open a central panel of the desktop widgets, the NUCLEUS hides and comes back when it closes."),
-    callout("Hiding does not turn the microphone off", "Esc and the SATELLITE leave Jarvis working. To stop listening use privacy mode or quit the app. Privacy mode turns off at every JARVIS restart."))
+    H("SATELLITE and NUCLEUS"), P("A double click on the sphere, or Riduci a SATELLITE in the AL-76 icon’s menu, shrinks AL-76 to a small detailed 3D satellite, which you can drag. It floats above every window, on every desktop and over full-screen apps; it turns towards you when AL-76 listens or speaks. There is one on every display, and each stays within its own display. The other NUCLEUS styles, chosen in Settings, live above the wallpaper and below the windows instead. A click opens the HUD exactly around that NUCLEUS, like a magnification of it; if the HUD is open on another display it shrinks there first; the right button opens a small menu. When you open a central panel of the desktop widgets, the NUCLEUS hides and comes back when it closes."),
+    callout("Hiding does not turn the microphone off", "Esc and the SATELLITE leave AL-76 working. To stop listening use privacy mode or quit the app. Privacy mode turns off at every AL-76 restart."))
 
-section("voiceprint", "Owner voice recognition", "Owner voice recognition", "Making “Jarvis” work only with your voice.",
-    P("JARVIS compares whoever says “Jarvis” with a voiceprint of your voice and silently ignores voices that are too different. Everything happens on the Mac with a local model. The audio is not kept: only numbers remain, from which the voice cannot be rebuilt."),
+section("voiceprint", "Owner voice recognition", "Owner voice recognition", "Making “Ehi Al” work only with your voice.",
+    P("AL-76 compares whoever says “Ehi Al” with a voiceprint of your voice and silently ignores voices that are too different. Everything happens on the Mac with a local model. The audio is not kept: only numbers remain, from which the voice cannot be rebuilt."),
     table([["Mode", "What it does"],
-           ["Off", "No voice check: it answers anyone who says “Jarvis”."],
+           ["Off", "No voice check: it answers anyone who says “Ehi Al”."],
            ["Observe only", "Blocks nobody, writes the score to voce.log. Useful to choose the strictness."],
-           ["Active", "Ignores voices below the chosen strictness. Current setting: 0.45; with loud TV or music JARVIS checks small windows and lowers the threshold by itself."]]),
+           ["Active", "Ignores voices below the chosen strictness. Current setting: 0.45; with loud TV or music AL-76 checks small windows and lowers the threshold by itself."]]),
     H("Enrolling and improving the voiceprint"),
     *[bullets("<b>Record my voice:</b> 18 sentences, about 2 minutes. Replaces the previous voiceprint.",
-              "<b>Add sentences:</b> another 15 “Jarvis” added to the previous ones. At each beep change distance, direction or tone. It can be repeated.",
+              "<b>Add sentences:</b> another 15 “Ehi Al” added to the previous ones. At each beep change distance, direction or tone. It can be repeated.",
               "<b>Add commands:</b> 24 real commands to read, in Italian and English. They teach the voice of whole sentences. It can be repeated.",
               "<b>Delete the voiceprint:</b> removes voiceprint and scores from the Mac.")],
     H("How to read the strictness"),
-    P("The score says how much a phrase resembles your voiceprint. Higher strictness: fewer strangers get through, but JARVIS also ignores you more often. From afar your voice scores much lower: that is why sentences recorded at different distances are needed."),
-    callout("What it does not check", "It checks “Jarvis” and the command said after the beep: a phrase said by others, or by the TV, is silently ignored. Anyone can give the “yes” to confirmations. Control + Option + Space always works and “stop” works for everyone. If the check fails, JARVIS answers anyway."),
+    P("The score says how much a phrase resembles your voiceprint. Higher strictness: fewer strangers get through, but AL-76 also ignores you more often. From afar your voice scores much lower: that is why sentences recorded at different distances are needed."),
+    callout("What it does not check", "It checks “Ehi Al” and the command said after the beep: a phrase said by others, or by the TV, is silently ignored. Anyone can give the “yes” to confirmations. Control + Option + Space always works and “stop” works for everyone. If the check fails, AL-76 answers anyway."),
     callout("It is not a lock", "A similar voice or a recording of yours can fool it. That is why the most delicate actions also ask for Touch ID, which a voice cannot imitate."),
     H("If it ignores you or answers others"),
     bullets("It ignores you from afar: use <b>Add sentences</b> from that distance, or lower the strictness a little.",
             "It answers another person: raise the strictness a little and try again.",
-            "If you name Jarvis in the middle of a sentence said to someone else (“I think Jarvis proved you right”) it stays silent. If the sentence is for it (“now that I’m done Jarvis, what do you suggest?”) it answers, without the opening acknowledgment."),)
+            "Saying its name to someone else (“I think AL-76 proved you right”) never wakes it: only the call does. If the call comes after a comma (“now that I’m done, ehi Al, what do you suggest?”) it answers, without the opening acknowledgment."),)
 
-section("settings", "Settings and personalisation", "Settings", "Open the gear in the HUD or Settings from the Jarvis menu.",
+section("settings", "Settings and personalisation", "Settings", "Open the gear in the HUD or Settings from the AL-76 menu.",
     table([["Section", "Options and use"],
-           ["Activation", "Always listen for “Jarvis”; optional Picovoice key and its sensitivity.<br/>Continue the conversation without repeating “Jarvis”: <b>off</b>, turn it on to keep listening after every answer.<br/>Interrupt by voice. Echo cancellation: off, on a MacBook Air it makes the microphone almost mute."],
+           ["Activation", "Always listen for “Ehi Al”; optional Picovoice key and its sensitivity.<br/>Continue the conversation without repeating “Ehi Al”: <b>off</b>, turn it on to keep listening after every answer.<br/>Interrupt by voice. Echo cancellation: off, on a MacBook Air it makes the microphone almost mute."],
            ["Owner voice recognition", "Record, Add sentences, Add commands, mode (Off / Observe only / Active), strictness, Delete the voiceprint."],
            ["Voice", "Neural voice (Qwen3-TTS 0.6B in Italian, played in pieces as it is generated; Kokoro in English) and speed; Apple voices as a fallback."],
            ["Brain", "Local model, Ollama address, your name."],
-           ["App control", "Let JARVIS use the buttons and fields of apps.<br/>Touch ID for very delicate actions."],
+           ["App control", "Let AL-76 use the buttons and fields of apps.<br/>Touch ID for very delicate actions."],
            ["Initiative", "Appointments, reminders, study, battery, morning briefing, quiet hours."],
            ["NUCLEUS", "Style of the small window (SATELLITE by default) and dark disc behind it, for light wallpapers."],
-           ["System", "Greet at launch and Launch JARVIS at login."]], widths=(0.27, 0.73)),
+           ["System", "Greet at launch and Launch AL-76 at login."]], widths=(0.27, 0.73)),
     P("Press <b>Save</b> to apply the changes. Launch at login changes at once with its switch."),
     H("Reference values"),
     table([["Local model", "gemma4:12b-it-qat, kept in memory for 30 minutes and unloaded before RAM fills up (below 20 % free)."],
            ["Brain", "Claude Sonnet with internet, Gemma without."],
-           ["Transcription", "Whisper large-v3 turbo, also for “Jarvis” and for “stop”."],
+           ["Transcription", "Whisper large-v3 turbo, also for “Ehi Al” and for “stop”."],
            ["Neural voices", "Lewis for English, Qwen3 imitating a synthetic voice for Italian."],
            ["Quiet hours for alerts", "From 23:00 to 8:00."],
            ["Test mode", "Off."]], header=False, widths=(0.27, 0.73)),
-    callout("Advanced configuration", "Settings live in config.json in Jarvis’s data folder: userName, userFullName, userAbout, vocabulary, notesFolders and labProject are personal. For manual edits quit the app first, keep a copy and keep the JSON valid."))
+    callout("Advanced configuration", "Settings live in config.json in AL-76’s data folder: userName, userFullName, userAbout, vocabulary, notesFolders and labProject are personal. For manual edits quit the app first, keep a copy and keep the JSON valid."))
 
 section("mac", "Mac, files, music and web", "Mac, files, music and web", "Useful requests while studying and developing.",
     table([["Area", "Examples to say"],
-           ["Applications", "“Open Visual Studio Code”. “Which apps are open?”. JARVIS knows every app on the Mac and understands mangled names (“PDF Graft” opens PdfCraft); if two are similar it asks which. Opening and quitting apps, volume and timers run at once, without the model. macOS apps can also be called by their Italian names: Orologio, Meteo, Contatti.<br/>“Quit Safari”, “quit Safari and Netflix”, “quit all apps”: no confirmation, unless there are unsaved changes.<br/>“Close YouTube”: if it is a browser tab, it closes that tab."],
+           ["Applications", "“Open Visual Studio Code”. “Which apps are open?”. AL-76 knows every app on the Mac and understands mangled names (“PDF Graft” opens PdfCraft); if two are similar it asks which. Opening and quitting apps, volume and timers run at once, without the model. macOS apps can also be called by their Italian names: Orologio, Meteo, Contatti.<br/>“Quit Safari”, “quit Safari and Netflix”, “quit all apps”: no confirmation, unless there are unsaved changes.<br/>“Close YouTube”: if it is a browser tab, it closes that tab."],
            ["Windows", "“Minimise the Safari window”: at once, without confirmation."],
            ["Audio and system", "“Volume to 30”. “Mute”. “Turn on dark mode”. “Turn off the screen”. “How is the battery?”. “How hot is the Mac?”: reads the chip, disk and battery sensors, the thermal state and the programs using the most CPU."],
            ["Music", "“Play Bohemian Rhapsody by Queen”. “Play the Study playlist”. “Next song”. “Pause the music”. “What song is this?”. It searches your playlists and the Apple Music catalog, with an active subscription. From the catalog it can take a few seconds, up to half a minute if Music is closed."],
@@ -178,18 +178,18 @@ section("mac", "Mac, files, music and web", "Mac, files, music and web", "Useful
     H("Making requests more precise"),
     P("Give the name of the project, file or app. File search uses Spotlight and name matching that tolerates errors; project analysis starts from ~/Projects. Dynamic web pages or pages behind a login may come back incomplete."),
     H("Quitting apps"),
-    P("If macOS reports unsaved changes, JARVIS asks for a “yes”. If the app does not report them it quits normally: usually the app itself asks whether to save, but some may quit without a word. “Quit all apps” leaves JARVIS, Finder, Übersicht and LuLu open. Quitting Fusion leaves Autodesk system services running (licence and updates): that is normal."),
+    P("If macOS reports unsaved changes, AL-76 asks for a “yes”. If the app does not report them it quits normally: usually the app itself asks whether to save, but some may quit without a word. “Quit all apps” leaves AL-76, Finder, Übersicht and LuLu open. Quitting Fusion leaves Autodesk system services running (licence and updates): that is normal."),
     callout("Apps and executable files", "Opening an app by name is direct. Opening a program, a script or an installer from a path asks for “yes” and Touch ID, like Shortcuts.", warn=False))
 
-section("control", "App control", "App control", "JARVIS uses the buttons and fields of apps for you.",
-    P("With the Accessibility permission JARVIS reads a window, presses buttons, types into fields and uses the keyboard. Many apps show only what is on screen: JARVIS scrolls the page, or a list inside the page, without keys or clicks, and reads again. If an app does not expose its elements it looks at the window and clicks a point. It works <b>only with Claude</b> and never in privacy mode."),
-    bullets("“Jarvis, open the Calculator and do 7 plus 8.”", "“Jarvis, in the open page look for the lab opening hours.”", "“Jarvis, in Notes delete the shopping note.”"),
+section("control", "App control", "App control", "AL-76 uses the buttons and fields of apps for you.",
+    P("With the Accessibility permission AL-76 reads a window, presses buttons, types into fields and uses the keyboard. Many apps show only what is on screen: AL-76 scrolls the page, or a list inside the page, without keys or clicks, and reads again. If an app does not expose its elements it looks at the window and clicks a point. It works <b>only with Claude</b> and never in privacy mode."),
+    bullets("“Ehi Al, open the Calculator and do 7 plus 8.”", "“Ehi Al, in the open page look for the lab opening hours.”", "“Ehi Al, in Notes delete the shopping note.”"),
     Spacer(1, 4),
     table([["What it asks", "Actions"],
            ["Nothing", "Everything else, at once: reading, scrolling, opening, pressing, clicking, typing, closing, deleting what you asked to delete, printing, moving the robot."],
-           ["Spoken “yes”", "Only three things: buying or paying, a password, sending an email (in Mail or prepared by JARVIS). The robot asks only for a move Claude judges dangerous."],
-           ["Forbidden", "Password managers, banks (also in the browser), System Settings, Installer, terminals, editors with a terminal (VS Code, Xcode, Cursor), assistants that run commands, LuLu, JARVIS itself. Password fields are never read and never typed into."]], widths=(0.2, 0.8)),
-    H("Stopping it"), P("“Stop” also stops a running sequence, even while JARVIS works silently. After a “yes” the sequence does not carry on by itself: you have to tell it to continue."),
+           ["Spoken “yes”", "Only three things: buying or paying, a password, sending an email (in Mail or prepared by AL-76). The robot asks only for a move Claude judges dangerous."],
+           ["Forbidden", "Password managers, banks (also in the browser), System Settings, Installer, terminals, editors with a terminal (VS Code, Xcode, Cursor), assistants that run commands, LuLu, AL-76 itself. Password fields are never read and never typed into."]], widths=(0.2, 0.8)),
+    H("Stopping it"), P("“Stop” also stops a running sequence, even while AL-76 works silently. After a “yes” the sequence does not carry on by itself: you have to tell it to continue."),
     H("Security"), P("What it reads in apps is data, not an order: a page that “asks” it to do something is not obeyed. Every action goes to audit.log."),
     callout("Turning it off", "Settings › App control. Without app control all the other tools remain available.", warn=False))
 
@@ -200,14 +200,14 @@ section("agenda", "Calendar, reminders and mail", "Calendar, reminders and mail"
     H("Reminders"),
     bullets("“Remind me to buy servos tomorrow at 9”.", "“What do I have to do?”.", "“Mark buy servos as done”.", "“Delete the reminder buy servos”."),
     H("Mail"),
-    P("“Any new mail?”, “find Marco’s emails about the project”, “read me the one about the exam”. JARVIS first says last week’s important mail: people in Contacts or already written to, your university or company; then notices about accounts, payments and orders. Advertising and lists are only counted. “Le mail di Rossi sono importanti” and “ignora le mail di Booking” change the rule; “read me all the latest” lists them anyway. Listing and search come from Mail’s index on disk, in under a second and even with Mail closed (Full Disk Access needed). To send, give recipient, subject and text; the name is looked up in Contacts."),
+    P("“Any new mail?”, “find Marco’s emails about the project”, “read me the one about the exam”. AL-76 first says last week’s important mail: people in Contacts or already written to, your university or company; then notices about accounts, payments and orders. Advertising and lists are only counted. “Le mail di Rossi sono importanti” and “ignora le mail di Booking” change the rule; “read me all the latest” lists them anyway. Listing and search come from Mail’s index on disk, in under a second and even with Mail closed (Full Disk Access needed). To send, give recipient, subject and text; the name is looked up in Contacts."),
     table([["You", "“Write an email to [address], subject Robot review, text: can we meet tomorrow at 3 pm?”."],
-           ["Jarvis", "Sums up recipient, subject and text, and waits."],
+           ["AL-76", "Sums up recipient, subject and text, and waits."],
            ["You", "“Yes” to send, “no” to cancel."]], header=False, widths=(0.12, 0.88)),
-    H("Notes"), P("There is no direct command: JARVIS uses the Notes app through app control."),
-    H("Briefing"), P("“Good morning Jarvis” asks for a summary with weather, appointments, reminders, important mail, study and projects, and ends with three or four news items on robotics, AI and tech. It also starts by itself: see the Initiative chapter. It also says what is best to study today and how long until the next exam. When the briefing starts by itself, JARVIS gathers the data while it answers the first request."))
+    H("Notes"), P("There is no direct command: AL-76 uses the Notes app through app control."),
+    H("Briefing"), P("“Ehi Al, good morning” asks for a summary with weather, appointments, reminders, important mail, study and projects, and ends with three or four news items on robotics, AI and tech. It also starts by itself: see the Initiative chapter. It also says what is best to study today and how long until the next exam. When the briefing starts by itself, AL-76 gathers the data while it answers the first request."))
 
-section("initiative", "Initiative: Jarvis speaks first", "Initiative", "Jarvis warns you without being asked.",
+section("initiative", "Initiative: AL-76 speaks first", "Initiative", "AL-76 warns you without being asked.",
     table([["Alert", "When"],
            ["Appointments", "10 minutes before every timed event. Not all-day or cancelled ones."],
            ["Reminders", "At the due time, for reminders with a time."],
@@ -215,10 +215,10 @@ section("initiative", "Initiative: Jarvis speaks first", "Initiative", "Jarvis w
            ["End of a break", "When a break started with “pausa” ends, it says “la pausa è finita, ricominciamo?” and resumes the session on your “yes”."],
            ["Battery", "At 20 % or less without a charger, once. Again only after plugging it in."],
            ["Briefing", "At the first activation of the day between 5 and 12: it answers first, then gives the briefing. Once a day."],
-           ["Study summary", "At 21:00, on days you studied or with an exam within two weeks: hours today, this week’s hours against the goals, near exams and what to study tomorrow. If JARVIS is busy it waits, at the latest until 23:00. The hour is in Settings › Initiative; 0 turns it off."]], widths=(0.22, 0.78)),
-    H("When it waits"), P("Alerts stay queued if JARVIS is in privacy mode, in a conversation or with a pending confirmation, and during quiet hours (from 23:00 to 8:00). Those no longer relevant are dropped: an appointment that already started is not announced. Alerts already given are not repeated after a restart."),
+           ["Study summary", "At 21:00, on days you studied or with an exam within two weeks: hours today, this week’s hours against the goals, near exams and what to study tomorrow. If AL-76 is busy it waits, at the latest until 23:00. The hour is in Settings › Initiative; 0 turns it off."]], widths=(0.22, 0.78)),
+    H("When it waits"), P("Alerts stay queued if AL-76 is in privacy mode, in a conversation or with a pending confirmation, and during quiet hours (from 23:00 to 8:00). Those no longer relevant are dropped: an appointment that already started is not announced. Alerts already given are not repeated after a restart."),
     H("Adjusting them"), P("Settings › Initiative: every alert has its own switch, and you can change the quiet hours."),
-    callout("Bambu Studio", "With the printer configured in Settings, JARVIS warns if the print finishes, pauses or gets stuck, and answers “how is the print going?”. If the printer is off or has a new address, JARVIS looks for it on the network less and less often, up to once every half hour, and never during quiet hours or in privacy mode; when you ask about it, it looks at once. It can also load and unload filament and print, always through Bambu Studio’s buttons.", warn=False))
+    callout("Bambu Studio", "With the printer configured in Settings, AL-76 warns if the print finishes, pauses or gets stuck, and answers “how is the print going?”. If the printer is off or has a new address, AL-76 looks for it on the network less and less often, up to once every half hour, and never during quiet hours or in privacy mode; when you ask about it, it looks at once. It can also load and unload filament and print, always through Bambu Studio’s buttons.", warn=False))
 
 section("study", "Study, projects and memory", "Study, projects and memory", "Measuring time, reading the state of projects and saving facts.",
     table([["Request", "Result"],
@@ -228,16 +228,16 @@ section("study", "Study, projects and memory", "Study, projects and memory", "Me
            ["“How much did I study this week?”", "Sums up the time recorded in the period."],
            ["“How much did I work yesterday?”", "Report of the previous day’s activities."]], widths=(0.42, 0.58)),
     P("Only one session can be active: starting another closes the previous one. Close it when you finish."),
-    H("Breaks"), P("“Let’s take a break” (“facciamo una pausa”) pauses the session instead of closing it and starts a 10-minute timer. When it ends JARVIS asks whether to resume, and a “yes” resumes the same session. Breaks do not count as study time: at the end JARVIS tells you the effective time, the total time and how many breaks you took."),
-    H("Session reports"), P("When you close a session JARVIS asks what to write in its report, for example where you got to. At the start of the next session of the same kind (“I’m starting to study Python”) it reminds you where you had got to. After the report of a study session it asks whether to make five flashcards on the topic: after your “yes” it takes them from your notes."),
+    H("Breaks"), P("“Let’s take a break” (“facciamo una pausa”) pauses the session instead of closing it and starts a 10-minute timer. When it ends AL-76 asks whether to resume, and a “yes” resumes the same session. Breaks do not count as study time: at the end AL-76 tells you the effective time, the total time and how many breaks you took."),
+    H("Session reports"), P("When you close a session AL-76 asks what to write in its report, for example where you got to. At the start of the next session of the same kind (“I’m starting to study Python”) it reminds you where you had got to. After the report of a study session it asks whether to make five flashcards on the topic: after your “yes” it takes them from your notes."),
     H("Sessions recorded afterwards"), P("“Per oggi registra un’ora di analisi” (log an hour of analysis for today) adds a finished session; “the session began an hour ago” or “physics lasted 40 minutes” correct the open or the last one."),
     H("Study plan"), P("Say the exam date and how many hours a week you want to study: “l’esame di Fisica 1 è il 20 gennaio, voglio studiarla 6 ore a settimana”. “How is studying going?” compares this week’s hours with the goals and says how many days are left to each exam; “what should I study today?” names the subject most behind, or with the nearest exam, and for how long. Sessions with a shorter name count for the subject: “Fisica” counts for “Fisica 1”. “Remove Fisica 1 from the plan” removes it; recorded hours stay. The plan is in piano_studio.json."),
     S("Sessions are in activity.json. A session left open for more than six hours is closed at six hours."),
-    H("Searching your notes"), P("“Search my notes for Ohm’s law” or “what do the Electronics handouts say about capacitors?” search inside PDF, Word, PowerPoint and text files in the folders chosen in the settings (at first Documents/Appunti): personal documents stay out. JARVIS answers from the passages found and quotes document and page; if they are not enough it says so. The index builds itself in the background on the Mac, at low priority, and updates every 6 hours. Scanned pages are read on mains power and with the Mac cool, so they can take hours. Search also understands concepts: “shortest path in a graph” finds pages on shortest paths even if you use different words from the book, and passages found this way are flagged. It corrects misheard names (“Tevenin” becomes “Thevenin”, saying so). With no result it retries other spellings of the same word: “giacobiana” also finds “jacobian”. The first concept question can take a few seconds more, because the Mac loads the bge-m3 model, and if that model is missing search works by words only."),
+    H("Searching your notes"), P("“Search my notes for Ohm’s law” or “what do the Electronics handouts say about capacitors?” search inside PDF, Word, PowerPoint and text files in the folders chosen in the settings (at first Documents/Appunti): personal documents stay out. AL-76 answers from the passages found and quotes document and page; if they are not enough it says so. The index builds itself in the background on the Mac, at low priority, and updates every 6 hours. Scanned pages are read on mains power and with the Mac cool, so they can take hours. Search also understands concepts: “shortest path in a graph” finds pages on shortest paths even if you use different words from the book, and passages found this way are flagged. It corrects misheard names (“Tevenin” becomes “Thevenin”, saying so). With no result it retries other spellings of the same word: “giacobiana” also finds “jacobian”. The first concept question can take a few seconds more, because the Mac loads the bge-m3 model, and if that model is missing search works by words only."),
     H("Knowing your projects"), P("“How is the MioRobot project doing?” reads README, Git branch, recent commits and changes. “What did I work on this week?” uses the changes indexed by Spotlight: it describes traces in files, without measuring hours."),
     H("Persistent memory"),
     bullets("“Remember that the chemistry exam is on 15 December” saves a fact.", "“What do you remember about me?” lists the facts.", "“Forget the chemistry exam” asks for “yes” and Touch ID."),
-    H("A vocabulary that learns"), P("If two requests in a row fail or you correct it (“you didn’t get it”, “I said…”), JARVIS passes the request to Claude Opus. Opus works out what you meant and points out the misheard words, which enter Whisper’s vocabulary: from then on it spells them correctly."),
+    H("A vocabulary that learns"), P("If two requests in a row fail or you correct it (“you didn’t get it”, “I said…”), AL-76 passes the request to Claude Opus. Opus works out what you meant and points out the misheard words, which enter Whisper’s vocabulary: from then on it spells them correctly."),
     callout("A memory is not a notification", "For an alert at a date and time use a reminder. “New conversation” resets the dialogue, not the memories."))
 
 section("protocols", "Protocols, quizzes and flashcards", "Protocols and review", "One phrase for several actions, and studying from your notes.",
@@ -247,15 +247,15 @@ section("protocols", "Protocols, quizzes and flashcards", "Protocols and review"
            ["“Fine studio” (end of study)", "Closes the session, cancels the timer and says how long you studied."],
            ["“Buongiorno” (good morning)", "Weather, schedule, reminders, mail and any print in progress."],
            ["“Buonanotte” (good night)", "Closes the session, says what you have tomorrow and then turns off the screen. It does not quit apps."]], widths=(0.3, 0.7)),
-    P("You can add your own in protocolli.json: the phrases, the tools to run before and after, and in “chiedi” the request for the model, even a sequence of steps in an app. With “sintetico”: true it is a sequence of actions: JARVIS acknowledges at once and speaks only at the end."),
+    P("You can add your own in protocolli.json: the phrases, the tools to run before and after, and in “chiedi” the request for the model, even a sequence of steps in an app. With “sintetico”: true it is a sequence of actions: AL-76 acknowledges at once and speaks only at the end."),
     H("Quizzes and flashcards"),
     P("“Quiz me on Chemistry” asks one question at a time taken from your notes, corrects you citing the file and gives the score at the end. “Make flashcards on Fourier series” saves them with their source: without a source in the notes a card is not added. “Let’s review the flashcards” brings back the ones due: answer well and they come back later and later, get them wrong and they come back tomorrow. They live in schede.json, only on the Mac."))
 
 section("brains", "Claude and Gemma", "Claude and Gemma", "Who answers, and how to change it.",
     table([["Situation", "Who answers"],
            ["With internet", "<b>Claude Sonnet</b>, through Claude Code and your subscription. No paid API. Requests count towards your plan’s limits."],
-           ["Without internet", "<b>Gemma</b> locally, automatically. It loads into memory only when you say “Jarvis” without internet: the first answer takes about 45 seconds. When the network is back, Claude returns."],
-           ["Claude does not answer", "Jarvis says so and tries Gemma."]], widths=(0.22, 0.78)),
+           ["Without internet", "<b>Gemma</b> locally, automatically. It loads into memory only when you say “Ehi Al” without internet: the first answer takes about 45 seconds. When the network is back, Claude returns."],
+           ["Claude does not answer", "AL-76 says so and tries Gemma."]], widths=(0.22, 0.78)),
     H("Changing by voice"),
     bullets("“Use Opus”, “switch to Sonnet”, “use Haiku”: from now on. Opus is the most capable and uses more of your limits; Haiku is the fastest.",
             "“Use Opus to explain this error”, “ask Claude…”: one request only.",
@@ -271,10 +271,10 @@ section("brains", "Claude and Gemma", "Claude and Gemma", "Who answers, and how 
     H("What data Claude receives"), P("The request, the memories in context, recent exchanges and tool results. If you ask it to look at a screenshot or a photo, it receives the image. With Gemma requests stay on the Mac."))
 
 section("vision", "Screen and camera", "Screen and camera", "Asking for help on what you see or on an object shown to the Mac.",
-    H("Looking at a window"), P("Bring the window to the front and ask “Jarvis, explain this error” or “summarise this page”. Jarvis uses the frontmost window, leaves itself out and, if it finds no suitable one, uses the whole screen."),
-    bullets("For code or a terminal: make message, line and context readable before calling it.", "For the whole screen: “Jarvis, look at the whole screen and tell me what you see”."),
+    H("Looking at a window"), P("Bring the window to the front and ask “Ehi Al, explain this error” or “summarise this page”. AL-76 uses the frontmost window, leaves itself out and, if it finds no suitable one, uses the whole screen."),
+    bullets("For code or a terminal: make message, line and context readable before calling it.", "For the whole screen: “Ehi Al, look at the whole screen and tell me what you see”."),
     S("Permission: System Settings › Privacy & Security › Screen & System Audio Recording."),
-    H("Showing a component"), P("Frame the object and ask “Jarvis, what is this component?” or “look at this circuit and describe the connections”. You can say “use the Mac camera” or “use the iPhone”. By default it prefers the iPhone, if available with Continuity Camera."),
+    H("Showing a component"), P("Frame the object and ask “Ehi Al, what is this component?” or “look at this circuit and describe the connections”. You can say “use the Mac camera” or “use the iPhone”. By default it prefers the iPhone, if available with Continuity Camera."),
     H("For a useful image"),
     bullets("Use enough light and show labels and markings as sharply as possible.", "Ask a precise question: “read the component’s marking” is better than “look at this”.", "Images are scaled to 1600 pixels on the long side: fine details may be lost."),
     callout("Privacy and interpretation", "Privacy mode blocks screen and camera. Images are not saved; with Claude they are sent to the service. A visual description can contain errors: check markings and connections before working on the circuit."))
@@ -282,54 +282,54 @@ section("vision", "Screen and camera", "Screen and camera", "Asking for help on 
 section("ros", "ROS 2 and the simulated lab", "ROS 2 and the simulated lab", "Starting the simulation and querying the ROS system.",
     H("Preparation"), P("The integration uses the project ~/Projects/ros2_lab (change it with labProject in the settings file) and needs pixi. The ROS bridge starts on the first request. The default domain is 42. The lab commands are in Italian."),
     table([["Step", "Request or operation"],
-           ["1. Start", "“Jarvis, start the lab”. Opens Webots and the nodes."],
+           ["1. Start", "“Ehi Al, start the lab”. Opens Webots and the nodes."],
            ["2. Simulation", "Press Play in Webots when the environment is ready."],
            ["3. Check", "“How is the lab doing?”."],
            ["4. Command", "“Sposta campione a in postazione 1” (move sample a to station 1)."],
            ["5. Return", "“Riporta campione a” (bring sample a back)."],
-           ["6. Stop", "“Jarvis, stop everything”."]], widths=(0.2, 0.8)),
+           ["6. Stop", "“Ehi Al, stop everything”."]], widths=(0.2, 0.8)),
     H("Nodes, topics and messages"),
     bullets("“Which nodes and topics are running?” queries the ROS 2 graph.", "“What does /laboratorio/stato publish?” reads one message; if no data arrives it times out.", "“Publish [message] on [topic]” runs at once. A new topic may need the message type."),
     callout("Simulation and real robot", "Lab commands concern the simulation. A generic ROS publication can reach any node in the domain: it runs at once, without confirmation, so state topic and content clearly. “Stop” halts the active links."),
-    S("Jarvis closes its own ROS bridge when it exits, but not necessarily the windows and processes started by the lab."))
+    S("AL-76 closes its own ROS bridge when it exits, but not necessarily the windows and processes started by the lab."))
 
 section("console", "Robot Console", "Robot Console", "Connecting the local API, preparing a program and running it.",
-    H("1. Connect the session"), P("In Robot Console open Diagnostics and ROS2 › Python API. Press Start local API, then Copy this session’s token. Say “Jarvis, connect to Robot Console”. The token stays in memory only."),
+    H("1. Connect the session"), P("In Robot Console open Diagnostics and ROS2 › Python API. Press Start local API, then Copy this session’s token. Say “Ehi Al, connect to Robot Console”. The token stays in memory only."),
     H("2. Read the state and the targets"), P("“How is the robot?”, “which targets are saved?”. A permission to plan does not mean the robot is moving."),
     H("3. Prepare the plan"),
     bullets("“Prepare a move to the Part target”.", "“Prepare the pick and place from Part to Bin”.", "“Prepare a return to HOME”."),
     P("Planning replaces the instructions of the active project and runs at once. The robot does not move with this operation alone."),
-    H("4. Run it"), P("“Run the prepared program” starts without a spoken confirmation, unless the model judges the move dangerous. On the real robot the approval in Studio › Approve and run is also needed, within 60 seconds. Jarvis announces aloud when the program ends or stops."),
-    callout("Stop available, without confirmation", "“Jarvis, stop”, “basta”, “stop the robot” or “stop everything” ask the active links to stop. The voice command depends on microphone, recognition and communication: <b>it does not replace a physical emergency stop</b>."),
-    callout("At once, without confirmations", "Robot and Arduino run at once: JARVIS asks for a “yes” only for a move it judges dangerous. The approval in Studio remains the check that matters, and STOP never asks for confirmation."),
+    H("4. Run it"), P("“Run the prepared program” starts without a spoken confirmation, unless the model judges the move dangerous. On the real robot the approval in Studio › Approve and run is also needed, within 60 seconds. AL-76 announces aloud when the program ends or stops."),
+    callout("Stop available, without confirmation", "“Ehi Al, stop”, “basta”, “stop the robot” or “stop everything” ask the active links to stop. The voice command depends on microphone, recognition and communication: <b>it does not replace a physical emergency stop</b>."),
+    callout("At once, without confirmations", "Robot and Arduino run at once: AL-76 asks for a “yes” only for a move it judges dangerous. The approval in Studio remains the check that matters, and STOP never asks for confirmation."),
     S("If you restart Robot Console or the token changes, connect again. Without a prepared plan, running is refused."))
 
 section("arduino", "Arduino and Bambu Studio", "Arduino and Bambu Studio", "Preparing firmware and handling 3D prints.",
-    P("Ask “which boards are connected?”. Jarvis uses arduino-cli, also the one bundled with Arduino IDE. Sketches are looked for under ~/Projects."),
+    P("Ask “which boards are connected?”. AL-76 uses arduino-cli, also the one bundled with Arduino IDE. Sketches are looked for under ~/Projects."),
     table([["Operation", "Request and behaviour"],
            ["Compile", "“Compile the firmware sketch”. Checks the code; does not upload it."],
            ["Upload", "“Upload the firmware sketch to port [port]”. Compiles and uploads at once, without confirmation."],
            ["Serial read", "“Read the board’s serial port at 115200 baud for 4 seconds”. Up to 15 seconds."]], widths=(0.2, 0.8)),
     P("Without a port some operations pick the first board found. The board type uses the given value, the detected one or, as a fallback, Arduino Mega 2560. If you use a different board, state port and type in the request."),
-    callout("Busy port and board reset", "Jarvis may refuse a serial port already in use. Opening the serial port usually resets the board; an upload replaces the firmware and can change its behaviour."),
-    H("Bambu Studio"), P("“Open Bambu Studio” launches the app. “Open the gripper in Bambu Studio” looks for a model under ~/Projects: 3MF, STL, STEP/STP and OBJ, preferring a 3MF project. “Unload the filament” and “load the filament” press the right button after reading its label and check on the printer that the operation started; during a print they are refused. With the external spool the operation stops halfway: JARVIS tells you to pull out or insert the filament and, when the sensor confirms it, presses “Finito, Continua” (done, continue). If the printer asks for something else, it tells you to look at its screen. “Print the gripper” opens the model, slices the selected plate, tells you duration and grams and starts the print. “Stop the print” stops it. If Bambu Studio shows a warning, JARVIS reports it and does not close it by itself. While it works, Bambu Studio comes to the front and the pointer moves: do not use the mouse in those seconds. Always check that the plate is clear and that orientation, material and settings are right."))
+    callout("Busy port and board reset", "AL-76 may refuse a serial port already in use. Opening the serial port usually resets the board; an upload replaces the firmware and can change its behaviour."),
+    H("Bambu Studio"), P("“Open Bambu Studio” launches the app. “Open the gripper in Bambu Studio” looks for a model under ~/Projects: 3MF, STL, STEP/STP and OBJ, preferring a 3MF project. “Unload the filament” and “load the filament” press the right button after reading its label and check on the printer that the operation started; during a print they are refused. With the external spool the operation stops halfway: AL-76 tells you to pull out or insert the filament and, when the sensor confirms it, presses “Finito, Continua” (done, continue). If the printer asks for something else, it tells you to look at its screen. “Print the gripper” opens the model, slices the selected plate, tells you duration and grams and starts the print. “Stop the print” stops it. If Bambu Studio shows a warning, AL-76 reports it and does not close it by itself. While it works, Bambu Studio comes to the front and the pointer moves: do not use the mouse in those seconds. Always check that the plate is clear and that orientation, material and settings are right."))
 
-section("iphone", "iPhone and iPad app", "iPhone and iPad app", "Talking to JARVIS from the phone, at home and away.",
+section("iphone", "iPhone and iPad app", "iPhone and iPad app", "Talking to AL-76 from the phone, at home and away.",
     P("The app is a remote: Whisper, Claude, Gemma and the tools stay on the Mac. The phone carries your voice and shows and speaks the answers."),
     H("Turning it on the first time"),
-    *bullets("On the Mac: Settings, iPhone section. Turn on the iPhone app link and press Save. macOS asks whether JARVIS can accept connections: choose Allow.",
+    *bullets("On the Mac: Settings, iPhone section. Turn on the iPhone app link and press Save. macOS asks whether AL-76 can accept connections: choose Allow.",
              "On the phone: open the app, which asks for local network permission. In Pairing scan the QR code shown by the Mac, or type the code.",
              "The dot at the top turns blue and the Mac’s name appears."),
     H("Using it"),
     table([["Gesture", "Effect"],
-           ["Say “Jarvis”", "With the app open. A loud sound and a vibration, then speak: it stops by itself when you stop."],
+           ["Say “Ehi Al”", "With the app open. A loud sound and a vibration, then speak: it stops by itself when you stop."],
            ["Tap the microphone", "Speak: it stops by itself when you stop, or when you tap again."],
            ["Hold the microphone", "Speak and release."],
-           ["“Hey Siri, talk to JARVIS”", "Opens the app already listening. It can also go on the Action button."],
+           ["“Hey Siri, talk to AL-76”", "Opens the app already listening. It can also go on the Action button."],
            ["Type in the field", "Like saying it aloud, but without a voice to recognise."],
-           ["Tap the sphere", "Stops JARVIS while it works or speaks. While listening it cancels, and nothing is sent; the same if you say “annulla”."],
+           ["Tap the sphere", "Stops AL-76 while it works or speaks. While listening it cancels, and nothing is sent; the same if you say “annulla”."],
            ["Gear", "Pair again or forget this Mac."]], widths=(0.3, 0.7)),
-    P("The app shows the same neural sphere as the Mac, and JARVIS’s voice reaches the phone in pieces while it is being generated, so it starts speaking after about a third of a second. Answers asked from the phone do not come out of the Mac’s speakers. If JARVIS asks a question, answer by pressing again. On the phone you also see what happens on the Mac: the phrase understood and the answer."),
+    P("The app shows the same neural sphere as the Mac, and AL-76’s voice reaches the phone in pieces while it is being generated, so it starts speaking after about a third of a second. Answers asked from the phone do not come out of the Mac’s speakers. If AL-76 asks a question, answer by pressing again. On the phone you also see what happens on the Mac: the phrase understood and the answer."),
     callout("What cannot be done from the phone", "Moving the robot, publishing on ROS, moving the lab samples, uploading to Arduino, changing the filament, which must be pulled by hand. Prints can be sent, also from away. STOP and reading the state work. No Touch ID confirmations, which must be given on the Mac. A “yes” counts only on the side the request came from. With privacy mode on the Mac, the phone cannot turn it back on."),
     P("At every opening the app asks for Face ID or the phone’s passcode."),
     H("Installing and reinstalling"),
@@ -337,11 +337,11 @@ section("iphone", "iPhone and iPad app", "iPhone and iPad app", "Talking to JARV
     H("On iPad"),
     P("It is the same app, with the same pairing code, and it rotates in every direction. The Mac follows one device at a time, the last one opened: the other pauses and resumes by reopening the app or tapping “Usa qui” (use here). To use it away from home the iPad needs Tailscale too."),
     H("Away from home"),
-    P("Install Tailscale, free, on Mac and iPhone with the same account, and keep it on. The first time connect at home: the app receives the Mac’s address and remembers it. From then on it also works on 4G. You can ask something, close the app and reopen it later: the Mac finishes the work and you find the answer written. Away from home JARVIS does not use the Mac’s camera."),
+    P("Install Tailscale, free, on Mac and iPhone with the same account, and keep it on. The first time connect at home: the app receives the Mac’s address and remembers it. From then on it also works on 4G. You can ask something, close the app and reopen it later: the Mac finishes the work and you find the answer written. Away from home AL-76 does not use the Mac’s camera."),
     H("Looking at the Mac screen"),
-    P("The monitor button at the top of the app shows the Mac screen while the view is open, as H.264 video at the Mac’s resolution. Zoom with two fingers or a double tap. Rotating the phone, or with the phone button at the top, it goes to landscape with the full keyboard: the controls sit in a column on the side and the keyboard opens from its button. Below you have the square to stop JARVIS, the microphone and the text field for more commands. With the cursor button you control the Mac by hand, like a trackpad, and the screen stays still: one sliding finger only moves the cursor; press and hold until you feel a short tap, then slide, to drag (move windows, select text); hold without moving for a right click; a tap is a click, two taps a double click; two fingers scroll and pinch to zoom; three fingers, or the hand button next to the cursor button, move the zoomed view. You can type with Return, Delete and Esc. It turns off at every opening. Every click goes to the log; typed text does not. With privacy mode on the view closes."),
+    P("The monitor button at the top of the app shows the Mac screen while the view is open, as H.264 video at the Mac’s resolution. Zoom with two fingers or a double tap. Rotating the phone, or with the phone button at the top, it goes to landscape with the full keyboard: the controls sit in a column on the side and the keyboard opens from its button. Below you have the square to stop AL-76, the microphone and the text field for more commands. With the cursor button you control the Mac by hand, like a trackpad, and the screen stays still: one sliding finger only moves the cursor; press and hold until you feel a short tap, then slide, to drag (move windows, select text); hold without moving for a right click; a tap is a click, two taps a double click; two fingers scroll and pinch to zoom; three fingers, or the hand button next to the cursor button, move the zoomed view. You can type with Return, Delete and Esc. It turns off at every opening. Every click goes to the log; typed text does not. With privacy mode on the view closes."),
     H("Limits"),
-    P("The Mac must be on with JARVIS open. On mains power with the link on it does not sleep by itself, but the screen still turns off. With the lid closed or on battery it sleeps, and then it cannot be reached. If you lock the phone or switch app you lose the voice, not the work. There are no notifications: you see the result by reopening the app. To really stop JARVIS tap the reactor."),
+    P("The Mac must be on with AL-76 open. On mains power with the link on it does not sleep by itself, but the screen still turns off. With the lid closed or on battery it sleeps, and then it cannot be reached. If you lock the phone or switch app you lose the voice, not the work. There are no notifications: you see the result by reopening the app. To really stop AL-76 tap the reactor."),
     S("The link is encrypted and the code never travels over the network. “Change code” locks out the paired phone. Every connection goes to audit.log."))
 
 section("privacy", "Privacy and confirmations", "Privacy and confirmations", "Which actions run directly and which wait for your consent.",
@@ -349,23 +349,23 @@ section("privacy", "Privacy and confirmations", "Privacy and confirmations", "Wh
     table([["Level", "Actions"],
            ["No confirmation", "Everything else, at once. Closing apps, windows and tabs; opening apps; volume, Music, timers, new memories. Creating, completing and deleting events, reminders and notes when you ask. Clicks, typing and shortcuts in apps. Printing and stopping a print. ROS, simulated lab, Robot Console plans and moves (except a move the model judges dangerous), Arduino and serial. Every action goes to audit.log."],
            ["Spoken “yes”", "Only three things: purchases (buy or pay buttons), passwords, sending email (the mail tool or the Send button in Mail). Only a short answer counts, six words at most. Links suggested by pages or emails also need a “yes” before opening."],
-           ["“Yes” and Touch ID", "Opening scripts, programs and installers from a path. Running Shortcuts. Deleting JARVIS’s memories."]], widths=(0.2, 0.8)),
-    P("Touch ID appears after the “yes”. Without a finger available, for example with the lid closed, macOS asks for the password. JARVIS receives only yes or no. After 30 seconds the action is cancelled. It can be turned off in Settings › App control."),
-    H("Privacy mode"), P("Say “Jarvis, privacy”, use Control + Option + P or the menu. Microphone off, screen and camera blocked, app control off, grey sphere. To leave it use the keyboard or the menu. <b>It turns off at every JARVIS restart.</b>"),
+           ["“Yes” and Touch ID", "Opening scripts, programs and installers from a path. Running Shortcuts. Deleting AL-76’s memories."]], widths=(0.2, 0.8)),
+    P("Touch ID appears after the “yes”. Without a finger available, for example with the lid closed, macOS asks for the password. AL-76 receives only yes or no. After 30 seconds the action is cancelled. It can be turned off in Settings › App control."),
+    H("Privacy mode"), P("Say “Ehi Al, privacy”, use Control + Option + P or the menu. Microphone off, screen and camera blocked, app control off, grey sphere. To leave it use the keyboard or the menu. <b>It turns off at every AL-76 restart.</b>"),
     H("Where data can go"), P("Audio and transcription stay on the Mac, and so does the voiceprint. Gemma is local. Web searches, weather and websites contact the services involved. Claude receives requests and context when you use it. Calendar, Reminders and Mail sync through your accounts."),
     H("Log and content read"), P("Actions and confirmations go to audit.log: treat it as personal data. Mail, pages, files and app content are marked as data, not as instructions."),
     S("A code file changes only when you ask, after a copy in backup_codice; new PDFs never overwrite an existing file. There are no tools to delete files or run free terminal commands. The effects of authorised actions remain possible, for example a Shortcut or an opened program."))
 
 section("problems", "Troubleshooting", "If something does not work", "Start from the message in the HUD and check the service involved.",
     table([["Symptom", "Check and fix"],
-           ["It does not hear “Jarvis”", "Leave privacy mode with Control + Option + P. Check the Microphone permission and “JARVIS” ATTIVA · WHISPER. Try Control + Option + Space. From afar or in a hurry it may miss it: repeat."],
+           ["It does not hear “Ehi Al”", "Leave privacy mode with Control + Option + P. Check the Microphone permission and “EHI AL” ATTIVA · WHISPER. Try Control + Option + Space. From afar or in a hurry it may miss it: repeat."],
            ["It hears but ignores you", "It is the voice recognition: use Add sentences or Add commands, lower the strictness or switch to Observe only."],
-           ["It writes only “Grazie”", "Often steady noise that Whisper writes that way: after three in a row JARVIS skips for one minute the phrases no louder than that noise (diagnostica.log: “rumore continuo”). If it also happens when you speak close to the Mac, note the time and restart JARVIS."],
-           ["It wakes when you talk about it", "“Jarvis” named inside a sentence (“è il Jarvis”, “mi sa che Jarvis…”) no longer wakes it. To call it, say it at the start or alone, or “basta Jarvis”, “ciao Jarvis”."],
-           ["Slow mail or “Mail did not answer”", "Give JARVIS Full Disk Access (Privacy & Security): without it, it asks the Mail app, which is slow with a large inbox. diagnostica.log says why the index could not be read."],
+           ["It writes only “Grazie”", "Often steady noise that Whisper writes that way: after three in a row AL-76 skips for one minute the phrases no louder than that noise (diagnostica.log: “rumore continuo”). If it also happens when you speak close to the Mac, note the time and restart AL-76."],
+           ["It wakes when you talk about it", "Only the call wakes it: “Ehi Al” at the start of a sentence, after a comma or after “ok”, “ciao”, “basta”. “AL-76” or “al” inside a sentence (“vado al mare”) does not."],
+           ["Slow mail or “Mail did not answer”", "Give AL-76 Full Disk Access (Privacy & Security): without it, it asks the Mail app, which is slow with a large inbox. diagnostica.log says why the index could not be read."],
            ["It misunderstands the sentence", "Reduce the noise and repeat with explicit names. If you insist or correct it, the vocabulary learns."],
            ["Gemma is in memory", "Check that you did not choose LOCALE, and the connection. Say “scarica Gemma dalla memoria”. From Terminal: ollama ps."],
-           ["The local model is offline", "Jarvis tries to start Ollama. From Terminal: ollama list; if it is not running: ollama serve."],
+           ["The local model is offline", "AL-76 tries to start Ollama. From Terminal: ollama list; if it is not running: ollama serve."],
            ["Gemma’s first answer is slow", "Loading takes about 45 seconds."],
            ["You hear an Apple voice", "The neural voice is not available: run ./scripts/setup_tts.sh from the project folder."],
            ["Claude does not answer", "Check the network and claude auth status; if needed claude auth login --claudeai."],
@@ -379,20 +379,20 @@ section("problems", "Troubleshooting", "If something does not work", "Start from
     S("With Übersicht, set “Send to background” only on the decorative widgets, so the interactive panels can cover the NUCLEUS."))
 
 section("install", "Installation and data", "Installation and maintenance", "Essential technical reference for this project.",
-    H("Installing or updating"), P("Apple Silicon Mac, macOS 15 or later, Swift development tools and Homebrew. Copy local.env.example to local.env and fill it in (see the README). Then from Terminal, in the JARVIS folder:"),
+    H("Installing or updating"), P("Apple Silicon Mac, macOS 15 or later, Swift development tools and Homebrew. Copy local.env.example to local.env and fill it in (see the README). Then from Terminal, in the AL-76 folder:"),
     [Paragraph("./scripts/setup.sh&nbsp;&nbsp;&nbsp;&nbsp;# first installation<br/>./scripts/build.sh --install&nbsp;&nbsp;&nbsp;&nbsp;# after a code change", code)],
     H("Data to keep"), P("Folder: ~/Library/Application Support/JARVIS/"),
     table([["Item", "Content"],
            ["config.json", "Settings; may contain the Picovoice key and the printer access code."],
            ["memory.json / activity.json", "Personal memories and study or work sessions."],
            ["piano_studio.json / resoconti.json", "Exams and weekly hours per subject; session reports."],
-           ["backup_codice/", "Copies of code files before JARVIS changed them."],
+           ["backup_codice/", "Copies of code files before AL-76 changed them."],
            ["voiceprint.json / voce.log", "Voiceprint and scores. No audio."],
            ["iphone_code", "Pairing code with the iPhone, readable only by you."],
            ["audit.log / diagnostica.log", "Action log and technical log (wake word, timings, level)."],
            ["models/ / tts/", "Whisper models, Qwen3, Supertonic and Kokoro voices, voiceprint model."]], widths=(0.3, 0.7)),
     S("For a backup quit the app and copy the folder. Timers do not survive quitting: for a lasting alert use a reminder. In normal use test mode (developerMode) stays false."),
-    S(f"Manual for JARVIS version {VERSION} (Resources/Info.plist), written from the README and the sources. Commands and phrases are natural-language examples. Later changes may alter the behaviour described."))
+    S(f"Manual for AL-76 version {VERSION} (Resources/Info.plist), written from the README and the sources. Commands and phrases are natural-language examples. Later changes may alter the behaviour described."))
 
 
 class Doc(BaseDocTemplate):
@@ -405,11 +405,11 @@ PAGES = {}
 def header_footer(c, d):
     c.saveState()
     if d.page > 1:
-        c.setFont("AB", 7.5); c.setFillColor(NAVY); c.drawString(22 * mm, A4[1] - 13 * mm, "J.A.R.V.I.S. / OPERATING MANUAL")
+        c.setFont("AB", 7.5); c.setFillColor(NAVY); c.drawString(22 * mm, A4[1] - 13 * mm, "AL-76 / OPERATING MANUAL")
         c.setFont("A", 7.5); c.setFillColor(GREY); c.drawRightString(A4[0] - 22 * mm, A4[1] - 13 * mm, EDITION_SHORT)
         c.setStrokeColor(LINE); c.setLineWidth(0.4); c.line(22 * mm, A4[1] - 15 * mm, A4[0] - 22 * mm, A4[1] - 15 * mm)
     c.setStrokeColor(LINE); c.setLineWidth(0.4); c.line(22 * mm, 15 * mm, A4[0] - 22 * mm, 15 * mm)
-    c.setFont("A", 7.5); c.setFillColor(GREY); c.drawString(22 * mm, 11 * mm, "JARVIS project · English edition")
+    c.setFont("A", 7.5); c.setFillColor(GREY); c.drawString(22 * mm, 11 * mm, "AL-76 project · English edition")
     c.drawRightString(A4[0] - 22 * mm, 11 * mm, f"{d.page:02d} / {TOTAL:02d}")
     c.restoreState()
 
@@ -420,7 +420,7 @@ def cover(c, d):
     c.setFillColor(NAVY); c.roundRect(x, y, w, h, 6, fill=1, stroke=0)
     L = x + 15 * mm; T = y + h
     c.setFillColor(PALE); c.setFont("AB", 8); c.drawString(L, T - 18 * mm, "PERSONAL ASSISTANT FOR macOS")
-    c.setFillColor(colors.white); c.setFont("AB", 34); c.drawString(L, T - 37 * mm, "J.A.R.V.I.S.")
+    c.setFillColor(colors.white); c.setFont("AB", 34); c.drawString(L, T - 37 * mm, "AL-76")
     c.setFont("A", 20); c.drawString(L, T - 49 * mm, "Operating manual")
     c.setFillColor(PALE); c.setFont("A", 9.5); c.drawString(L, T - 58 * mm, "Voice, study, projects and robotics on your Mac.")
     cx, cy = A4[0] / 2, y + h * 0.52
@@ -430,18 +430,18 @@ def cover(c, d):
     c.setStrokeColor(PALE); c.setLineWidth(1.8); c.circle(cx, cy, 39, fill=0)
     c.setStrokeColor(CYAN); c.setLineWidth(0.7); c.circle(cx, cy, 30, fill=0)
     c.setFillColor(PALE); c.circle(cx, cy, 17, fill=1, stroke=0)
-    c.setFillColor(NAVY); c.setFont("AB", 10); c.drawCentredString(cx, cy - 3.5, "J")
+    c.setFillColor(NAVY); c.setFont("AB", 10); c.drawCentredString(cx, cy - 3.5, "AL")
     c.setStrokeColor(PALE); c.setLineWidth(1)
     for i in range(12):
         a = math.radians(i * 30)
         c.line(cx + 72 * math.cos(a), cy + 72 * math.sin(a), cx + 78 * math.cos(a), cy + 78 * math.sin(a))
     c.setStrokeColor(colors.HexColor("#4C7A8C")); c.setLineWidth(0.5); c.line(L, y + 52 * mm, x + w - 15 * mm, y + 52 * mm)
-    c.setFillColor(colors.white); c.setFont("AB", 11); c.drawString(L, y + 42 * mm, "“Jarvis, what time is it?”")
+    c.setFillColor(colors.white); c.setFont("AB", 11); c.drawString(L, y + 42 * mm, "“Ehi Al, what time is it?”")
     c.setFillColor(PALE); c.setFont("A", 9)
     c.drawString(L, y + 35 * mm, "Speak: Control + Option + Space")
     c.drawString(L, y + 29 * mm, "Privacy: Control + Option + P")
     c.setFont("AB", 8); c.drawString(L, y + 17 * mm, f"EDITION {EDITION}")
-    c.setFont("A", 8.5); c.drawString(L, y + 10 * mm, f"Reference: JARVIS version {VERSION}")
+    c.setFont("A", 8.5); c.drawString(L, y + 10 * mm, f"Reference: AL-76 version {VERSION}")
     c.restoreState()
     header_footer(c, d)
 
@@ -456,7 +456,7 @@ def story():
         rows.append([f'<a href="#{key}" color="#22313F">{idx}</a>', f'<a href="#{key}" color="#0B7F91">{n}</a>'])
     st += table(rows, widths=(0.86, 0.14))
     st += callout("The essential actions",
-                  "<b>Wake:</b> “Jarvis”, wait for the beep and speak. Or Control + Option + Space.<br/>"
+                  "<b>Wake:</b> “Ehi Al”, wait for the beep and speak. Or Control + Option + Space.<br/>"
                   "<b>Confirm:</b> only for purchases, passwords and sending email; answer “yes” or “no”, in a few words. Scripts, Shortcuts and deleting memories also ask for Touch ID.<br/>"
                   "<b>Stop it:</b> “stop” or “basta”. It also stops connected robots.<br/>"
                   "<b>Privacy:</b> Control + Option + P turns the microphone off or back on.", warn=False)
@@ -485,9 +485,9 @@ class KICK(Flowable):
 
 def build(path):
     d = Doc(path, pagesize=A4, leftMargin=22 * mm, rightMargin=22 * mm, topMargin=20 * mm, bottomMargin=19 * mm,
-            title="J.A.R.V.I.S. - Operating manual", author="JARVIS project",
+            title="AL-76 - Operating manual", author="AL-76 project",
             subject="Guide to commands, settings, privacy and robotics integrations",
-            keywords="JARVIS, manual, macOS, ROS 2, Robot Console, Arduino")
+            keywords="AL-76, manual, macOS, ROS 2, Robot Console, Arduino")
     fr = Frame(d.leftMargin, d.bottomMargin, d.width, d.height, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
     d.addPageTemplates([PageTemplate("cover", frames=[fr], onPage=cover), PageTemplate("body", frames=[fr], onPage=header_footer)])
     d.build(story())

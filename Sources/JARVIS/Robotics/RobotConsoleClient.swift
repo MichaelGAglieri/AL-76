@@ -169,7 +169,7 @@ final class RobotConsoleClient {
         guard let plan, let id = plan["id"], let fingerprint = plan["fingerprint"] else {
             return "Nessun piano da eseguire: prima va preparato."
         }
-        let (code, run) = await request("POST", "v1/program/execute", ["id": id, "fingerprint": fingerprint, "name": "Da JARVIS", "step": false])
+        let (code, run) = await request("POST", "v1/program/execute", ["id": id, "fingerprint": fingerprint, "name": "Da AL-76", "step": false])
         guard code == 200 || code == 202, let runID = run["id"] else {
             return "Esecuzione rifiutata: \(run["error"] ?? code)"
         }

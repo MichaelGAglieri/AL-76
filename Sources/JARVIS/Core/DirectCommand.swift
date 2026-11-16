@@ -83,8 +83,7 @@ enum DirectCommand: Equatable {
             .replacingOccurrences(of: #"(\p{L})-(\p{L})"#, with: "$1 $2", options: .regularExpression)
         text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".!?;: ").union(.whitespacesAndNewlines))
         text = text.split(separator: " ").joined(separator: " ")
-        for name in ["jarvis ", "giardis ", "giarvis "] where text.hasPrefix(name) { text.removeFirst(name.count) }
-        if text.hasSuffix(" jarvis") { text.removeLast(7) }
+        text = WakeVerifier.strippingCall(text)
         for polite in [" per favore", " per piacere", " grazie", " please"] where text.hasSuffix(polite) { text.removeLast(polite.count) }
         return text
     }

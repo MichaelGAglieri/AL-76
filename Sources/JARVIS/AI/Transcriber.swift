@@ -6,7 +6,7 @@ import WhisperKit
 actor Transcriber {
     private var whisper: WhisperKit?
 
-    /// Small Whisper used only to recognise "Jarvis" during continuous listening.
+    /// Small Whisper used only to recognise "Ehi Al" during continuous listening.
     private var wakeWhisper: WhisperKit?
 
     /// Personal vocabulary already converted to tokens for Whisper's prompt.
@@ -48,16 +48,16 @@ actor Transcriber {
             verbose: false, logLevel: .error, prewarm: true, load: true, download: false))
     }
 
-    /// Quick, approximate transcription, only to look for the word "Jarvis".
+    /// Quick, approximate transcription, only to look for the call "Ehi Al".
     func wakeTranscript(_ samples: [Float]) async -> String? {
         // The large Whisper (turbo) is already in memory for phrases: using it for
-        // "Jarvis" too costs no RAM and errs much less than the small one, which wrote
+        // the call too costs no RAM and errs much less than the small one, which wrote
         // "giardis", "darvi" or even "جاربيس". The small one remains only for start-up.
         guard let model = whisper ?? wakeWhisper else { return nil }
         var audio = samples
         if audio.count < 16_000 { audio += [Float](repeating: 0, count: 16_000 - audio.count) }
-        // First with the "Jarvis" hint: from afar or in a hurry Whisper otherwise
-        // writes "già l'ho visto". Then without it, for short phrases (a looser check);
+        // First with the "Ehi Al" hint: from afar or in a hurry Whisper otherwise
+        // writes "Eyal", "E al" or nothing. Then without it, for short phrases (a looser check);
         // in English only if nothing came out: the room may be noisy.
         var first: String?
         for (language, hinted) in [("it", true), ("it", false), ("en", false)] {
@@ -66,14 +66,14 @@ actor Transcriber {
             var options = DecodingOptions(language: language, temperatureFallbackCount: 0, usePrefillPrompt: true,
                                           detectLanguage: false, skipSpecialTokens: true, withoutTimestamps: true)
             if hinted, let tokenizer = model.tokenizer {
-                options.promptTokens = tokenizer.encode(text: " Jarvis.").filter { $0 < tokenizer.specialTokens.specialTokenBegin }
+                options.promptTokens = tokenizer.encode(text: WakeVerifier.hint).filter { $0 < tokenizer.specialTokens.specialTokenBegin }
             }
             guard let results = try? await model.transcribe(audioArray: audio, decodeOptions: options) else { continue }
             let text = results.map(\.text).joined(separator: " ")
             if WakeVerifier.command(from: text) != nil || WakeVerifier.isSoundalike(text) { return text }
             if first?.trimmingCharacters(in: .whitespaces).isEmpty ?? true { first = text }
         }
-        // A "Jarvis" said alone (short word, lots of silence) sometimes comes out empty
+        // An "Ehi Al" said alone (short words, lots of silence) sometimes comes out empty
         // from turbo: the small Whisper tries again, which costs a tenth of a second.
         if first?.trimmingCharacters(in: .whitespaces).isEmpty ?? true, let small = wakeWhisper, small !== model {
             let options = DecodingOptions(language: "it", temperatureFallbackCount: 0, usePrefillPrompt: true,
@@ -127,7 +127,7 @@ actor Transcriber {
         let italian = try await decode(audio, language: .italian, lenient: lenient, with: whisper)
         guard detection.language == "en" else { return (italian.text, .italian) }
 
-        // On short phrases with "Jarvis" Whisper often takes Italian for
+        // On short phrases with "Ehi Al" Whisper often takes Italian for
         // English (and translates!). Transcribe in both languages and keep the
         // surer version, with a small advantage for Italian.
         let english = try await decode(audio, language: .english, lenient: lenient, with: whisper)
@@ -168,7 +168,7 @@ actor Transcriber {
     /// Removes annotations like "[Musica]" and the phrases Whisper "invents"
     /// when it hears only noise.
     /// Courtesy phrases Whisper often produces from silence. During free
-    /// conversation (without "Jarvis") they are ignored: no answer is needed.
+    /// conversation (without "Ehi Al") they are ignored: no answer is needed.
     static func isCourtesyOnly(_ text: String) -> Bool {
         let t = text.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
         return ["thank you", "thanks", "thank you very much", "grazie", "grazie mille", "ok", "okay", "bye",
@@ -187,29 +187,85 @@ actor Transcriber {
     }
 }
 
-/// Second wake word check on Whisper's text: accepts only if
-/// the phrase really holds a word very close to "Jarvis".
+/// Second wake word check on Whisper's text: accepts only if the phrase really holds the call "Ehi Al".
+/// Until 16 November the wake word was "Jarvis"; then the project became AL-76 and the user chose "Ehi Al".
 enum WakeVerifier {
-    /// Returns the command without the wake word, or nil if "Jarvis" is not there.
+    /// The call as the fixed sentences say it ("Per finire dica: Ehi Al, basta scrivere.").
+    static let call = "Ehi Al"
+
+    /// What Whisper is told it may hear. Without it "Ehi Al" came out as "Eyal", "E al" or "Ehi, altri",
+    /// or not at all; with it about four times in five (16 November, five Italian voices of the Mac).
+    static let hint = " Ehi Al."
+
+    private static let callWords: Set<String> = ["ehi", "hey", "hei", "ei", "eh", "ey", "ehy", "ehii", "heii"]
+    private static let nameWords: Set<String> = ["al", "all", "hal", "hall", "ahl", "aal"]
+    /// "Ehi Al" written as one word by Whisper.
+    private static let fused: Set<String> = ["eyal", "eial", "ehial", "heyal", "heial", "ehyal", "eyall", "ehiall", "heyall"]
+    /// Words before the call that keep it a call: "ok, ehi Al", "senti ehi Al".
+    private static let leadIns: Set<String> = ["ok", "okay", "allora", "senti", "dai", "basta", "ciao", "no", "si"]
+
+    /// How many words the call takes at `i` (1 or 2), or nil. A call opens the phrase, follows a
+    /// punctuation mark or a word like "ok". "E al" counts only at the very start, where Whisper writes it
+    /// for "Ehi Al" (16 November); none of the 1,820 phrases heard in the room until then began that way.
+    /// "Ehi, altri", another way Whisper writes it, also only at the start.
+    static func callLength(_ words: [String], at i: Int) -> Int? {
+        guard words.indices.contains(i) else { return nil }
+        if i > 0 {
+            let previous = words[i - 1]
+            let ends = previous.last.map { ".,!?;:".contains($0) } ?? false
+            guard ends || leadIns.contains(normalize(previous)) else { return nil }
+        }
+        let w = normalize(words[i])
+        if fused.contains(w) { return 1 }
+        guard i + 1 < words.count else { return nil }
+        let next = normalize(words[i + 1])
+        if callWords.contains(w), nameWords.contains(next) { return 2 }
+        if i == 0, w == "e", nameWords.contains(next) { return 2 }
+        if i == 0, callWords.contains(w), next == "altri" { return 2 }
+        return nil
+    }
+
+    /// Looser, anywhere in the first words: only when the small Whisper already heard the call
+    /// and the large one wrote it differently ("e alle", "Eyall").
+    private static func looseCallLength(_ words: [String], at i: Int) -> Int? {
+        let w = normalize(words[i])
+        if (3...6).contains(w.count), distance(w, "ehial") <= 1 || distance(w, "eyal") <= 1 { return 1 }
+        guard i + 1 < words.count else { return nil }
+        let next = normalize(words[i + 1])
+        return (callWords.contains(w) || w == "e") && (nameWords.contains(next) || next.hasPrefix("al")) ? 2 : nil
+    }
+
+    static func startsWithCall(_ text: String) -> Bool {
+        callLength(text.split(whereSeparator: { $0 == " " }).map(String.init), at: 0) != nil
+    }
+
+    /// The text without the call at its start ("Ehi Al, apri Safari" → "apri Safari"). Not "e al": with
+    /// no call, in a conversation, "e al mare che tempo fa?" is a real question.
+    static func strippingCall(_ text: String) -> String {
+        let pattern = #"^\s*(?:(?:ehi|hey|hei|ei|eh|ey|ehy)[\s,.!]+(?:al|all|hal|hall)(?:[\s-]?76)?|eyal|eial|ehial|heyal)(?=[\s,.!?;:]|$)[\s,.!?;:]*"#
+        guard let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return text }
+        return String(text[range.upperBound...])
+    }
+
+    /// Returns the command without the call, or nil if "Ehi Al" is not there.
     /// `loose`: looser recognition, only when the small Whisper has
-    /// already heard "Jarvis" and the large one wrote it differently.
-    /// "Jarvis, accendi la tv, Jarvis, accendi la tv": said twice because the first time seemed lost
+    /// already heard the call and the large one wrote it differently.
+    /// "Ehi Al, accendi la tv, Ehi Al, accendi la tv": said twice because the first time seemed lost
     /// (15 November). Twice the same command is not a new request, and as one it is an instant
     /// command (0 s) instead of a question for Claude (12 s).
     static func withoutRepetition(_ text: String) -> String {
         let pieces = text.components(separatedBy: CharacterSet(charactersIn: ".,!?;"))
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         func key(_ s: String) -> String { s.split(separator: " ").map { normalize(String($0)) }.filter { !$0.isEmpty }.joined(separator: " ") }
-        // Groups "Jarvis" + following pieces into requests.
+        // Groups "Ehi Al" + following pieces into requests.
         var requests: [[String]] = []
         for piece in pieces {
-            let first = normalize(String(piece.split(separator: " ").first ?? ""))
-            if requests.isEmpty || isWakeWord(first) { requests.append([piece]) } else { requests[requests.count - 1].append(piece) }
+            if requests.isEmpty || startsWithCall(piece) { requests.append([piece]) } else { requests[requests.count - 1].append(piece) }
         }
         let keys = requests.map { key($0.joined(separator: " ")) }
         if requests.count >= 2, Set(keys).count == 1, !keys[0].isEmpty { return requests[0].joined(separator: ", ") }
-        // "Jarvis, che ore sono? Che ore sono?", "Accendi la tv. Accendi la tv.": the name only once or not at all.
-        let named = pieces.first.map { isWakeWord(normalize($0)) } ?? false
+        // "Ehi Al, che ore sono? Che ore sono?", "Accendi la tv. Accendi la tv.": the name only once or not at all.
+        let named = pieces.first.map(startsWithCall) ?? false
         let content = named ? Array(pieces.dropFirst()) : pieces
         let keysContent = content.map(key)
         if content.count >= 2, content.count % 2 == 0, !keysContent.contains("") {
@@ -221,17 +277,11 @@ enum WakeVerifier {
         return text
     }
 
-    private static func isWakeWord(_ word: String) -> Bool {
-        command(from: word) != nil
-    }
-
     static func command(from text: String, loose: Bool = false) -> String? {
-        let words = text.split(whereSeparator: { $0 == " " })
-        for (i, word) in words.prefix(loose ? 3 : words.count).enumerated() {
-            let w = normalize(String(word))
-            guard loose ? isLooseJarvis(w) : isJarvis(w) else { continue }
-            if isMention(words.map(String.init), at: i) { return nil }
-            let after = words[(i + 1)...].joined(separator: " ")
+        let words = text.split(whereSeparator: { $0 == " " }).map(String.init)
+        for i in words.indices.prefix(loose ? 3 : words.count) {
+            guard let length = callLength(words, at: i) ?? (loose ? looseCallLength(words, at: i) : nil) else { continue }
+            let after = words[(i + length)...].joined(separator: " ")
             let before = words[..<i].joined(separator: " ")
             let rest = after.isEmpty ? before : after
             return rest.trimmingCharacters(in: CharacterSet(charactersIn: " ,.;:!?-"))
@@ -239,56 +289,23 @@ enum WakeVerifier {
         return nil
     }
 
-    /// Words that make "Jarvis" a name talked about, not someone called: "è il Jarvis", "che Jarvis",
-    /// "assimilare a Jarvis", "non è Jarvis" (12 November, from voce.log: these woke it while he talked to friends).
-    private static let mentionBefore: Set<String> = ["il", "lo", "un", "a", "al", "di", "del", "che", "e", "con", "da", "dal", "su", "per",
-                                                     "questo", "tipo", "come", "chiamato", "chiamarlo", "sono", "sei", "the", "of", "to", "like"]
-
-    /// "Jarvis" as a word in someone's sentence rather than a call. A call is at the start, or after
-    /// "basta", "ciao", "ok"…, or between commas. "Presente? Jarvis. È un sistema…" (a sentence of its own
-    /// between two others) is also a mention.
-    static func isMention(_ words: [String], at i: Int) -> Bool {
-        guard i > 0 else { return false }
-        let previous = words[i - 1]
-        let bare = normalize(previous)
-        if previous.hasSuffix(",") == false, mentionBefore.contains(bare) || previous.lowercased() == "è" { return true }
-        let ends: (String) -> Bool = { $0.last.map { ".?!".contains($0) } ?? false }
-        return i >= 3 && ends(previous) && ends(words[i]) && i < words.count - 1
-    }
-
-    /// "Mi sa che Jarvis ti ha dato ragione": at least two words before "Jarvis" and some after.
-    /// It may be a request ("ora che ho finito Jarvis, mi trovo…") or a remark about JARVIS to someone else.
+    /// "Mi sa che, ehi Al, ti ha dato ragione": at least two words before the call and some after.
+    /// It may be a request or a remark to someone else.
     static func isNamedMidPhrase(_ text: String) -> Bool {
-        let words = text.split(whereSeparator: { $0 == " " })
-        guard let i = words.firstIndex(where: { isJarvis(normalize(String($0))) }) else { return false }
-        return i >= 2 && i < words.count - 1
+        let words = text.split(whereSeparator: { $0 == " " }).map(String.init)
+        guard let i = words.indices.first(where: { callLength(words, at: $0) != nil }),
+              let length = callLength(words, at: i) else { return false }
+        return i >= 2 && i + length < words.count
     }
 
-    /// The small Whisper writes "Jarvis" said the Italian way in many forms:
-    /// "giardis", "ciarvis", "charvis", "sciarvis", "djarvis", "jarbis"…
-    /// The start is mapped back to "j" and then compared with "jarvis".
-    static func isJarvis(_ w: String) -> Bool {
-        if w == "giardice" { return true }
-        guard (4...10).contains(w.count) else { return false }
-        var core = w
-        for start in ["sci", "dgi", "dj", "dg", "dz", "gi", "ci", "ch", "sh", "zh"] where core.hasPrefix(start) {
-            core = "j" + core.dropFirst(start.count)
-            break
-        }
-        guard let first = core.first, "jgy".contains(first) else { return false }
-        return ["jarvis", "jarvi", "jervis", "jarviss", "jarbis", "jarvise"].contains { distance(core, $0) <= 1 }
-            || distance(core, "jarvis") <= 2
-    }
-
-    /// Real phrases Whisper writes instead of a hurried "Jarvis": alone they are not
-    /// enough to wake it, the voice must also be the user's.
+    /// Phrases Whisper writes instead of a hurried "Ehi Al" that the rules above miss: alone they are not
+    /// enough to wake it, the voice must also be the user's. "Eion" for "Hey Al" (16 November); the list
+    /// held the Italian-word versions of "Jarvis" ("già visto") before, and grows from diagnostica.log.
     static func isSoundalike(_ text: String) -> Bool {
-        ["gialhovisto", "giavisto", "gialavviso", "gialaviso", "giadisse", "gialadvista", "giaavvisse",
-         "giaalbis", "giornodisse", "gialavista", "giaavisa"].contains(normalize(text))
+        soundalikeHeads.contains(normalize(text))
     }
 
-    /// "Già vissi che ore sono", "già visto che ore sono": a hurried "Jarvis" written as Italian words,
-    /// then the command (13 November: four times in a row with echo cancellation on). Only at the start;
+    /// "Eion, che ore sono": a misheard call, then the command. Only at the start;
     /// the caller accepts it only when the rest is a known command and the voice is the user's.
     static func soundalikeCommand(from text: String) -> String? {
         let words = text.split(whereSeparator: { $0 == " " }).map(String.init)
@@ -301,14 +318,7 @@ enum WakeVerifier {
         return nil
     }
 
-    private static let soundalikeHeads: Set<String> = [
-        "gialhovisto", "giavisto", "gialavviso", "gialaviso", "giadisse", "gialadvista", "giaavvisse", "giaalbis", "gialavista", "giaavisa",
-        "giavissi", "giavisi", "giadivisto", "giavis", "giaviste", "giavisse", "giavvisi", "giaviss",
-    ]
-
-    static func isLooseJarvis(_ w: String) -> Bool {
-        (4...9).contains(w.count) && (distance(w, "jarvis") <= 3 || w.hasSuffix("rvis") || w.hasSuffix("rvi"))
-    }
+    private static let soundalikeHeads: Set<String> = ["eion"]
 
     private static func normalize(_ s: String) -> String {
         s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)

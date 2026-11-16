@@ -45,8 +45,8 @@ actor UniversityClient {
         var errorDescription: String? {
             let name = UniversityClient.name
             switch self {
-            case .notConfigured: return "Manca l'indirizzo del server dell'università: va scritto nelle Impostazioni di JARVIS, sezione Università."
-            case .noCredentials: return "Mancano le credenziali dell'università: vanno inserite nelle Impostazioni di JARVIS, sezione Università."
+            case .notConfigured: return "Manca l'indirizzo del server dell'università: va scritto nelle Impostazioni di AL-76, sezione Università."
+            case .noCredentials: return "Mancano le credenziali dell'università: vanno inserite nelle Impostazioni di AL-76, sezione Università."
             case .wrongCredentials: return "Il server di \(name) ha rifiutato nome utente o password: controllali nelle Impostazioni."
             case .notAllowed(let path): return "\(path) non è tra le letture permesse."
             case .server(let code): return "Il server di \(name) ha risposto con errore \(code)."

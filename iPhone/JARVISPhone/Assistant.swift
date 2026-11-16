@@ -155,7 +155,7 @@ final class Assistant: ObservableObject {
         }
         ear.onEvent = { [weak self] event in self?.test.log(event) }
         ear.onUnavailable = { [weak self] in
-            self?.notice = "Non riesco ad ascoltare \"Jarvis\": controlla che la Dettatura in italiano sia attiva, in Impostazioni › Generali › Tastiera."
+            self?.notice = "Non riesco ad ascoltare \"Ehi Al\": controlla che la Dettatura in italiano sia attiva, in Impostazioni › Generali › Tastiera."
         }
         listenObserver = NotificationCenter.default.addObserver(forName: .jarvisListen, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.listenIfAsked() }
@@ -195,7 +195,7 @@ final class Assistant: ObservableObject {
         }
         unlocking = true
         Task {
-            let passed = (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Apri JARVIS")) ?? false
+            let passed = (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Apri AL-76")) ?? false
             unlocking = false
             guard passed else { return }
             locked = false
@@ -454,7 +454,7 @@ final class Assistant: ObservableObject {
             searchHint = nil
             watching = false
             screen = nil
-            notice = "JARVIS ora è in uso su un altro dispositivo."
+            notice = "AL-76 ora è in uso su un altro dispositivo."
             test.log("passato a un altro dispositivo")
         case .watchEnded:
             watching = false

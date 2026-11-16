@@ -14,19 +14,19 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Attivazione") {
-                Toggle("Ascolta sempre \"Jarvis\" (Whisper, gratuito)", isOn: $draft.whisperWake)
-                Text("Se lo spegni JARVIS si attiva solo con ⌃⌥Spazio, e consuma ancora meno.")
+                Toggle("Ascolta sempre \"Ehi Al\" (Whisper, gratuito)", isOn: $draft.whisperWake)
+                Text("Se lo spegni AL-76 si attiva solo con ⌃⌥Spazio, e consuma ancora meno.")
                     .font(.caption).foregroundStyle(.secondary)
                 SecureField("Picovoice AccessKey (facoltativa)", text: $draft.picovoiceAccessKey)
-                Text("Con una chiave Picovoice valida si usa Porcupine al posto di Whisper.")
+                Text("Con una chiave Picovoice valida si usa Porcupine al posto di Whisper. Porcupine conosce ancora solo la parola «Jarvis»: per «Ehi Al» va addestrata una parola nuova su Picovoice.")
                     .font(.caption).foregroundStyle(.secondary)
                 Slider(value: $draft.wakeSensitivity, in: 0.3...0.9, step: 0.05) {
-                    Text("Sensibilità \"Jarvis\" \(draft.wakeSensitivity, format: .number.precision(.fractionLength(2)))")
+                    Text("Sensibilità Porcupine \(draft.wakeSensitivity, format: .number.precision(.fractionLength(2)))")
                 }
-                Toggle("Continua la conversazione senza ripetere \"Jarvis\"", isOn: $draft.followUpConversation)
-                Toggle("Interrompilo a voce (\"Jarvis, basta\")", isOn: $draft.bargeIn)
+                Toggle("Continua la conversazione senza ripetere \"Ehi Al\"", isOn: $draft.followUpConversation)
+                Toggle("Interrompilo a voce (\"basta\")", isOn: $draft.bargeIn)
                 Toggle("Cancellazione dell'eco (serve con gli altoparlanti)", isOn: $draft.echoCancellation)
-                Text("La cancellazione dell'eco vale dal riavvio di JARVIS.").font(.caption).foregroundStyle(.secondary)
+                Text("La cancellazione dell'eco vale dal riavvio di AL-76.").font(.caption).foregroundStyle(.secondary)
             }
             VoicePrintSection(assistant: assistant, voicePrint: assistant.voicePrint, draft: $draft)
             PhoneSection(bridge: assistant.phoneBridge, draft: $draft)
@@ -35,7 +35,7 @@ struct SettingsView: View {
                 TextField("Indirizzo IP", text: $draft.bambuHost)
                 TextField("Numero di serie", text: $draft.bambuSerial)
                 SecureField("Codice di accesso", text: $draft.bambuCode)
-                Text("Si trovano sul display della stampante, in Rete e Impostazioni. JARVIS legge lo stato: a che punto è, se finisce o si blocca. Caricare, scaricare il filamento e stampare passano dai pulsanti di Bambu Studio, e per stampare chiede prima conferma.")
+                Text("Si trovano sul display della stampante, in Rete e Impostazioni. AL-76 legge lo stato: a che punto è, se finisce o si blocca. Caricare, scaricare il filamento e stampare passano dai pulsanti di Bambu Studio, e per stampare chiede prima conferma.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Appunti") {
@@ -43,7 +43,7 @@ struct SettingsView: View {
                     get: { draft.notesFolders.joined(separator: "\n") },
                     set: { draft.notesFolders = $0.components(separatedBy: "\n") }
                 ), axis: .vertical)
-                Text("JARVIS cerca dentro PDF, Word, PowerPoint e testi di queste cartelle, tutto sul Mac. Le altre cartelle, come i documenti personali, restano fuori. Le nuove cartelle entrano alla prossima lettura, entro 6 ore o al riavvio.")
+                Text("AL-76 cerca dentro PDF, Word, PowerPoint e testi di queste cartelle, tutto sul Mac. Le altre cartelle, come i documenti personali, restano fuori. Le nuove cartelle entrano alla prossima lettura, entro 6 ore o al riavvio.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Voce") {
@@ -69,14 +69,14 @@ struct SettingsView: View {
                 TextField("Il tuo nome", text: $draft.userName)
             }
             Section("Controllo delle app") {
-                Toggle("Lascia che JARVIS usi pulsanti e campi delle app", isOn: $draft.appControl)
+                Toggle("Lascia che AL-76 usi pulsanti e campi delle app", isOn: $draft.appControl)
                 Toggle("Touch ID per le azioni molto delicate", isOn: $draft.ownerCheck)
                 Text("Script e programmi, comandi rapidi, cancellazione dei ricordi: dopo il \"sì\" serve il dito (o la password del Mac).")
                     .font(.caption).foregroundStyle(.secondary)
                 Text("Solo con Claude e fuori dalla modalità privacy. Mai password, banca, Impostazioni di Sistema, terminali e editor. Serve il permesso Accessibilità.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Iniziativa (JARVIS parla per primo)") {
+            Section("Iniziativa (AL-76 parla per primo)") {
                 Toggle("Appuntamenti: avviso 10 minuti prima", isOn: $draft.alertCalendar)
                 Toggle("Promemoria: annuncio alla scadenza", isOn: $draft.alertReminders)
                 Toggle("Studio: pausa ogni 2 ore", isOn: $draft.alertStudy)
@@ -93,6 +93,22 @@ struct SettingsView: View {
                 Picker("Aspetto del SATELLITE", selection: $draft.nucleusStyle) {
                     Text("Reattore").tag("reattore")
                     Text("Satellite").tag("satellite")
+                    Text("Robottino").tag("robottino")
+                }
+                if draft.nucleusStyle == "robottino" {
+                    if RobotNucleusView.modelAvailable {
+                        Toggle("Robottino grande", isOn: $draft.robotLarge)
+                        Picker("Fiamme dei propulsori", selection: $draft.robotFlames) {
+                            Text("Fuoco").tag("fuoco")
+                            Text("Ioniche").tag("ioniche")
+                        }
+                        Toggle("Passeggia sul bordo inferiore quando aspetta", isOn: $draft.robotWalks)
+                        Text("Clic: una carezza · doppio clic: l'HUD · trascina per spostarlo. Le risposte scritte (⌃⌥T) escono dalla sua bocca.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Manca il modello 3D: metti scene.gltf (con scene.bin e textures) in Application Support/JARVIS/Companion. Intanto si vede il satellite.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Toggle("Disco scuro dietro al SATELLITE", isOn: $draft.nucleusBackdrop)
                 Text("Spento si fonde con lo sfondo; acceso resta leggibile su sfondi chiari o sopra le finestre.")
@@ -100,7 +116,7 @@ struct SettingsView: View {
             }
             Section("Sistema") {
                 Toggle("Saluta all'avvio", isOn: $draft.greetOnLaunch)
-                Toggle("Avvia JARVIS al login", isOn: $launchAtLogin)
+                Toggle("Avvia AL-76 al login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in
                         try? enabled ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                     }
@@ -137,7 +153,7 @@ private struct UniversitySection: View {
 
     var body: some View {
         Section("Università") {
-            TextField("Nome dell'università (come la chiama JARVIS)", text: $draft.universityName)
+            TextField("Nome dell'università (come la chiama AL-76)", text: $draft.universityName)
             TextField("Indirizzo del server dell'app studenti", text: $draft.universityServer)
             TextField("User-Agent dell'app (se il server lo chiede)", text: $draft.universityAgent)
             TextField("Nome utente (come nell'app dell'università)", text: $username)
@@ -155,7 +171,7 @@ private struct UniversitySection: View {
                 }
             }
             if !status.isEmpty { Text(status).font(.caption) }
-            Text("Nome utente e password restano solo nel Portachiavi del Mac e vanno solo al server scritto qui sopra, come fa l'app dell'università. JARVIS legge agenda, orario, lezioni ed esiti: non iscrive, non firma, non accetta nulla.")
+            Text("Nome utente e password restano solo nel Portachiavi del Mac e vanno solo al server scritto qui sopra, come fa l'app dell'università. AL-76 legge agenda, orario, lezioni ed esiti: non iscrive, non firma, non accetta nulla.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -170,7 +186,7 @@ private struct UniversitySection: View {
         Task {
             do {
                 _ = try await UniversityClient.shared.get("user/me")
-                status = "Accesso riuscito: JARVIS ora legge i dati dell'università."
+                status = "Accesso riuscito: AL-76 ora legge i dati dell'università."
                 Diagnostics.log("ateneo    credenziali salvate, accesso provato")
             } catch {
                 status = error.localizedDescription
@@ -270,7 +286,7 @@ private struct VoicePrintSection: View {
                 }
                 Button("Cancella l'impronta", role: .destructive) { confirmDelete = true }
             }
-            Text("Vale per \"Jarvis\" e per il comando detto dopo il beep. ⌃⌥Spazio funziona sempre, \"basta\" e il \"sì\" valgono per tutti. L'audio non viene conservato; l'impronta resta su questo Mac. Non è una protezione: le azioni delicate chiedono comunque conferma.")
+            Text("Vale per \"Ehi Al\" e per il comando detto dopo il beep. ⌃⌥Spazio funziona sempre, \"basta\" e il \"sì\" valgono per tutti. L'audio non viene conservato; l'impronta resta su questo Mac. Non è una protezione: le azioni delicate chiedono comunque conferma.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .sheet(isPresented: $enrolling) {

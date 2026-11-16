@@ -14,7 +14,7 @@ struct PairingView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Sul Mac apri le Impostazioni di JARVIS, sezione iPhone: accendi il collegamento, premi Salva e mostra il codice.")
+                    Text("Sul Mac apri le Impostazioni di AL-76, sezione iPhone: accendi il collegamento, premi Salva e mostra il codice.")
                         .font(.subheadline)
                     Button("Inquadra il QR") { scanning = true }
                 }
@@ -34,7 +34,7 @@ struct PairingView: View {
                 }
                 if assistant.isPaired {
                     Section {
-                        Toggle("Ascolta la parola Jarvis", isOn: $assistant.earEnabled)
+                        Toggle("Ascolta «Ehi Al»", isOn: $assistant.earEnabled)
                     } footer: {
                         Text("Solo con l'app aperta. Lo schermo resta acceso e il riconoscimento avviene qui: la voce parte per il Mac solo dopo il suono.")
                     }

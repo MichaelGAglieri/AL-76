@@ -22,7 +22,7 @@ enum HomeAccess {
         "addressbook", "animoji", "apple", "askpermission", "callhistorydb", "callhistorytransactions", "clouddocs", "controlcenter",
         "crashreporter", "differentialprivacy", "diskimages", "eventstracker", "facetime", "fileprovider", "intelligenceflow",
         "knowledge", "mobilesync", "spotlight", "appplaceholdersyncd", "appsubscriptions", "studentd", "homeenergyd",
-        "jarvis", "claude", "codex", "openai", "ollama",
+        "jarvis", "al-76", "claude", "codex", "openai", "ollama",
         "google", "firefox", "bravesoftware", "microsoft edge", "arc", "chromium", "vivaldi", "com.operasoftware.opera", "opera software",
         "1password", "bitwarden", "keepassxc", "dashlane", "signal", "telegram desktop", "whatsapp",
     ]

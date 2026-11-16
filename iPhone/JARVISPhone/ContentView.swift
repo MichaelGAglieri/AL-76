@@ -252,7 +252,7 @@ struct ContentView: View {
             Image(systemName: "stop.fill").frame(width: 44, height: 44)
         }
         .disabled(!assistant.isBusy)
-        .accessibilityLabel("Ferma JARVIS")
+        .accessibilityLabel("Ferma AL-76")
     }
 
     /// With control active you type on the Mac, not to JARVIS.
@@ -295,7 +295,7 @@ struct ContentView: View {
             Button { assistant.unlock() } label: {
                 VStack(spacing: 14) {
                     Image(systemName: "faceid").font(.system(size: 54))
-                    Text("Sblocca JARVIS").font(font(20))
+                    Text("Sblocca AL-76").font(font(20))
                 }
                 .foregroundStyle(HUD.cyan)
                 .frame(minWidth: 200, minHeight: 140)
@@ -364,9 +364,9 @@ struct ContentView: View {
                     .frame(width: side, height: side)
                     .contentShape(Rectangle())
                     .onTapGesture { if assistant.isBusy || assistant.talking { assistant.stop() } }
-                    .accessibilityLabel("Reattore: tocca per fermare JARVIS")
+                    .accessibilityLabel("Reattore: tocca per fermare AL-76")
                     .position(x: space.size.width / 2, y: center)
-                Text(assistant.link == .elsewhere ? "IN PAUSA" : assistant.earOn ? "DI' JARVIS" : assistant.state.label.it)
+                Text(assistant.link == .elsewhere ? "IN PAUSA" : assistant.earOn ? "DI' EHI AL" : assistant.state.label.it)
                     .font(font(15))
                     .tracking(3)
                     .foregroundStyle(assistant.state.isError ? HUD.amber : HUD.cyan)
@@ -384,7 +384,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .center, spacing: 8) {
                     if assistant.dictating {
-                        Text("✎ Dettatura attiva: scrivo tutto quello che dici. Per finire: «Jarvis, basta scrivere».")
+                        Text("✎ Dettatura attiva: scrivo tutto quello che dici. Per finire: «Ehi Al, basta scrivere».")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(HUD.amber)
                     }
@@ -422,7 +422,7 @@ struct ContentView: View {
 
     private var inputBar: some View {
         HStack(spacing: 12) {
-            TextField("Scrivi a JARVIS", text: $draft, axis: .vertical)
+            TextField("Scrivi ad AL-76", text: $draft, axis: .vertical)
                 .lineLimit(1...4)
                 .focused($typing)
                 .submitLabel(.send)

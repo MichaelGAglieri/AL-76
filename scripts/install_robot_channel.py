@@ -29,7 +29,7 @@ def processes():
 
 
 def jarvis_running():
-    return any(line.strip().startswith('/Applications/JARVIS.app/Contents/MacOS/JARVIS') for line in processes())
+    return any(line.strip().startswith('/Applications/AL-76.app/Contents/MacOS/JARVIS') for line in processes())
 
 
 def config_hashes():
@@ -58,7 +58,7 @@ def main():
     was_running=jarvis_running()
     before=config_hashes()
     if was_running:
-        subprocess.run(['/usr/bin/osascript','-e','tell application "/Applications/JARVIS.app" to quit'],check=True)
+        subprocess.run(['/usr/bin/osascript','-e','tell application "/Applications/AL-76.app" to quit'],check=True)
         end=time.monotonic()+10
         while jarvis_running() and time.monotonic()<end:time.sleep(.2)
         if jarvis_running():raise RuntimeError('JARVIS did not quit; no app replaced.')
@@ -81,14 +81,14 @@ def main():
             target=Path('/Applications')/(name+'.app')
             if target.exists():target.rename(transaction/(name+'-failed.app'))
             (transaction/(name+'.app')).rename(target)
-        if was_running:subprocess.run(['/usr/bin/open','/Applications/JARVIS.app'],check=True)
+        if was_running:subprocess.run(['/usr/bin/open','/Applications/AL-76.app'],check=True)
         raise
     after=config_hashes()
     result=dict(action='rollback' if args.rollback else 'install',previous_apps=str(transaction),
                 configurations_unchanged=before==after,robot_console_launched=False,jarvis_restarted=was_running,
                 bundle_hashes_verified=True)
     if was_running:
-        subprocess.run(['/usr/bin/open','/Applications/JARVIS.app'],check=True)
+        subprocess.run(['/usr/bin/open','/Applications/AL-76.app'],check=True)
         end=time.monotonic()+10
         while not jarvis_running() and time.monotonic()<end:time.sleep(.2)
         result['jarvis_running']=jarvis_running()

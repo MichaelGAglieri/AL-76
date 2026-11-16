@@ -251,7 +251,7 @@ final class PhoneBridge: ObservableObject {
             // An older app still works (the screen arrives as photos): warn only if it is newer.
             phoneVersion = message.number ?? 1
             if phoneVersion > PhoneLink.version {
-                send(PhoneMessage(.notice, text: "App iPhone e JARVIS sul Mac hanno versioni diverse."))
+                send(PhoneMessage(.notice, text: "App iPhone e AL-76 sul Mac hanno versioni diverse."))
             }
             Security.audit("dispositivo collegato", tool: "iphone", source: "iphone", detail: String((message.text ?? "").prefix(60)))
         case .command:
@@ -333,7 +333,7 @@ final class PhoneBridge: ObservableObject {
     private func control(_ message: PhoneMessage) {
         guard screen.isActive, screenAllowed?() ?? false else { return }
         guard AXIsProcessTrusted() else {
-            send(PhoneMessage(.notice, text: "Per cliccare dal telefono serve il permesso Accessibilità per JARVIS, sul Mac."))
+            send(PhoneMessage(.notice, text: "Per cliccare dal telefono serve il permesso Accessibilità per AL-76, sul Mac."))
             return
         }
         switch message.kind {

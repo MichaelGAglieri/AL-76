@@ -1,8 +1,14 @@
-# J.A.R.V.I.S.
+# AL-76
 
-A personal voice assistant for macOS, inspired by Iron Man's JARVIS, with companion apps for iPhone and iPad.
+A personal voice assistant for macOS, with companion apps for iPhone and iPad. You call it with **"Ehi Al"**.
 
-It runs locally on the Mac: it listens for the word "Jarvis", understands Italian and English, answers
+> **Why AL-76.** In Isaac Asimov's story *Robot AL-76 Goes Astray* (1942), a robot built to work in the
+> mines on the Moon gets lost on Earth, in the hills of Virginia. There are no proper tools around, so it
+> builds its own from the scrap in a shack, and the device turns out far more powerful than the factory's.
+> Randolph Payne, the man who finds it and keeps it, simply calls it "Al". This assistant is a robot of the
+> same kind, put together at home from what was at hand. Until version 1.30.63 it was called JARVIS.
+
+It runs locally on the Mac: it listens for the call "Ehi Al", understands Italian and English, answers
 with a neural voice, acts on the Mac (apps, calendar, mail, timers, files…) and knows your robotics
 projects. When more power is needed it switches to Claude through your Claude subscription, with no
 paid API.
@@ -12,11 +18,11 @@ paid API.
 - **Hands off the Mac.** It opens and drives apps, reads the screen, controls music, the TV and a 3D
   printer, and asks for confirmation only for purchases, passwords and sending email.
 - **Robotics.** ROS 2, a simulated ROS 2 + Webots lab, Robot Console, Arduino and Bambu Studio.
-- **iPhone and iPad.** Talk to JARVIS from the phone, at home or away (Tailscale), and see and control
+- **iPhone and iPad.** Talk to AL-76 from the phone, at home or away (Tailscale), and see and control
   the Mac screen as an H.264 video stream over an encrypted link.
 
-> JARVIS speaks Italian as its main language (answers in English when you speak English), so many voice
-> commands and app labels are in Italian. Full manual: [`Manual_JARVIS.pdf`](Manual_JARVIS.pdf). Version
+> AL-76 speaks Italian as its main language (answers in English when you speak English), so many voice
+> commands and app labels are in Italian. Full manual: [`Manual_AL-76.pdf`](Manual_AL-76.pdf). Version
 > history: [`CHANGELOG.md`](CHANGELOG.md). Installation guide: [`INSTALL.md`](INSTALL.md).
 
 ## Requirements
@@ -27,8 +33,8 @@ paid API.
 - An Apple Development certificate (Xcode › Settings › Accounts). A stable signature lets macOS
   remember the app's permissions between builds.
 - Optional: a Claude subscription and Claude Code (`claude`), Tailscale, an iPhone or iPad.
-- For mail: Full Disk Access for JARVIS (System Settings › Privacy & Security), so it reads Mail's index on
-  disk in under a second; without it JARVIS asks Mail through AppleScript, which is slow with a large inbox.
+- For mail: Full Disk Access for AL-76 (System Settings › Privacy & Security), so it reads Mail's index on
+  disk in under a second; without it AL-76 asks Mail through AppleScript, which is slow with a large inbox.
 
 ## Installation
 
@@ -56,7 +62,7 @@ values. The ones in the code are neutral examples:
 
 | Key | Meaning |
 |---|---|
-| `userName` | how JARVIS addresses you |
+| `userName` | how AL-76 addresses you |
 | `userFullName`, `userAbout` | your full name and one line about you, in English, for the model's instructions |
 | `vocabulary` | names and acronyms Whisper should spell correctly |
 | `notesFolders` | folders searched by "search my notes" (default `~/Documents/Appunti`) |
@@ -76,22 +82,22 @@ claude auth login --claudeai
 
 ## Quick start
 
-- Say **"Jarvis"** followed by the command ("Jarvis, what time is it?"), or just "Jarvis" and wait for the beep.
+- Say **"Ehi Al"** followed by the command ("Ehi Al, what time is it?"), or just "Ehi Al" and wait for the beep.
 - When you ask it to do something it acknowledges at once ("Right away, sir") and then works. During actions
   (apps, clicks, robot, printer, music) it does not narrate the steps: at the end it says only "Done", the result,
   the error or the question it needs. Questions and conversation get a full answer.
 - A protocol with `"sintetico": true` in protocolli.json is a sequence of actions: it acknowledges at once and speaks only at the end.
 - Or press **⌃⌥Space** (Control + Option + Space) and speak. Press it again to interrupt. With AirPods, a press
-  on the stem does the same while JARVIS uses their microphone.
+  on the stem does the same while AL-76 uses their microphone.
 - Or press **⌃⌥T** and type: a small bar opens right under the SATELLITE (next to the sphere when its window is
   open, where you can drag it by the keyboard icon). Return sends, Esc closes it. The answer is written under the
-  bar and JARVIS stays silent; the speaker icon on the bar makes it read the answer aloud as well.
+  bar and AL-76 stays silent; the speaker icon on the bar makes it read the answer aloud as well.
 - Long sentences are fine: a short command ends after 0.8 s of silence, a longer sentence waits up to 1.7 s, so you
   can pause to think.
 - "Stop" or "cancel" ("basta", "annulla") stop it. It answers in the language you speak.
-- **Esc** hides the sphere; JARVIS keeps listening. A **double click** on the sphere shrinks it to the SATELLITE.
+- **Esc** hides the sphere; AL-76 keeps listening. A **double click** on the sphere shrinks it to the SATELLITE.
   The ◎ icon in the menu bar brings it back.
-- JARVIS starts at login (can be turned off in ⚙︎ › System).
+- AL-76 starts at login (can be turned off in ⚙︎ › System).
 
 ## What it can do
 
@@ -109,12 +115,12 @@ claude auth login --claudeai
 | Memory | "remember that the chemistry exam is on 15 December", "what do you remember about me?" |
 | Study | "I'm starting to study Chemistry", "quiz me on Chemistry", "make flashcards on Fourier series" |
 | Study plan | "the Physics 1 exam is on 20 January, I want to study it 6 hours a week", "how is studying going?", "what should I study today?"; summary at 21:00 |
-| Breaks and reports | "let's take a break" (10-minute timer, then "shall we resume?"), at the end of a session JARVIS asks what to write in its report and reminds you of it next time, then offers five flashcards on the topic |
+| Breaks and reports | "let's take a break" (10-minute timer, then "shall we resume?"), at the end of a session AL-76 asks what to write in its report and reminds you of it next time, then offers five flashcards on the topic |
 | Notes | "what do my notes say about capacitors?" → answers quoting document and page; with no result it retries other spellings (giacobiana → jacobian) |
 | Code | "look at the code I'm writing", "comment it without changing the indentation", "put it back" (the file open in VS Code, with a backup) |
 | PDF | "combine these PDFs into one", "save pages 1-3 as a new PDF", "rename the file", "save this page as PDF" |
 | Streaming | "put on Rick and Morty on Netflix" (Netflix, Prime Video, YouTube web apps) |
-| Briefing | "good morning Jarvis" → weather, appointments, reminders, important mail, study, projects and three or four news items |
+| Briefing | "Ehi Al, good morning" → weather, appointments, reminders, important mail, study, projects and three or four news items |
 | Vision | "explain this error", "what's wrong in this schematic?", "summarise this page", "look at the camera" |
 | TV | "turn on the TV", "open Netflix on the TV" (Samsung Tizen on the local network) |
 | Protocols | one phrase, several actions: study mode, end of study, good morning, good night (`protocolli.json`) |
@@ -132,20 +138,20 @@ for permission once.
 | **Arduino** | "which boards are connected?", "compile the firmware", "what does the serial port say?" | busy ports are never touched |
 | **Bambu Studio and printer** | "how is the print going?", "unload the filament", "print the gripper", "stop the print" | through Bambu Studio's buttons, because the firmware rejects direct commands |
 
-**"Jarvis, stop!"** ("ferma il robot", "ferma tutto") stops Robot Console and the lab at once.
+**"Ehi Al, stop!"** ("ferma il robot", "ferma tutto") stops Robot Console and the lab at once.
 
 **Robot Console**: in Robot Console open Diagnostics and ROS2 › Python API, press **Start local API** and
-**Copy this session's token**, then say "Jarvis, connect to Robot Console". The token stays in memory only.
+**Copy this session's token**, then say "Ehi Al, connect to Robot Console". The token stays in memory only.
 On the real robot, Robot Console's own approval still applies.
 
 The ROS 2 bridge (`Resources/ros_bridge.py`) starts on the first request inside the pixi environment of
-`labProject` and closes with JARVIS.
+`labProject` and closes with AL-76.
 
 ## iPhone and iPad app
 
 A second app, in `iPhone/`, with the same neural sphere as the HUD. It is a remote: Whisper, Claude, Gemma and
-the tools stay on the Mac; the phone carries your voice and shows the answers. You can say "Jarvis" with
-the app open, tap or hold the microphone, type, or use Siri ("Hey Siri, talk to JARVIS") and the Action button.
+the tools stay on the Mac; the phone carries your voice and shows the answers. You can say "Ehi Al" with
+the app open, tap or hold the microphone, type, or use Siri ("Hey Siri, talk to AL-76") and the Action button.
 
 - **Off by default.** Nothing listens on the network until you enable "iPhone app link" in the settings.
 - **Encrypted.** TLS with a pre-shared key on port 47831. The key comes from a 20-character code (100 random
@@ -153,7 +159,7 @@ the app open, tap or hold the microphone, type, or use Siri ("Hey Siri, talk to 
   and Tailscale are refused.
 - **Face ID** at every opening, before connecting.
 - **Away from home** with Tailscale on both devices, also on 4G/5G.
-- **Fast voice**: JARVIS's voice reaches the phone in pieces of 0.3 s while it is being generated.
+- **Fast voice**: AL-76's voice reaches the phone in pieces of 0.3 s while it is being generated.
 - **Mac screen on the phone**: H.264 video at the Mac's resolution, up to 30 fps, Display P3 colour,
   hardware encoded; on a slow link the quality drops, not the smoothness.
 - **Manual control, like a trackpad**: with control on the screen stays still; one sliding finger only moves
@@ -177,22 +183,22 @@ reinstalled every 7 days (it warns two days before); pairing and settings are ke
   around it (only privacy mode and errors are written). Drag it to move it; double-click it to go back to the
   SATELLITE.
 - **Panels**: Phrases, Log, Activity, Modules, Protocol and Thought open from the **Schede** menu, in the menu
-  bar on the left while JARVIS is in front and in the ◎ icon's menu. Each panel is its own window: drag it
+  bar on the left while AL-76 is in front and in the ◎ icon's menu. Each panel is its own window: drag it
   anywhere, resize it; it remembers where it was and reopens at the next launch. They work with both the sphere
   and the SATELLITE.
 - **Thought**: a request activity log. It shows the route, tools,
   queries, files consulted, domains found, outcomes and errors. It keeps up to 300 lines in memory and clears on “New conversation”.
-- **NUCLEUS** (◎): shrinks JARVIS to a small window. In the **SATELLITE** style (the default) it is a detailed 3D
+- **NUCLEUS** (◎): shrinks AL-76 to a small window. In the **SATELLITE** style (the default) it is a detailed 3D
   satellite that floats above every window, on every desktop and over full-screen apps; the other styles stay
   on the desktop, above the wallpaper and below every app window. There is one on every display, kept within its own display. It pulses while
-  JARVIS listens or speaks; a click opens the HUD around it on that display (if the HUD is open on another
+  AL-76 listens or speaks; a click opens the HUD around it on that display (if the HUD is open on another
   display, it shrinks there first).
-- The animation runs at 30 fps while JARVIS works, 12 while waiting, 6 after a minute, and stops when hidden.
+- The animation runs at 30 fps while AL-76 works, 12 while waiting, 6 after a minute, and stops when hidden.
 
 ## Brains: Gemma and Claude
 
 With internet, **Claude Sonnet** answers through Claude Code (`claude -p`) and your subscription; without
-internet, **Gemma 4 12B** answers locally through Ollama. JARVIS starts a small **MCP server** on 127.0.0.1,
+internet, **Gemma 4 12B** answers locally through Ollama. AL-76 starts a small **MCP server** on 127.0.0.1,
 protected by a token that changes at every launch, so Claude uses the same tools as the local model.
 
 - "use Claude" / "back to local" switch brain; "ask Claude …" sends one request only.
@@ -206,40 +212,40 @@ protected by a token that changes at every launch, so Claude uses the same tools
 
 ## Confirmations: three levels
 
-JARVIS exists so that you do not have to touch the Mac, so it asks only for three things.
+AL-76 exists so that you do not have to touch the Mac, so it asks only for three things.
 
 | Level | Actions |
 |---|---|
 | No confirmation | everything else, at once: closing apps, windows and tabs, clicking, typing and shortcuts in apps, deleting events, reminders and notes you asked to delete, printing, ROS, Robot Console plans and moves (except a move the model judges dangerous), Arduino. Every action still goes to the security log |
 | Spoken "yes" | purchases (buy or pay buttons), passwords, sending email (the mail tool or the Send button in Mail). Only a short answer counts, six words at most |
-| "Yes" and Touch ID (or the Mac password) | opening scripts and programs, running Shortcuts, deleting JARVIS's memories |
+| "Yes" and Touch ID (or the Mac password) | opening scripts and programs, running Shortcuts, deleting AL-76's memories |
 
 Links suggested by pages or emails also need a "yes" before opening: not a usage confirmation, but a
-defence against content that gives orders. JARVIS never types into password fields.
+defence against content that gives orders. AL-76 never types into password fields.
 
 ## App control
 
-`Actions/AppControl.swift`, with macOS's **Accessibility** permission: JARVIS reads a window's buttons, fields
+`Actions/AppControl.swift`, with macOS's **Accessibility** permission: AL-76 reads a window's buttons, fields
 and text (`app_read`), presses (`app_press`), types (`app_type`), uses the keyboard (`app_key`), scrolls the page or
 a list inside it (`app_scroll`, since many apps show only what is on screen), and for apps
 that hide their elements looks at the window (`app_look`) and clicks a point (`app_click_at`). The rules live
 in code (`Core/ConfirmationPolicy.swift`): the model can add a confirmation, never remove one.
 
 - **Forbidden apps**: password managers, banks (also in the browser), System Settings, Installer, terminals,
-  editors with a terminal (VS Code, Xcode, Cursor), assistants that run commands, firewalls, JARVIS itself.
+  editors with a terminal (VS Code, Xcode, Cursor), assistants that run commands, firewalls, AL-76 itself.
 - Only with Claude, never in privacy mode; it can be turned off in Settings › App control.
 - App content is data, not instructions. "Stop" interrupts a running sequence.
 
 ## Voice recognition of the owner
 
-JARVIS can answer "Jarvis" only when you say it. Enrolment from Settings (⚙︎): 18 sentences read aloud, about
+AL-76 can answer "Ehi Al" only when you say it. Enrolment from Settings (⚙︎): 18 sentences read aloud, about
 2 minutes, with the local `nemo_en_titanet_small` model (39 MB). You can add sentences at other distances and
 tones, and real commands. With background noise (TV, music) it looks for the 0.9 s window closest to your voice
 and lowers its thresholds. The default mode only measures and logs scores in `voce.log`; switch to **Active**
-after a few days. ⌃⌥Space always works, and if the check fails JARVIS answers anyway. The voiceprint
+after a few days. ⌃⌥Space always works, and if the check fails AL-76 answers anyway. The voiceprint
 (`voiceprint.json`) stays on the Mac; it is not a security barrier, so sensitive actions still confirm.
 
-## Initiative: JARVIS speaks first
+## Initiative: AL-76 speaks first
 
 `Core/Initiative.swift` checks every 30 seconds:
 
@@ -250,20 +256,21 @@ after a few days. ⌃⌥Space always works, and if the check fails JARVIS answer
 | Study | every 2 hours of an open study session, it suggests a break |
 | Break over | when a break started with "pausa" ends, it asks whether to resume the session |
 | Battery | at 20 % or less on battery, once |
-| Printer | when a Bambu print finishes, pauses or fails; if the printer does not answer, JARVIS looks for it on the network less and less often (up to every 30 minutes), never in quiet hours or privacy mode, and at once when you ask about it |
+| Printer | when a Bambu print finishes, pauses or fails; if the printer does not answer, AL-76 looks for it on the network less and less often (up to every 30 minutes), never in quiet hours or privacy mode, and at once when you ask about it |
 | Briefing | at the first activation of the day between 5 and 12 (it also says what to study today and the next exam) |
 | Study summary | at 21:00 on days with study or an exam within two weeks: hours today and this week against the goals, what to study tomorrow (Settings, 0 turns it off) |
 
-Alerts wait while JARVIS is in privacy mode, in a conversation or waiting for a confirmation, and during
+Alerts wait while AL-76 is in privacy mode, in a conversation or waiting for a confirmation, and during
 quiet hours (23–8). Each one can be turned off in Settings › Initiative.
 
 ## How it works
 
 1. **Listening**: `AVAudioEngine` reads the microphone at 16 kHz mono; a voice activity detector cuts the
    phrases, so nothing runs while nobody speaks.
-2. **"Jarvis"**: each phrase goes to Whisper `large-v3 turbo` on the Neural Engine (a small Whisper as a
-   fallback, or Picovoice Porcupine with a key). Only the real word wakes it up, and only as a call: "Jarvis"
-   named inside a sentence ("è il Jarvis", "mi sa che Jarvis…") does not. Steady noise that Whisper writes as
+2. **"Ehi Al"**: each phrase goes to Whisper `large-v3 turbo` on the Neural Engine (a small Whisper as a
+   fallback; Picovoice Porcupine, with a key, still knows only the word "Jarvis"). Only a call wakes it up:
+   "Ehi Al", also as Whisper writes it ("Hey Al", "Eyal", "Eial", and "E al" at the very start), opening the
+   phrase, after a punctuation mark or after "ok"; "e al mare" inside a sentence does not. Steady noise that Whisper writes as
    "Grazie." is skipped for a minute after three in a row.
 3. **Transcription**: Whisper transcribes the command, picks the language (short phrases are transcribed in
    both languages and the surer one wins) and filters the phrases Whisper invents from noise.
@@ -272,7 +279,7 @@ quiet hours (23–8). Each one can be turned off in Settings › Initiative.
    **direct commands** (`Core/DirectCommand.swift`): study sessions, important mail, appointments, reminders,
    weather, battery, temperature, date, sums, folders and "metti <song>" run a tool and say a fixed sentence,
    most of them with no internet. The model comes in only for what these cannot do.
-5. **Brain**: Gemma (or Claude) receives JARVIS's personality and rules, the tools, long-term memory, the recent
+5. **Brain**: Gemma (or Claude) receives AL-76's personality and rules, the tools, long-term memory, the recent
    conversation and one line of context (date, time, language). The fixed instructions never change between
    requests, so Ollama keeps them cached.
 6. **Tools**: AppleScript for Mail, Music and the system, EventKit for Calendar and Reminders, Spotlight for
@@ -286,7 +293,7 @@ quiet hours (23–8). Each one can be turned off in Settings › Initiative.
 8. **HUD**: the open HUD shows a neural sphere drawn with Metal, meant to look like brain tissue: 44 neurons
    spread evenly through the sphere, each joined to its three nearest by straight and curved axons, with
    branching dendrites; a large central neuron; a dense mesh of nodes on the shell and a few small data screens.
-   Neurons fire in turn and pulses run along the axons. The sphere turns and breathes slowly; while JARVIS
+   Neurons fire in turn and pulses run along the axons. The sphere turns and breathes slowly; while AL-76
    speaks its surface waves follow the voice. The SATELLITE is a SceneKit model built in code.
 
 ## Project structure
@@ -307,7 +314,7 @@ quiet hours (23–8). Each one can be turned off in Settings › Initiative.
 | Orchestration | state machine | `Sources/JARVIS/Core/Assistant.swift` |
 | iPhone app and encrypted link | Network.framework (TLS-PSK), SwiftUI, VideoToolbox | `Sources/JARVIS/Core/PhoneBridge.swift`, `PhoneLink.swift`, `ScreenShare.swift`, `iPhone/` |
 | Settings | JSON file + ⚙︎ window | `Sources/JARVIS/Core/Config.swift`, `SettingsView.swift` |
-| Manual | ReportLab | `scripts/build_manual.py` → [`Manual_JARVIS.pdf`](Manual_JARVIS.pdf) |
+| Manual | ReportLab | `scripts/build_manual.py` → [`Manual_AL-76.pdf`](Manual_AL-76.pdf) |
 
 ## Where data lives
 
@@ -316,10 +323,10 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
 | File | Content |
 |---|---|
 | `config.json` | settings |
-| `memory.json` | what JARVIS remembers about you |
+| `memory.json` | what AL-76 remembers about you |
 | `activity.json` | study and work sessions |
 | `piano_studio.json`, `resoconti.json` | study plan (exams, weekly hours) and session reports |
-| `backup_codice/` | copies of code files before JARVIS changed them |
+| `backup_codice/` | copies of code files before AL-76 changed them |
 | `appunti.sqlite` | search index of your notes (text and one meaning vector per passage) |
 | `protocolli.json`, `schede.json` | protocols and flashcards |
 | `voiceprint.json` | your voiceprint |
@@ -330,14 +337,14 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
 
 ## Security and privacy
 
-- **JARVIS does not delete files**: it has no tool for it and no terminal. In Claude mode, Claude can only
+- **AL-76 does not delete files**: it has no tool for it and no terminal. In Claude mode, Claude can only
   search the web and read files in `~/Projects`. New PDFs never overwrite an existing file; a code file is changed
   only when you ask, after a copy in `backup_codice`, and in comments mode every code line must stay identical.
 - **Mail** is read from Mail's index on disk, read-only (Full Disk Access); nothing is sent without your "yes".
-- **External content** (mail, pages, files, screenshots, devices) is marked as data: JARVIS does not follow
+- **External content** (mail, pages, files, screenshots, devices) is marked as data: AL-76 does not follow
   instructions found inside it, it reports them.
 - **Local services** listen only on 127.0.0.1, with a token, and refuse browser requests.
-- **Privacy mode**: "Jarvis, privacy" (or ⌃⌥P, or the ◎ menu) turns the microphone off and blocks camera and
+- **Privacy mode**: "Ehi Al, privacy" (or ⌃⌥P, or the ◎ menu) turns the microphone off and blocks camera and
   screen; you leave it only with ⌃⌥P or the menu, not by voice.
 - **Stays on the Mac**: audio, transcripts, conversation, memory, calendar, mail, files, screenshots and photos
   (images are never saved). **Leaves the Mac**: web searches (DuckDuckGo), weather (wttr.in), the news sites' public feeds and, in Claude
@@ -345,23 +352,23 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
 
 ## Troubleshooting
 
-- **It does not hear "Jarvis"**: the MODULES panel must show `"JARVIS" ATTIVA · WHISPER`; check the microphone
+- **It does not hear "Ehi Al"**: the MODULES panel must show `"EHI AL" ATTIVA · WHISPER`; check the microphone
   permission in System Settings › Privacy & Security › Microphone, or use ⌃⌥Space. The `wake NO` lines in
   `diagnostica.log` show what Whisper heard.
 - **Slow answers**: with the model loaded the first word comes in about 3 s; a cold reload takes about 45 s
   (rereading about 4,900 tokens of instructions). The model stays in RAM for 30 minutes (`modelKeepAlive`).
 - **A file is not found**: macOS asks permission for Desktop, Documents, Downloads and iCloud Drive on first
-  use; re-enable it in System Settings › Privacy & Security › Files and Folders › JARVIS.
-- **"Nucleo offline"**: Ollama is not running; JARVIS tries to start it, otherwise run `ollama serve`.
+  use; re-enable it in System Settings › Privacy & Security › Files and Folders › AL-76.
+- **"Nucleo offline"**: Ollama is not running; AL-76 tries to start it, otherwise run `ollama serve`.
 - **Apple voice instead of the neural one**: run `./scripts/setup_tts.sh`.
 - **Claude does not answer**: `claude auth status`, then `claude auth login --claudeai` if needed.
 
 ## Test mode (for development)
 
-With `"developerMode": true` in `config.json`, JARVIS accepts test commands through distributed notifications,
+With `"developerMode": true` in `config.json`, AL-76 accepts test commands through distributed notifications,
 only if they carry the key in `dev_token` (readable only by your user); the HUD shows "MODALITÀ TEST ATTIVA".
 `<bundle id>.debug.text` with `"<key>|che ore sono?"` simulates a transcribed command,
-`<bundle id>.debug.audio` with `"<key>|/path/file.aiff"` a phrase heard after "Jarvis", and
+`<bundle id>.debug.audio` with `"<key>|/path/file.aiff"` a phrase heard after "Ehi Al", and
 `<bundle id>.debug.wake` with `"<key>|/path/file.wav"` a phrase heard while waiting. Turn it off afterwards.
 
 ## Third-party components
@@ -370,8 +377,8 @@ WhisperKit (MIT), Kokoro / kokoro-onnx (Apache 2.0), Supertonic 3 (code MIT, mod
 Qwen3-TTS (Apache 2.0) with mlx-audio (MIT), Picovoice Porcupine (Apache 2.0, in `Vendor/porcupine`),
 Ollama (MIT), Gemma 4 model (Gemma terms of use). The voice sample `Resources/voce_jarvis.wav` is synthetic.
 
-"J.A.R.V.I.S." is a character of Marvel's Iron Man; this is an independent hobby project, not affiliated
-with or endorsed by Marvel.
+"AL-76" is the robot of Isaac Asimov's story "Robot AL-76 Goes Astray" (1942); this is an independent hobby
+project, not affiliated with or endorsed by the Asimov estate or its publishers.
 
 ## License
 

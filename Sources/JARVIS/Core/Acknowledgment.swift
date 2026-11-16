@@ -54,10 +54,9 @@ enum Acknowledgment {
     /// nil: a greeting, a thank-you or a single word, which just gets an answer.
     /// If the sentence is not understood (Whisper may mangle it) the acknowledgment stays: better than silence.
     static func kind(of command: String) -> Kind? {
-        var words = command.lowercased()
+        var words = WakeVerifier.strippingCall(command).lowercased()
             .replacingOccurrences(of: "'", with: " ").replacingOccurrences(of: "’", with: " ")
             .components(separatedBy: CharacterSet.letters.inverted).filter { !$0.isEmpty }
-        if words.first == "jarvis" { words.removeFirst() }
         // A long word is often a glued sentence: "apricalcolatrice".
         guard let first = words.first, words.count >= 2 || first.count >= 8, !social.contains(first) else { return nil }
         let joined = words.joined(separator: " ")

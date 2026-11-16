@@ -6,7 +6,8 @@ chosen by the system, and writes it to stdout ("PORT 12345") as soon as it is re
 
 POST /synth  {"text": ..., "voice": "bm_lewis", "lang": "en-gb", "speed": 1.0}
   "voice" can also be a blend: "im_nicola:0.5+bm_fable:0.5"
-  "voice": "qwen3" uses Qwen3 with the voice of voce_jarvis.wav; if it fails it falls back to
+  "voice": "qwen3" uses Qwen3 with the voice of voce_jarvis.wav, "qwen3:robottino" the young voice of
+  voce_robottino.wav (the ROBOTTINO companion, 16 November); if it fails it falls back to
   Supertonic ("supertonic:M4:0.5+M3:0.5") and then to "fallback", a Kokoro voice.
   "keep": true saves the audio to disk: used for acknowledgments, fixed sentences to say at once.
   "stream": true (Qwen3 only) sends the audio in pieces while it is generated: the first words
@@ -94,7 +95,22 @@ repeat_lock = threading.Lock()
 SUPERTONIC_VOICE = "M4:0.5+M3:0.5"
 qwen_jobs = queue.Queue()
 qwen_ready = threading.Event()
+# Other cloned voices: name -> (reference audio, what it says). The ROBOTTINO speaks with a young, calm
+# voice the user chose on 16 November ("E2"), designed with Qwen3 VoiceDesign and cloned like JARVIS's.
+QWEN_VOICES = {
+    "qwen3": (QWEN_VOICE, QWEN_VOICE_TEXT),
+    "qwen3:robottino": (os.path.join(os.path.dirname(os.path.abspath(__file__)), "voce_robottino.wav"),
+                        "Ciao, sono qui con te. Ho controllato tutto: i sistemi funzionano bene, "
+                        "e possiamo cominciare quando vuoi."),
+}
 qwen_broken = not (os.path.exists(os.path.join(QWEN_DIR, "config.json")) and os.path.exists(QWEN_VOICE))
+
+
+def qwen_voice(voice):
+    """The cloned voice to use: an unknown or missing one falls back to JARVIS's."""
+    if voice in QWEN_VOICES and os.path.exists(QWEN_VOICES[voice][0]):
+        return voice
+    return "qwen3"
 
 
 def qwen_worker():
@@ -105,20 +121,27 @@ def qwen_worker():
         from mlx_audio.tts.utils import load
 
         model = load(QWEN_DIR)
-        reference = mx.array(soundfile.read(QWEN_VOICE, dtype="float32")[0])
+        references = {}
 
-        def generate(text, speed):
+        def reference(voice):
+            if voice not in references:
+                references[voice] = mx.array(soundfile.read(QWEN_VOICES[voice][0], dtype="float32")[0])
+            return references[voice], QWEN_VOICES[voice][1]
+
+        def generate(text, speed, voice="qwen3"):
+            audio, said = reference(voice)
             mx.random.seed(QWEN_SEED)
-            parts = model.generate(text=text, ref_audio=reference, ref_text=QWEN_VOICE_TEXT,
+            parts = model.generate(text=text, ref_audio=audio, ref_text=said,
                                    lang_code="italian", speed=speed, verbose=False, **QWEN_SAMPLING)
             samples = np.concatenate([np.asarray(part.audio).squeeze() for part in parts])
             mx.clear_cache()
             return samples
 
-        def generate_pieces(text, speed, job):
+        def generate_pieces(text, speed, job, voice):
             first = True
+            audio, said = reference(voice)
             mx.random.seed(QWEN_SEED)
-            for part in model.generate(text=text, ref_audio=reference, ref_text=QWEN_VOICE_TEXT,
+            for part in model.generate(text=text, ref_audio=audio, ref_text=said,
                                        lang_code="italian", speed=speed, verbose=False, stream=True,
                                        streaming_interval=QWEN_STREAM_INTERVAL, **QWEN_SAMPLING):
                 if job.get("cancel"):
@@ -139,11 +162,12 @@ def qwen_worker():
     qwen_ready.set()
     while True:
         text, speed, job = qwen_jobs.get()
+        voice = job.get("voice", "qwen3")
         try:
             if "pieces" in job:
-                generate_pieces(text, speed, job)
+                generate_pieces(text, speed, job, voice)
             else:
-                job["audio"] = np.asarray(trim_silence(generate(text, speed), 24000), dtype="<f4").tobytes()
+                job["audio"] = np.asarray(trim_silence(generate(text, speed, voice), 24000), dtype="<f4").tobytes()
         except Exception as error:  # noqa: BLE001
             job["error"] = error
         if "pieces" in job:
@@ -151,29 +175,32 @@ def qwen_worker():
         job["done"].set()
 
 
-def saved_clip_path(text, speed):
+def saved_clip_path(text, speed, voice="qwen3"):
     model = "" if os.path.basename(QWEN_DIR) == "qwen3" else os.path.basename(QWEN_DIR) + "|"
     # The sampling is part of the key: clips saved with another intonation are not reused.
     sampling = f"t{QWEN_SAMPLING['temperature']}p{QWEN_SAMPLING['top_p']}s{QWEN_SEED}|"
-    key = f"{os.path.getsize(QWEN_VOICE)}|{model}{sampling}{speed}|{text}"
+    # JARVIS's voice keeps its old key (its saved clips stay valid); the others add their name.
+    name = "" if voice == "qwen3" else voice + "|"
+    key = f"{name}{os.path.getsize(QWEN_VOICES[voice][0])}|{model}{sampling}{speed}|{text}"
     return os.path.join(QWEN_CLIPS, hashlib.sha256(key.encode()).hexdigest() + ".pcm")
 
 
-def saved_clip(text, speed):
-    with open(saved_clip_path(text, speed), "rb") as file:
+def saved_clip(text, speed, voice="qwen3"):
+    with open(saved_clip_path(text, speed, qwen_voice(voice)), "rb") as file:
         return file.read()
 
 
-def synth_qwen(text, speed, keep):
+def synth_qwen(text, speed, keep, voice="qwen3"):
+    voice = qwen_voice(voice)
     clip = None
     if keep:
-        clip = saved_clip_path(text, speed)
+        clip = saved_clip_path(text, speed, voice)
         if os.path.exists(clip):
-            return saved_clip(text, speed)
+            return saved_clip(text, speed, voice)
     spoken = italian_speech(text)
     if not spoken or not qwen_ready.wait(60) or qwen_broken:
         raise RuntimeError("Qwen3 non disponibile")
-    job = {"done": threading.Event()}
+    job = {"done": threading.Event(), "voice": voice}
     qwen_jobs.put((spoken, speed, job))
     if not job["done"].wait(80):
         raise RuntimeError("Qwen3 non ha risposto")
@@ -186,35 +213,36 @@ def synth_qwen(text, speed, keep):
     return job["audio"]
 
 
-def stream_qwen(text, speed):
+def stream_qwen(text, speed, voice="qwen3"):
     """Starts a Qwen3 sentence in pieces; returns the job, or None if Qwen3 cannot do it."""
     spoken = italian_speech(text)
     if not spoken or not qwen_ready.wait(60) or qwen_broken:
         return None
-    job = {"done": threading.Event(), "pieces": queue.Queue()}
+    job = {"done": threading.Event(), "pieces": queue.Queue(), "voice": qwen_voice(voice)}
     qwen_jobs.put((spoken, speed, job))
     return job
 
 
-def saved_if_any(text, speed):
+def saved_if_any(text, speed, voice="qwen3"):
     """The saved audio of this sentence, or None. Its date is refreshed: the least used go first."""
     try:
-        clip = saved_clip_path(text, speed)
+        voice = qwen_voice(voice)
+        clip = saved_clip_path(text, speed, voice)
         if not os.path.exists(clip):
             return None
         os.utime(clip)
-        return saved_clip(text, speed)
+        return saved_clip(text, speed, voice)
     except OSError:
         return None
 
 
-def remember_repeat(text, speed, audio):
+def remember_repeat(text, speed, audio, voice="qwen3"):
     """A whole streamed sentence: the second time it is heard, its audio is saved."""
     if len(text) > REPEAT_MAX_CHARS or not audio:
         return
     with repeat_lock:
         try:
-            clip = saved_clip_path(text, speed)
+            clip = saved_clip_path(text, speed, qwen_voice(voice))
             key = os.path.basename(clip)[:-4]
             os.makedirs(QWEN_CLIPS, exist_ok=True)
             try:
@@ -385,9 +413,9 @@ def voice_style(voice):
 
 
 def synth(text, voice, lang, speed, fallback=None, keep=False):
-    if voice == "qwen3":
+    if voice in QWEN_VOICES:
         try:
-            return synth_qwen(text, speed, keep)
+            return synth_qwen(text, speed, keep, voice)
         except Exception:  # noqa: BLE001
             voice, speed = "supertonic:" + SUPERTONIC_VOICE, 1.2
     if voice.startswith("supertonic:"):
@@ -422,9 +450,9 @@ class Handler(BaseHTTPRequestHandler):
                 audio = embed(body)
             else:
                 req = json.loads(body)
-                if req.get("stream") and req.get("voice") == "qwen3" and self.send_pieces(req):
+                if req.get("stream") and req.get("voice") in QWEN_VOICES and self.send_pieces(req):
                     return
-                audio = saved_clip(req["text"], float(req.get("speed", 1.0))) if req.get("onlySaved") else synth(req["text"], req.get("voice", "bm_lewis"), req.get("lang", "en-gb"), float(req.get("speed", 1.0)), req.get("fallback"), bool(req.get("keep")))
+                audio = saved_clip(req["text"], float(req.get("speed", 1.0)), req.get("voice", "qwen3")) if req.get("onlySaved") else synth(req["text"], req.get("voice", "bm_lewis"), req.get("lang", "en-gb"), float(req.get("speed", 1.0)), req.get("fallback"), bool(req.get("keep")))
         except Exception as error:  # noqa: BLE001 - the error must be returned to the app
             body = str(error).encode()
             self.send_response(500)
@@ -440,8 +468,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_pieces(self, req):
         """The sentence in pieces as Qwen3 makes them. False if no piece came: the normal path takes over."""
-        text, speed = req["text"], float(req.get("speed", 1.0))
-        saved = saved_if_any(text, speed)
+        text, speed, voice = req["text"], float(req.get("speed", 1.0)), req.get("voice", "qwen3")
+        saved = saved_if_any(text, speed, voice)
         if saved:
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
@@ -452,7 +480,7 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
             return True
-        job = stream_qwen(text, speed)
+        job = stream_qwen(text, speed, voice)
         if job is None:
             return False
         try:
@@ -479,7 +507,7 @@ class Handler(BaseHTTPRequestHandler):
             return True
         # Only a sentence heard whole and without errors may be kept.
         if job["done"].wait(5) and "error" not in job and not job.get("cancel"):
-            remember_repeat(text, speed, b"".join(heard))
+            remember_repeat(text, speed, b"".join(heard), voice)
         return True
 
     def log_message(self, *args):

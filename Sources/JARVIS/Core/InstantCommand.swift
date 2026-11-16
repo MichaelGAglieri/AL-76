@@ -30,12 +30,12 @@ enum InstantCommand: Equatable {
         return volume(text) ?? timer(text) ?? closeAllCommand(text) ?? minimizeCommand(text) ?? app(text)
     }
 
-    /// Lowercase, without punctuation at the ends and without "jarvis" and "per favore".
+    /// Lowercase, without punctuation at the ends and without the call ("ehi al") and "per favore".
     private static func clean(_ raw: String) -> String {
         var text = raw.lowercased().replacingOccurrences(of: "’", with: "'").replacingOccurrences(of: ",", with: " ")
         text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".!?;: ").union(.whitespacesAndNewlines))
         text = text.split(separator: " ").joined(separator: " ")
-        if text.hasPrefix("jarvis ") { text.removeFirst(7) }
+        text = WakeVerifier.strippingCall(text)
         for polite in [" per favore", " per piacere", " please"] where text.hasSuffix(polite) { text.removeLast(polite.count) }
         return text
     }

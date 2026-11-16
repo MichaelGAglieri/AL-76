@@ -151,6 +151,7 @@ final class TypeBar: NSObject {
         guard let panel else { return }
         guard let anchor = anchor() else {
             // Nothing to hang from (it should not happen): top right of the main display.
+            model.answerInBubble = false
             if let area = NSScreen.main?.visibleFrame {
                 panel.setFrame(NSRect(x: area.maxX - contentSize.width - 12, y: area.maxY - contentSize.height - 12,
                                       width: contentSize.width, height: contentSize.height), display: true)
@@ -159,6 +160,8 @@ final class TypeBar: NSObject {
         }
         followed = anchor.window
         isHUD = anchor.isHUD
+        // Hanging from the ROBOTTINO, the answer comes out of its mouth in a speech bubble instead of under the bar.
+        model.answerInBubble = !anchor.isHUD && (anchor.window.contentView is RobotNucleusView)
         let target = anchor.window.frame
         let area = (anchor.window.screen ?? NSScreen.main)?.visibleFrame ?? target
         var x = target.midX - contentSize.width / 2
@@ -255,6 +258,8 @@ final class TypeBarModel: ObservableObject {
     @Published var asked = false
     /// The bar sits above its anchor: the answer goes over the field instead of under it.
     @Published var above = false
+    /// The answer is said by the ROBOTTINO in a speech bubble: the bar shows only the field.
+    @Published var answerInBubble = false
     /// Bumped at every opening: the field takes the keyboard again.
     @Published var focus = 0
 }
@@ -269,7 +274,7 @@ struct TypeBarView: View {
     var onClose: () -> Void
     @FocusState private var typing: Bool
 
-    private var exchange: Assistant.Exchange? { model.asked ? assistant.conversation.last : nil }
+    private var exchange: Assistant.Exchange? { model.asked && !model.answerInBubble ? assistant.conversation.last : nil }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -301,7 +306,7 @@ struct TypeBarView: View {
                     .onEnded { _ in onDrag(.ended) })
                 .onTapGesture(count: 2) { onDrag(.reset) }
                 .help("Trascina per spostare la barra (accanto alla sfera) · doppio clic la rimette al suo posto")
-            TextField("Scrivi a JARVIS", text: $model.draft, axis: .vertical)
+            TextField("Scrivi ad AL-76", text: $model.draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...4)
                 .font(.system(size: 13))
@@ -321,7 +326,7 @@ struct TypeBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(assistant.typedVoice ? "JARVIS legge la risposta anche a voce · clic per solo scritto"
+            .help(assistant.typedVoice ? "AL-76 legge la risposta anche a voce · clic per solo scritto"
                                        : "Risposta solo scritta · clic per sentirla anche a voce")
         }
         .padding(.horizontal, 10)

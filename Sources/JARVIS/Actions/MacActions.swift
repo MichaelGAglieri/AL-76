@@ -78,7 +78,7 @@ enum MacActions {
     /// The list JARVIS keeps in mind, to recognise names even when misheard.
     static func installedAppNames() -> [String] {
         Set(installedApps().map { $0.deletingPathExtension().lastPathComponent })
-            .filter { !isUninstaller($0) && $0 != "JARVIS" }.sorted()
+            .filter { !isUninstaller($0) && $0 != "JARVIS" && $0 != "AL-76" }.sorted()
     }
 
     private static func canonicalName(_ name: String) -> String {

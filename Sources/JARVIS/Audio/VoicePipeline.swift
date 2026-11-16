@@ -76,7 +76,7 @@ final class VoicePipeline {
             noiseDB = otherNoiseDB ?? (echoFilterOn ? current - 10 : current + 10)
             otherNoiseDB = current
             input.processingNeeded = echoFilterOn
-            Diagnostics.log("audio     filtro dell'eco \(echoFilterOn ? "attivo (JARVIS parla)" : "in pausa (microfono diretto)"), fondo \(Int(current)) → \(Int(noiseDB)) dB")
+            Diagnostics.log("audio     filtro dell'eco \(echoFilterOn ? "attivo (AL-76 parla)" : "in pausa (microfono diretto)"), fondo \(Int(current)) → \(Int(noiseDB)) dB")
         }
     }
     private var otherNoiseDB: Float?

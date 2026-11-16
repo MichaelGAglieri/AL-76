@@ -43,10 +43,12 @@ final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
     /// Qwen3 Italian voice, chosen by the user; when off, Supertonic is used.
     var qwenItalian = true
     var qwenItalianSpeed = 1.0
+    /// Which cloned Qwen3 voice: "qwen3" is JARVIS's, "qwen3:robottino" the young one of the ROBOTTINO.
+    var qwenVoice = "qwen3"
     private var usesQwen: Bool { qwenItalian && KokoroTTS.hasQwen }
     private var usesSupertonic: Bool { !usesQwen && !supertonicItalianVoice.isEmpty && KokoroTTS.hasSupertonic }
     private var italianVoice: String {
-        usesQwen ? "qwen3" : usesSupertonic ? "supertonic:\(supertonicItalianVoice)" : kokoroItalianVoice
+        usesQwen ? qwenVoice : usesSupertonic ? "supertonic:\(supertonicItalianVoice)" : kokoroItalianVoice
     }
     private var italianSpeed: Double {
         usesQwen ? qwenItalianSpeed : usesSupertonic ? supertonicItalianSpeed : kokoroItalianSpeed
@@ -293,14 +295,14 @@ final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
     /// of a second), so JARVIS starts speaking without waiting for the whole sentence.
     /// If nothing arrives, the sentence goes the usual way (Supertonic, then Kokoro).
     private func synthesizeInPieces(_ text: String, generation gen: Int) {
-        let speed = italianSpeed
+        let speed = italianSpeed, voice = qwenVoice
         Task { [weak self] in
             guard let self else { return }
             let start = Date()
             // Read and written from the main thread and from this task: behind a lock.
             let count = OSAllocatedUnfairLock(initialState: 0)
             do {
-                for try await piece in self.kokoro.synthesizeStream(text, speed: speed) {
+                for try await piece in self.kokoro.synthesizeStream(text, voice: voice, speed: speed) {
                     let current = await MainActor.run { () -> Bool in
                         guard gen == self.generation else { return false }
                         if count.withLock({ $0 }) == 0 {
@@ -498,6 +500,8 @@ final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
         s = s.replacingOccurrences(of: #"(?<![\w])(?:~/|/)(?:[\w.\-]+/)*([\w.\-]+)/?"#, with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: #"[*`#>|~]"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: "_", with: " ")
+        // Its own name: "Al 76", not "A elle trattino 76"; each voice reads the number in its language.
+        s = s.replacingOccurrences(of: #"\bAL-76\b"#, with: "Al 76", options: [.regularExpression, .caseInsensitive])
         s = s.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]+\)"#, with: "$1", options: .regularExpression)
         s = String(s.unicodeScalars.filter { !($0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x2100)) })
         return s.trimmingCharacters(in: .whitespacesAndNewlines)

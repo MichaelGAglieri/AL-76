@@ -112,13 +112,13 @@ final class ToolBox {
         tool("open_app", "Open a macOS application by name.", ["name": str("App name, e.g. Safari, Visual Studio Code, Arduino IDE")], required: ["name"]),
         tool("quit_app", "Quit one or more running apps (Safari web apps like Netflix are separate apps), or all open apps. Also closes browser tabs when the name is a site open in a tab (YouTube). Call it right away, never ask first: only apps with known unsaved work ask for one confirmation.",
              ["name": str("App name, or several comma-separated, e.g. Safari, Netflix"),
-              "all": bool("Quit every open app except JARVIS and Finder")]),
+              "all": bool("Quit every open app except AL-76 (this assistant) and Finder")]),
         tool("list_running_apps", "List the applications currently open.", [:]),
         tool("set_volume", "Set or read the system output volume, or mute/unmute.",
              ["level": num("0-100. Omit to read the current volume"), "mute": bool("true to mute, false to unmute")]),
         tool("set_dark_mode", "Turn macOS dark mode on or off (omit enabled to toggle).", ["enabled": bool("true = dark")]),
         tool("sleep_display", "Turn the display off.", [:]),
-        tool("start_dictation", "Start dictation for brainstorming (\"scrivi tutto quello che dico\", \"prendi appunti\"): from now on every phrase he says is written down, without \"Jarvis\", until he says \"Jarvis, basta scrivere\"; then it becomes a PDF in Documents/Brainstorming. Call it at once. \"Continua il brainstorming (di ieri)\", \"aggiungi al brainstorming\": pass continue, and the new phrases are added to that same PDF.",
+        tool("start_dictation", "Start dictation for brainstorming (\"scrivi tutto quello che dico\", \"prendi appunti\"): from now on every phrase he says is written down, without \"Ehi Al\", until he says \"Ehi Al, basta scrivere\"; then it becomes a PDF in Documents/Brainstorming. Call it at once. \"Continua il brainstorming (di ieri)\", \"aggiungi al brainstorming\": pass continue, and the new phrases are added to that same PDF.",
              ["continue": str("Continue an existing brainstorming: \"latest\", \"ieri\", \"oggi\", a date 2026-11-13 or part of its name")]),
         tool("brainstorming", "The brainstormings he dictated (PDFs in Documents/Brainstorming). \"Riordina / sistema / rileggi il brainstorming\": action read, then write the tidy version as the result says and save it with action save_tidy (a new PDF next to it; the original is never changed). action list: which ones exist.",
              ["action": enumeration(["read", "save_tidy", "list"]),
@@ -182,8 +182,14 @@ final class ToolBox {
         tool("create_pdf", "Write a document and save it as a PDF, directly (never through TextEdit or Pages): a report, a summary, notes, a list. Lines starting with \"# \" or \"## \" are headings, \"- \" bullets. For a news report include for each item what happened, the source and the link. News reports go in ~/Desktop/Report notizie unless he names another folder; get their content with news recap=true, never with new searches. To add to or correct a document made before (\"aggiungi al report\", \"correggi il PDF\") pass replace=true with the WHOLE new text: the same file is updated, no copy.",
              ["title": str("Title shown at the top"), "text": str("The whole text of the document"),
               "name": str("File name; default the title"), "folder": str("Folder (created if missing); default the Desktop"),
-              "replace": ["type": "boolean", "description": "true: update the document JARVIS created before (same name and folder, or the last one created) instead of making a new file"]],
+              "replace": ["type": "boolean", "description": "true: update the document AL-76 created before (same name and folder, or the last one created) instead of making a new file"]],
              required: ["title", "text"]),
+        tool("draw_diagram", "Draw a diagram and open it on the Mac (\"crea uno schema\", \"disegnami\", \"fammi un'immagine delle forze\"): physics (forces, free-body diagrams, vectors and their components, angles, circuits), robotics (frames, joints, kinematics), flows. YOU write the drawing as SVG and the explanation as text; it is saved in ~/Desktop/Schemi AL-76 and opened in the browser. SVG rules: one <svg> with viewBox (about 0 0 760 620), white background, no scripts, no external images or fonts; arrows with <marker>; one colour per force or vector, each labelled next to its tip (e.g. T, mg, mg sinθ, mg cosθ); components dashed; angles with an arc and the symbol; axes of the chosen reference (tangential/normal) drawn and named; a small legend. Explanation: steps from the drawing to the formula (which axis, which projection, why sin or cos, the sign), then the final equations; '# '/'## ' headings, '- ' bullets, a line starting '= ' is a formula in its own box. Write formulas in plain Unicode (θ, ², √, ·, −), no LaTeX. After the call say in one or two sentences what the drawing shows; do not read the whole explanation aloud.",
+             ["title": str("Title, e.g. Pendolo semplice: forze"),
+              "svg": str("The complete SVG, from <svg ...> to </svg>"),
+              "explanation": str("Step-by-step explanation shown next to the drawing"),
+              "name": str("File name; default the title"), "folder": str("Folder; default ~/Desktop/Schemi AL-76")],
+             required: ["title", "svg", "explanation"]),
         tool("create_folder", "Create a folder (\"crea una cartella Report sulla scrivania\"). To put a file in it afterwards use rename_file with folder.",
              ["name": str("Folder name, or a full path"), "in": str("Where; default the Desktop")], required: ["name"]),
         tool("extract_pdf_pages", "Save some pages of a PDF as a new PDF (\"pagine 1-3, 5\").",
@@ -230,7 +236,7 @@ final class ToolBox {
               "start_time": str("It began at HH:MM"), "day": str("Day of start_time: today, yesterday or YYYY-MM-DD"),
               "minutes": ["type": "integer", "description": "Its real length in minutes (closes it if it would end in the past)"]]),
         tool("stop_activity", "End the session currently being tracked. NOT for a break: for \"pausa\" use pause_activity.", [:]),
-        tool("pause_activity", "Pause the current study/work session for a break (\"pausa\", \"facciamo una pausa\"): the session stays open, breaks are counted, and after the given minutes JARVIS says the break is over and asks to resume.",
+        tool("pause_activity", "Pause the current study/work session for a break (\"pausa\", \"facciamo una pausa\"): the session stays open, breaks are counted, and after the given minutes AL-76 says the break is over and asks to resume.",
              ["minutes": ["type": "integer", "description": "Length of the break, default 10"]]),
         tool("resume_activity", "Resume the paused session (\"ricominciamo\", \"riprendiamo\").", [:]),
         tool("save_session_report", "Save the report of a session as the user dictated it (where they got to), recalled at the next session with the same name.",
@@ -287,7 +293,7 @@ final class ToolBox {
               "speed": num("Speed 10-100 %, default 50")], required: ["task"]),
         tool("robot_execute", "Execute the prepared Robot Console plan. On the real robot the operator must also approve it in Robot Console.", [:]),
         tool("robot_stop", "Immediately STOP the robot through Robot Console.", [:]),
-        tool("look_at_screen", "Take a screenshot and look at it, to answer questions about what is on the user's screen (an error in the terminal, a schematic, a web page, code). By default the frontmost window; JARVIS's own windows are never included.",
+        tool("look_at_screen", "Take a screenshot and look at it, to answer questions about what is on the user's screen (an error in the terminal, a schematic, a web page, code). By default the frontmost window; AL-76's own windows are never included.",
              ["scope": enumeration(["window", "screen"]), "question": str("What the user wants to know about it")]),
         tool("look_at_camera", "Take a photo and look at it, to identify or check something the user shows (an electronic component, a part, a circuit). Uses the iPhone (Continuity Camera) when available, otherwise the Mac camera.",
              ["question": str("What the user wants to know about it"),
@@ -325,7 +331,7 @@ final class ToolBox {
              ["action": str("load or unload")], required: ["action"]),
         tool("printer_print", "Slice a model in Bambu Studio and get it ready to print on the user's printer; the user confirms before it starts. Without model, uses the project already open in Bambu Studio. Prints the selected plate only.",
              ["model": str("Optional model or project name, e.g. gripper")]),
-        tool("set_timer", "Start a countdown timer; JARVIS will announce when it ends.",
+        tool("set_timer", "Start a countdown timer; AL-76 will announce when it ends.",
              ["seconds": num("Duration in seconds"), "label": str("What the timer is for")], required: ["seconds"]),
         tool("list_timers", "List active timers and remaining time.", [:]),
         tool("cancel_timer", "Cancel timers (all, or those whose label matches).", ["label": str("Optional label")]),
@@ -603,6 +609,7 @@ final class ToolBox {
         case "watch": return .result(WebActions.watch(a))
         case "merge_pdfs": return .result(PDFTools.merge(a))
         case "create_pdf": return .result(PDFTools.fromText(a))
+        case "draw_diagram": return .result(DiagramTool.draw(a))
         case "create_folder": return .result(PDFTools.createFolder(a))
         case "extract_pdf_pages": return .result(PDFTools.extract(a))
         case "pdf_info": return .result(PDFTools.info(a))

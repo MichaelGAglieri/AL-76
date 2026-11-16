@@ -10,8 +10,8 @@ enum RobotVoiceCommand: Equatable {
         var text = raw.lowercased().replacingOccurrences(of: "’", with: "'")
             .trimmingCharacters(in: CharacterSet(charactersIn: ".!?;: ").union(.whitespacesAndNewlines))
         text = text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-        if text.hasPrefix("jarvis") { text = String(text.dropFirst(6)).trimmingCharacters(in: CharacterSet(charactersIn: ", ")) }
-        for suffix in [" per favore", " per piacere", " jarvis"] where text.hasSuffix(suffix) { text.removeLast(suffix.count) }
+        text = WakeVerifier.strippingCall(text).trimmingCharacters(in: CharacterSet(charactersIn: ", "))
+        for suffix in [" per favore", " per piacere"] where text.hasSuffix(suffix) { text.removeLast(suffix.count) }
         // How Whisper wrote these phrases on 9 November: "Abilità robot", "E segui sequenzo", "segui sequenza".
         text = text.replacingOccurrences(of: "abilità", with: "abilita").replacingOccurrences(of: "sequenzo", with: "sequenza")
         if text.hasPrefix("e segui ") { text = "esegui " + text.dropFirst(8) }

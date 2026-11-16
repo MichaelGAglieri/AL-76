@@ -40,7 +40,7 @@ struct JarvisApp: App {
             Divider()
             SettingsLink { Text("Impostazioni…") }
             Divider()
-            Button("Esci da JARVIS") { NSApp.terminate(nil) }
+            Button("Esci da AL-76") { NSApp.terminate(nil) }
         } label: {
             Image(systemName: "circle.circle")
         }
@@ -123,9 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         assistant.boot()
         enableLaunchAtLoginOnce()
         awake = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep],
-                                                      reason: "JARVIS ascolta la parola Jarvis")
+                                                      reason: "AL-76 ascolta «Ehi Al»")
 
-        // When it hears "Jarvis" the HUD comes to the front, without stealing the keyboard.
+        // When it hears "Ehi Al" the HUD comes to the front, without stealing the keyboard.
         // Not in NUCLEUS mode: it stays on the desktop and reacts there.
         NotificationCenter.default.addObserver(forName: .jarvisActivated, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
@@ -141,17 +141,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return nucleus(on: NSScreen.main)?.frame
     }
 
-    /// On the first run from /Applications JARVIS adds itself to the login
+    /// On the first run from /Applications AL-76 adds itself to the login
     /// items, so it starts when the Mac turns on. It can be turned off in the settings
-    /// (JARVIS's or macOS's) and from then on the choice is respected.
+    /// (AL-76's or macOS's) and from then on the choice is respected.
     private func enableLaunchAtLoginOnce() {
-        guard Bundle.main.bundlePath.hasPrefix("/Applications/"),
-              !UserDefaults.standard.bool(forKey: "loginItemConfigured") else { return }
+        guard Bundle.main.bundlePath.hasPrefix("/Applications/") else { return }
+        // 1.30.64: the app moved from JARVIS.app to AL-76.app. A login item still on, or pointing at the old
+        // path, is registered again once for the new one; one the user turned off stays off.
+        if UserDefaults.standard.bool(forKey: "loginItemConfigured"), !UserDefaults.standard.bool(forKey: "loginItemMovedToAL76") {
+            if SMAppService.mainApp.status != .notRegistered { try? SMAppService.mainApp.register() }
+            UserDefaults.standard.set(true, forKey: "loginItemMovedToAL76")
+        }
+        guard !UserDefaults.standard.bool(forKey: "loginItemConfigured") else { return }
         do {
             try SMAppService.mainApp.register()
             UserDefaults.standard.set(true, forKey: "loginItemConfigured")
         } catch {
-            NSLog("JARVIS: impossibile aggiungere l'elemento di login: \(error.localizedDescription)")
+            NSLog("AL-76: impossibile aggiungere l'elemento di login: \(error.localizedDescription)")
         }
     }
 

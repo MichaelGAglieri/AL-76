@@ -351,9 +351,9 @@ final class Assistant: ObservableObject {
 
     private func updateWakeStatus(error: String?) {
         if pipeline.wakeWordReady {
-            wakeStatus = "\"JARVIS\" ATTIVA"
+            wakeStatus = "\"JARVIS\" (PORCUPINE) ATTIVA"
         } else if pipeline.listensForSpeech {
-            wakeStatus = "\"JARVIS\" ATTIVA · WHISPER"
+            wakeStatus = "\"EHI AL\" ATTIVA · WHISPER"
         } else if config.picovoiceAccessKey.isEmpty {
             wakeStatus = "CHIAVE MANCANTE · ⌃⌥SPAZIO"
         } else {
@@ -458,7 +458,7 @@ final class Assistant: ObservableObject {
             updateWakeStatus(error: nil)
             return
         }
-        state = .booting("Ascolto di \"Jarvis\"")
+        state = .booting("Ascolto di \"Ehi Al\"")
         do {
             if !(await transcriber.wakeReady) { try await transcriber.loadWakeModel() }
             pipeline.listensForSpeech = true
@@ -580,7 +580,7 @@ final class Assistant: ObservableObject {
         // final silence and a margin): it contains its voice, ignore it.
         let segmentStart = Date().addingTimeInterval(-Double(samples.count) / 16_000 - 0.3)
         guard testInjection || segmentStart > lastSpeechEnd else {
-            Diagnostics.log("wake --   frase sovrapposta alla voce di JARVIS, ignorata")
+            Diagnostics.log("wake --   frase sovrapposta alla voce di AL-76, ignorata")
             return
         }
         // If a check is still running the phrase is not thrown away: keep
@@ -619,9 +619,9 @@ final class Assistant: ObservableObject {
             // with that command; the voice is checked as usual.
             if state == .idle, WakeVerifier.command(from: text) == nil, let rest = WakeVerifier.soundalikeCommand(from: text),
                !rest.isEmpty, InstantCommand.parse(rest) != nil || DirectCommand.parse(rest) != nil {
-                Diagnostics.log("wake ~    \"\(text)\": somiglia a Jarvis e segue un comando noto")
+                Diagnostics.log("wake ~    \"\(text)\": somiglia a Ehi Al e segue un comando noto")
                 soundalikeWakeCommand = rest
-                text = "Jarvis, " + rest
+                text = WakeVerifier.call + ", " + rest
             } else {
                 soundalikeWakeCommand = nil
             }
@@ -675,11 +675,11 @@ final class Assistant: ObservableObject {
 
     /// `continuing`: nil = a new brainstorming; otherwise which one to add to ("" = the latest).
     private func startDictation(continuing: String? = nil) -> String {
-        if dictation.isActive { return "Sto già scrivendo: \(dictation.count) frasi finora. Per finire dica: Jarvis, basta scrivere." }
+        if dictation.isActive { return "Sto già scrivendo: \(dictation.count) frasi finora. Per finire dica: Ehi Al, basta scrivere." }
         var opening = "Da ora scrivo tutto quello che dice."
         if let continuing {
             guard let resumed = dictation.resume(continuing) else {
-                return Dictation.documents().isEmpty ? "Non c'è ancora nessun brainstorming da continuare. Per iniziarne uno dica: Jarvis, scrivi tutto quello che dico."
+                return Dictation.documents().isEmpty ? "Non c'è ancora nessun brainstorming da continuare. Per iniziarne uno dica: Ehi Al, scrivi tutto quello che dico."
                     : "Non trovo quel brainstorming. Il più recente è \(Dictation.documents()[0].deletingPathExtension().lastPathComponent)."
             }
             opening = "Riprendo \(resumed.name), che aveva \(resumed.phrases) frasi: aggiungo quello che dice."
@@ -687,7 +687,7 @@ final class Assistant: ObservableObject {
             dictation.start()
         }
         phoneBridge.send(PhoneMessage(.dictation, number: 1))
-        return opening + " Quando ha finito dica: Jarvis, basta scrivere."
+        return opening + " Quando ha finito dica: Ehi Al, basta scrivere."
     }
 
     /// While dictating every phrase in his voice is written down, with the large Whisper and without "Jarvis".
@@ -735,7 +735,7 @@ final class Assistant: ObservableObject {
             guard let result else { answer("Fine della dettatura. Non avevo scritto niente."); return }
             let ok = result.contains("Creato") || result.contains("Aggiornato")
             notesForClaude.append("The user dictated a brainstorming of \(phrases) phrases, saved as PDF. \(result) To review or tidy it, use the brainstorming tool.")
-            answer(ok ? "Fatto: \(phrases) frasi nel PDF, in Documenti, cartella Brainstorming. Se vuole lo riordino: Jarvis, riordina il brainstorming."
+            answer(ok ? "Fatto: \(phrases) frasi nel PDF, in Documenti, cartella Brainstorming. Se vuole lo riordino: Ehi Al, riordina il brainstorming."
                       : "Non sono riuscito a creare il PDF: \(result)")
         case .undo:
             let removed = dictation.removeLast()
@@ -785,10 +785,10 @@ final class Assistant: ObservableObject {
             if !noisy, !isAnswer {
                 if isCommand, let wake = lastWakeVoice, Date().timeIntervalSince(wake.at) <= 20, wake.score >= 0.50 {
                     // The command right after a "Jarvis" clearly his: the same person goes on speaking.
-                    threshold = min(threshold, Self.relaxedThreshold); rule = "segue un Jarvis suo"
+                    threshold = min(threshold, Self.relaxedThreshold); rule = "segue un Ehi Al suo"
                 } else if !isCommand, let said, said.isEmpty, samples.count <= 48_000 {
                     // "Jarvis" alone: the command after the beep is checked again.
-                    threshold = min(threshold, 0.40); rule = "Jarvis da solo"
+                    threshold = min(threshold, 0.40); rule = "Ehi Al da solo"
                 } else if !isCommand, let said, InstantCommand.parse(said) != nil || DirectCommand.parse(said) != nil
                             || RobotVoiceCommand.parse(said, consoleInFront: false) != nil {
                     // A whole known command ("Jarvis, esegui sequenza"): the sentence itself is evidence.
@@ -851,9 +851,9 @@ final class Assistant: ObservableObject {
     func startVoiceEnrollment(adding: Bool = false, commands: Bool = false) {
         voiceEnrollment.start(adding: adding, commands: commands)
         if !config.whisperWake {
-            voiceEnrollment.stop("Serve l'ascolto continuo di \"Jarvis\": attivalo in Attivazione e riprova.")
+            voiceEnrollment.stop("Serve l'ascolto continuo di \"Ehi Al\": attivalo in Attivazione e riprova.")
         } else if privacyMode {
-            voiceEnrollment.stop("JARVIS è in modalità privacy: il microfono è spento.")
+            voiceEnrollment.stop("AL-76 è in modalità privacy: il microfono è spento.")
         }
     }
 
@@ -1133,7 +1133,7 @@ final class Assistant: ObservableObject {
             let worked = ActivityTracker.spoken(closed?.duration ?? 0)
             let time = end.formatted(date: .omitted, time: .shortened)
             self.note("Sessione \(session.name) chiusa alle \(time): nessuna risposta")
-            self.notesForClaude.append("While he was away JARVIS closed the forgotten study session \(session.name) at \(time) (\(worked)).")
+            self.notesForClaude.append("While he was away AL-76 closed the forgotten study session \(session.name) at \(time) (\(worked)).")
             self.closedSessionName = session.name
             return "Non rispondeva, quindi ho chiuso la sessione di \(session.name) alle \(time), l'ultima volta che ha usato il Mac: \(worked) di studio. Ha studiato più a lungo?"
         }
@@ -1372,7 +1372,7 @@ final class Assistant: ObservableObject {
                         Diagnostics.log("frase     uso il comando sentito al risveglio: \"\(command)\"")
                     } else {
                         note("Falsa attivazione ignorata: \"\(text)\"")
-                        Diagnostics.log("scartata: il controllo grande non ha trovato Jarvis")
+                        Diagnostics.log("scartata: il controllo grande non ha trovato Ehi Al")
                         state = .idle
                         return
                     }
@@ -1491,7 +1491,7 @@ final class Assistant: ObservableObject {
                               ["role": "assistant", "content": text]])
                 // The "yes" does not go through Claude: it is told on the next request,
                 // otherwise it keeps asking to confirm an action already done.
-                notesForClaude.append("The user confirmed \"\(action.summary)\" and JARVIS executed it: \(result)")
+                notesForClaude.append("The user confirmed \"\(action.summary)\" and AL-76 executed it: \(result)")
                 say(text, language: lang)
                 return
             case .no:
@@ -1553,7 +1553,7 @@ final class Assistant: ObservableObject {
         // the model reads the whole phrase and, if it is not addressed to it, answers only with silence.
         var asked = command
         if let whole = namedMidPhrase {
-            asked = "[\"Jarvis\" was in the middle of what he said: \"\(whole)\". If he is talking about you to someone else, "
+            asked = "[\"Ehi Al\" was in the middle of what he said: \"\(whole)\". If he is talking about you to someone else, "
                 + "not to you, reply with exactly \(Self.silentReply) and nothing else. If he is speaking to you, answer normally.]\n" + command
             silenceAllowed = true
         } else {
@@ -1672,7 +1672,7 @@ final class Assistant: ObservableObject {
                 let closed = activity.sessions.last { $0.start == open.start }
                 let worked = ActivityTracker.spoken(closed?.duration ?? 0)
                 Diagnostics.log("diretto   sessione \(session) chiusa su risposta, \(worked)")
-                notesForClaude.append("JARVIS asked whether he was still studying \(session); he said no, the session was closed (\(worked)).")
+                notesForClaude.append("AL-76 asked whether he was still studying \(session); he said no, the session was closed (\(worked)).")
                 if let end {
                     say("Chiusa la sessione di \(session) alle \(end.formatted(date: .omitted, time: .shortened)): \(worked) di studio.", language: lang)
                 } else {
@@ -1851,7 +1851,7 @@ final class Assistant: ObservableObject {
         let spoken = DirectCommand.spoken(direct, result: result)
         Diagnostics.log("diretto   [\(Diagnostics.since(Diagnostics.requestStart ?? Date()))] \(direct) senza modello")
         firstSentencePending = false   // no model answered: the "cervello" line would be wrong
-        notesForClaude.append("JARVIS already answered \"\(command)\" by itself: \(spoken). Do not repeat it.")
+        notesForClaude.append("AL-76 already answered \"\(command)\" by itself: \(spoken). Do not repeat it.")
         turns.append([["role": "user", "content": command], ["role": "assistant", "content": spoken]])
         say(spoken, language: lang)
         return true
@@ -1870,7 +1870,7 @@ final class Assistant: ObservableObject {
         guard case .result(let result) = await runTracedTool(ToolCall(name: direct.tool, arguments: direct.arguments)) else { return true }
         guard !Task.isCancelled else { return true }
         Diagnostics.log("robot diretto [\(Diagnostics.since(Diagnostics.requestStart ?? Date()))] \(direct.tool)")
-        notesForClaude.append("JARVIS already handled \"\(command)\" through Robot Console: \(result). Do not repeat it.")
+        notesForClaude.append("AL-76 already handled \"\(command)\" through Robot Console: \(result). Do not repeat it.")
         turns.append([["role": "user", "content": command], ["role": "assistant", "content": result]])
         say(result, language: lang)
         return true
@@ -1992,7 +1992,7 @@ final class Assistant: ObservableObject {
            !command.lowercased().contains("music"), !command.lowercased().contains("pause") {
             tools.currentLanguage = lang
             guard case .result(let result) = await runTracedTool(ToolCall(name: "pause_activity", arguments: ["minutes": 10])) else { return true }
-            notesForClaude.append("JARVIS already paused the session: \(result)")
+            notesForClaude.append("AL-76 already paused the session: \(result)")
             say("Pausa di dieci minuti, signore. La avviso quando è finita.", language: lang)
             return true
         }
@@ -2132,7 +2132,7 @@ final class Assistant: ObservableObject {
         turns.append([["role": "user", "content": Persona.turnContext(language: lang) + "\n" + command],
                       ["role": "assistant", "content": text]])
         // Claude did not see this action: it is told on the next request.
-        notesForClaude.append("JARVIS already handled \"\(command)\" directly and answered: \(text)")
+        notesForClaude.append("AL-76 already handled \"\(command)\" directly and answered: \(text)")
         say(spoken, language: lang)
         return true
     }
@@ -2253,7 +2253,7 @@ final class Assistant: ObservableObject {
         }
         mcp.tools = { definitions }
         mcp.call = { [weak self] name, arguments in
-            await self?.runToolForClaude(name, arguments) ?? [["type": "text", "text": "JARVIS non disponibile"]]
+            await self?.runToolForClaude(name, arguments) ?? [["type": "text", "text": "AL-76 non disponibile"]]
         }
         do { try mcp.start() } catch { note("Server strumenti per Claude: \(error.localizedDescription)") }
         Task { await refreshClaudeStatus() }
@@ -2546,7 +2546,7 @@ final class Assistant: ObservableObject {
             guard let role = message["role"] as? String, role == "user" || role == "assistant",
                   let content = message["content"] as? String, !content.isEmpty else { return nil }
             let text = content.replacingOccurrences(of: #"\[context:[^\]]*\]\n"#, with: "", options: .regularExpression)
-            return "\(role == "user" ? "User" : "JARVIS"): \(text.prefix(400))"
+            return "\(role == "user" ? "User" : "AL-76"): \(text.prefix(400))"
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
@@ -2574,7 +2574,7 @@ final class Assistant: ObservableObject {
     /// The model judged the phrase was not for JARVIS: nothing is said and listening does not reopen.
     private func stayedSilent(_ text: String) -> Bool {
         guard isSilentReply(text) else { return false }
-        Diagnostics.log("silenzio  parlava di Jarvis a qualcun altro: \"\(namedMidPhrase?.prefix(80) ?? "")\"")
+        Diagnostics.log("silenzio  parlava di Al a qualcun altro: \"\(namedMidPhrase?.prefix(80) ?? "")\"")
         note("Parlava di me, non a me: resto in silenzio")
         reply = ""
         generating = false
@@ -2587,7 +2587,7 @@ final class Assistant: ObservableObject {
         stillWorkingReminder?.cancel()
         defer { skipRepeatedAcknowledgment = false }
         if skipRepeatedAcknowledgment, Acknowledgment.isBare(sentence) { return }
-        if sentence.lowercased().contains("jarvis") { currentReplyMentionsName = true }
+        if WakeVerifier.command(from: sentence) != nil { currentReplyMentionsName = true }
         logFirstSentence()
         state = .speaking
         speech.speak(sentence, language: lang)
@@ -2652,6 +2652,8 @@ final class Assistant: ObservableObject {
     /// The answer in progress is to something typed: the Mac does not reopen the microphone afterwards,
     /// the next line is typed too (a "sì" to a confirmation included).
     private var answeringTyped = false
+    /// The exchange of the last typed question: the ROBOTTINO says its answer in a speech bubble.
+    @Published private(set) var typedExchange: UUID?
     /// Typed requests are answered in writing only, unless the speaker on the bar is on.
     @Published var typedVoice = UserDefaults.standard.bool(forKey: "typedVoice") {
         didSet { UserDefaults.standard.set(typedVoice, forKey: "typedVoice") }
@@ -2677,11 +2679,12 @@ final class Assistant: ObservableObject {
         tools.currentSource = "tastiera"
         firstSentencePending = true
         Diagnostics.requestStart = Date()
-        // "Jarvis, apri Safari" typed out of habit: the name is not part of the command.
+        // "Ehi Al, apri Safari" typed out of habit: the call is not part of the command.
         var command = text
         namedMidPhrase = nil
-        if text.lowercased().hasPrefix("jarvis"), let extracted = WakeVerifier.command(from: text), !extracted.isEmpty { command = extracted }
+        if WakeVerifier.startsWithCall(text), let extracted = WakeVerifier.command(from: text), !extracted.isEmpty { command = extracted }
         heard = command
+        typedExchange = conversation.last?.id
         let lang = SpeechEngine.detectLanguage(text, hint: language)
         language = lang
         state = .thinking
@@ -2739,12 +2742,12 @@ final class Assistant: ObservableObject {
     /// A new command from the phone: it is the latest request, so it wins over the one in progress.
     private func beginPhoneRequest() -> Bool {
         if case .booting = state {
-            phoneBridge.send(PhoneMessage(.notice, text: "JARVIS si sta ancora avviando sul Mac."))
+            phoneBridge.send(PhoneMessage(.notice, text: "AL-76 si sta ancora avviando sul Mac."))
             return false
         }
         // In privacy mode the Mac neither listens nor looks: the phone cannot get around it.
         guard !privacyMode else {
-            phoneBridge.send(PhoneMessage(.notice, text: "Sul Mac è attiva la modalità privacy: JARVIS si riattiva da lì."))
+            phoneBridge.send(PhoneMessage(.notice, text: "Sul Mac è attiva la modalità privacy: AL-76 si riattiva da lì."))
             return false
         }
         if state != .idle {
@@ -3038,6 +3041,8 @@ final class Assistant: ObservableObject {
         speech.supertonicItalianSpeed = config.supertonicItalianSpeed
         speech.qwenItalian = config.qwenItalian
         speech.qwenItalianSpeed = config.qwenItalianSpeed
+        // The ROBOTTINO has its own young, calm voice (chosen on 16 November); JARVIS keeps his.
+        speech.qwenVoice = config.nucleusStyle == "robottino" && RobotNucleusView.modelAvailable ? "qwen3:robottino" : "qwen3"
         printer.configure(host: config.bambuHost, serial: config.bambuSerial, code: config.bambuCode)
     }
 
@@ -3090,6 +3095,12 @@ final class Assistant: ObservableObject {
         updated.universityAgent = draft.universityAgent
         config = updated
         updated.save()
+    }
+
+    /// The ROBOTTINO walks on the bottom edge or floats free: changed by a gesture, so only this setting is saved.
+    func setRobotWalks(_ walks: Bool) {
+        config.robotWalks = walks
+        config.save()
     }
 
     func apply(_ newConfig: JarvisConfig) {
@@ -3207,7 +3218,7 @@ final class Assistant: ObservableObject {
     /// "ricordati che…", "tieni a mente che…", "remember that…" → the fact to store.
     /// ("ricordami di…" is a reminder instead, and the model handles it.)
     private static func explicitMemory(_ text: String) -> String? {
-        let pattern = #"^\s*(?:jarvis[\s,]+)?(?:ricordati|ricorda|tieni a mente|memorizza|segnati|remember|don't forget|keep in mind)\s+(?:che|that)\s+(.+)$"#
+        let pattern = #"^\s*(?:(?:ehi|hey)[\s,]+al[\s,.]+)?(?:ricordati|ricorda|tieni a mente|memorizza|segnati|remember|don't forget|keep in mind)\s+(?:che|that)\s+(.+)$"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               let range = Range(match.range(at: 1), in: text) else { return nil }

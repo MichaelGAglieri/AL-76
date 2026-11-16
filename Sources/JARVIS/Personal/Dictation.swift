@@ -154,7 +154,7 @@ final class Dictation {
     /// "Riordina il brainstorming": what the model needs to write the tidy version.
     static func readForTidying(_ which: String?) -> String {
         guard let draft = saved(which), let name = draft.name else {
-            return documents().isEmpty ? "Non c'è nessun brainstorming in Documenti/Brainstorming. Per farne uno: \"Jarvis, scrivi tutto quello che dico\"."
+            return documents().isEmpty ? "Non c'è nessun brainstorming in Documenti/Brainstorming. Per farne uno: \"Ehi Al, scrivi tutto quello che dico\"."
                 : "Non trovo quel brainstorming. Ci sono: " + documents().prefix(8).map { $0.deletingPathExtension().lastPathComponent }.joined(separator: "; ")
         }
         return """
@@ -164,7 +164,7 @@ final class Dictation {
         Now write the tidy version and save it with brainstorming action=save_tidy name="\(name)", in Italian, using only his ideas \
         (fix obvious mishearings, never invent ideas, keep his own wording where it matters). Format: "# Temi" with one "## <tema>" \
         per theme and "- " bullets; then "# Idee da sviluppare", "# Cose da fare", "# Domande aperte" (leave out an empty section); \
-        at most 3 short points of your own under "# Suggerimenti di JARVIS", clearly yours. Do not read the text aloud: \
+        at most 3 short points of your own under "# Suggerimenti di AL-76", clearly yours. Do not read the text aloud: \
         after saving say in one or two sentences how many themes and what to do first.
         """
     }
@@ -174,7 +174,7 @@ final class Dictation {
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Manca il testo riordinato." }
         let base = (name.flatMap { find($0) } ?? documents().first)?.deletingPathExtension().lastPathComponent ?? "Brainstorming"
         return PDFTools.fromText(["title": "Brainstorming riordinato", "name": base + tidySuffix, "folder": folder.path,
-                                  "text": "Riordinato da JARVIS dal PDF \"\(base)\", che resta com'era.\n" + text, "show": true, "replace": true])
+                                  "text": "Riordinato da AL-76 dal PDF \"\(base)\", che resta com'era.\n" + text, "show": true, "replace": true])
     }
 
     private func save() {
@@ -187,8 +187,8 @@ final class Dictation {
 
     enum Control { case stop, undo }
 
-    /// Only with "Jarvis" before: "Jarvis, basta scrivere", "Jarvis, cancella l'ultima frase".
-    /// Without "Jarvis" the same words are written down, since they may be part of the thought.
+    /// Only with the call before: "Ehi Al, basta scrivere", "Ehi Al, cancella l'ultima frase".
+    /// Without it the same words are written down, since they may be part of the thought.
     static func control(_ text: String) -> Control? {
         guard let command = WakeVerifier.command(from: text) else { return nil }
         let c = DirectCommand.clean(command)

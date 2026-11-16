@@ -66,7 +66,7 @@ struct HUDView: View {
             Button("Nuova conversazione") { assistant.resetConversation() }
             Button("Riduci a satellite") { onCompact() }
             Divider()
-            Button("Esci da JARVIS") { NSApp.terminate(nil) }
+            Button("Esci da AL-76") { NSApp.terminate(nil) }
         }
         .gesture(DragGesture(minimumDistance: 3)
             .onChanged { _ in onWindowDrag(false) }
@@ -177,7 +177,7 @@ struct HUDDrawerContent: View {
                             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(HUD.cyan.opacity(0.5), lineWidth: 1))
                     }
                 }
-                HUDReadout(label: "ATTIVAZIONE", value: "\"JARVIS\" · ⌃⌥SPAZIO")
+                HUDReadout(label: "ATTIVAZIONE", value: "\"EHI AL\" · ⌃⌥SPAZIO")
                 Text("CERVELLO").font(HUD.font(9)).tracking(2).foregroundStyle(HUD.cyan.opacity(0.6))
                 HStack(spacing: 8) {
                     brainButton(.local, title: "LOCALE")
@@ -286,7 +286,7 @@ struct HUDDrawerContent: View {
                 ScrollView(.vertical) {
                     LazyVStack(alignment: .leading, spacing: 6) {
                         if assistant.conversation.isEmpty {
-                            transcriptLine(tag: "JARVIS", text: "—", color: HUD.ice)
+                            transcriptLine(tag: "AL-76", text: "—", color: HUD.ice)
                         }
                         ForEach(assistant.conversation) { exchange in
                             VStack(alignment: .leading, spacing: 4) {
@@ -294,7 +294,7 @@ struct HUDDrawerContent: View {
                                     transcriptLine(tag: "TU", text: exchange.user, color: HUD.cyan.opacity(0.85))
                                 }
                                 if !exchange.reply.isEmpty {
-                                    transcriptLine(tag: "JARVIS", text: exchange.reply, color: HUD.ice)
+                                    transcriptLine(tag: "AL-76", text: exchange.reply, color: HUD.ice)
                                 }
                             }
                             .padding(.bottom, 4)

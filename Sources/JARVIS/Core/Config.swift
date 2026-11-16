@@ -46,8 +46,15 @@ struct JarvisConfig: Codable, Equatable {
     var developerMode = false
     /// Dark shaded disc behind the NUCLEUS (off: it blends completely with the wallpaper).
     var nucleusBackdrop = true
-    /// Look of the NUCLEUS: "reattore" (the original reactor) or "satellite" (3D satellite).
+    /// Look of the NUCLEUS: "reattore" (the original reactor), "satellite" (3D satellite) or "robottino"
+    /// (3D robot from a model in Application Support/JARVIS/Companion; without it, the satellite).
     var nucleusStyle = "reattore"
+    /// ROBOTTINO: the larger size (the smaller one, a fifth less, is the default).
+    var robotLarge = false
+    /// ROBOTTINO: colour of the jet flames, "fuoco" or "ioniche".
+    var robotFlames = "fuoco"
+    /// ROBOTTINO: while JARVIS waits it lands on the bottom edge of the display and walks there, engines off.
+    var robotWalks = false
     /// How JARVIS addresses the user in Italian ("signore" by default); set in config.json.
     var honorific = "signore"
     var whisperModel = "openai_whisper-large-v3-v20240930_turbo_632MB"
@@ -68,7 +75,7 @@ struct JarvisConfig: Codable, Equatable {
     var claudeModel = "sonnet"
     /// Words Whisper must spell correctly (names, acronyms): they are given to it
     /// as context before every transcription. You can add your own.
-    var vocabulary = "Jarvis, Claude, Sonnet, Opus, Haiku, Gemma, ROS 2, Arduino, Bambu Studio, Robot Console."
+    var vocabulary = "Ehi Al, AL-76, Claude, Sonnet, Opus, Haiku, Gemma, ROS 2, Arduino, Bambu Studio, Robot Console."
     /// Kokoro neural voice (if installed); otherwise Apple voices.
     var neuralVoice = true
     var kokoroEnglishVoice = "bm_lewis"
@@ -147,6 +154,9 @@ struct JarvisConfig: Codable, Equatable {
         developerMode = try c.decodeIfPresent(Bool.self, forKey: .developerMode) ?? d.developerMode
         nucleusBackdrop = try c.decodeIfPresent(Bool.self, forKey: .nucleusBackdrop) ?? d.nucleusBackdrop
         nucleusStyle = try c.decodeIfPresent(String.self, forKey: .nucleusStyle) ?? d.nucleusStyle
+        robotLarge = try c.decodeIfPresent(Bool.self, forKey: .robotLarge) ?? d.robotLarge
+        robotFlames = try c.decodeIfPresent(String.self, forKey: .robotFlames) ?? d.robotFlames
+        robotWalks = try c.decodeIfPresent(Bool.self, forKey: .robotWalks) ?? d.robotWalks
         honorific = try c.decodeIfPresent(String.self, forKey: .honorific) ?? d.honorific
         whisperModel = try c.decodeIfPresent(String.self, forKey: .whisperModel) ?? d.whisperModel
         localModel = try c.decodeIfPresent(String.self, forKey: .localModel) ?? d.localModel

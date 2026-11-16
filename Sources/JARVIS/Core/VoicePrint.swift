@@ -61,25 +61,25 @@ final class VoicePrint: ObservableObject {
 }
 
 /// Guided voice enrolment: shows one sentence at a time and keeps it only
-/// if it really contains "Jarvis". The audio is not kept.
+/// if it really contains "Ehi Al" (until 16 November: "Jarvis"). The audio is not kept.
 @MainActor
 final class VoiceEnrollment: ObservableObject {
     static let firstPrompts = [
-        "Jarvis", "Jarvis", "Jarvis", "Jarvis",
-        "Jarvis (più piano)", "Jarvis (più piano)",
-        "Jarvis (più veloce)", "Jarvis (più veloce)",
-        "Jarvis (allontanati un po' dal Mac)", "Jarvis (allontanati un po' dal Mac)",
-        "Jarvis (come se fossi occupato)", "Jarvis (come se fossi occupato)",
-        "Jarvis, che ore sono?",
-        "Jarvis, apri Safari.",
-        "Jarvis, quali sono gli impegni di oggi?",
-        "Jarvis, apri il PDF di chimica organica.",
-        "Jarvis, ricordami di chiamare domani mattina.",
-        "Jarvis, what's the weather like today?",
+        "Ehi Al", "Ehi Al", "Ehi Al", "Ehi Al",
+        "Ehi Al (più piano)", "Ehi Al (più piano)",
+        "Ehi Al (più veloce)", "Ehi Al (più veloce)",
+        "Ehi Al (allontanati un po' dal Mac)", "Ehi Al (allontanati un po' dal Mac)",
+        "Ehi Al (come se fossi occupato)", "Ehi Al (come se fossi occupato)",
+        "Ehi Al, che ore sono?",
+        "Ehi Al, apri Safari.",
+        "Ehi Al, quali sono gli impegni di oggi?",
+        "Ehi Al, apri il PDF di chimica organica.",
+        "Ehi Al, ricordami di chiamare domani mattina.",
+        "Hey Al, what's the weather like today?",
     ]
 
     /// More sentences: at each beep change place, direction or tone.
-    static let morePrompts = Array(repeating: "Jarvis\n(a ogni beep cambia distanza, direzione o tono)", count: 15)
+    static let morePrompts = Array(repeating: "Ehi Al\n(a ogni beep cambia distanza, direzione o tono)", count: 15)
 
     /// Real commands, said as after the beep: the voice of a whole sentence, not just of "Jarvis".
     static let commandPrompts = [
@@ -120,7 +120,7 @@ final class VoiceEnrollment: ObservableObject {
         isActive = true
     }
 
-    /// The recorded sentence is the right one: "Jarvis" or at least half the words of the command.
+    /// The recorded sentence is the right one: "Ehi Al" or at least half the words of the command.
     /// So the TV or someone else in the background do not end up in the voiceprint.
     func accepts(_ heard: String) -> Bool {
         guard commands else { return WakeVerifier.command(from: heard) != nil }
@@ -135,7 +135,7 @@ final class VoiceEnrollment: ObservableObject {
     /// Whisper did not understand the sentence. For commands, after three attempts it moves to the next:
     /// one hard word must not lose the whole enrolment.
     func refused() {
-        message = commands ? "Non ho capito la frase: rileggila." : "Non ho sentito \"Jarvis\": ripeti la frase."
+        message = commands ? "Non ho capito la frase: rileggila." : "Non ho sentito \"Ehi Al\": ripeti la frase."
         guard commands else { return }
         refusals += 1
         if refusals >= 3 {

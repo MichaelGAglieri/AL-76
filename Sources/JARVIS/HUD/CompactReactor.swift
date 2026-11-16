@@ -13,9 +13,19 @@ final class ReactorPanel: NSPanel {
     /// above and below there was only empty space): it can sit close to the edges of the display.
     static let satelliteSize = NSSize(width: 221, height: 130)
     static func dimensions(for style: String) -> NSSize {
-        style == "satellite" ? satelliteSize : NSSize(width: size, height: size)
+        style == "satellite" || style == "robottino" ? satelliteSize : NSSize(width: size, height: size)
     }
     private var styleWatch: AnyCancellable?
+    /// The ROBOTTINO style, when its model is there: its own view replaces the SwiftUI one.
+    private let host: ReactorHostingView
+    private var robotView: RobotNucleusView?
+    private weak var assistant: Assistant?
+    private var usesRobot = false
+    private var hiddenForRobot = false
+    /// Only one ROBOTTINO: on the display with the menu bar. The other displays show nothing in that style.
+    private var isPrimary: Bool { displayID == NSScreen.screens.first?.displayID }
+    /// Hidden by a widget panel or a full-screen app: the robot then lets every click through.
+    var isCoveredByOthers: Bool { widgetCovered || appCovered }
     /// The normal level, always kept at its back (see `orderFrontRegardless`): above
     /// the wallpaper and the desktop widgets (level −1), below every app window.
     static let desktopLevel = NSWindow.Level.normal
@@ -28,22 +38,23 @@ final class ReactorPanel: NSPanel {
 
     init(assistant: Assistant, screen: NSScreen, onOpen: @escaping (ReactorPanel) -> Void) {
         displayID = screen.displayID
+        // On every desktop, still during Mission Control, out of ⌘Tab; and never hidden when the app loses
+        // focus (macOS panels do by default): the NUCLEUS must always stay on the desktop (set below).
+        host = ReactorHostingView(rootView: CompactReactorView(assistant: assistant))
+        self.assistant = assistant
         super.init(contentRect: NSRect(x: 0, y: 0, width: Self.size, height: Self.size),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
         level = Self.desktopLevel
-        // On every desktop, still during Mission Control, out of ⌘Tab.
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         isReleasedWhenClosed = false
-        // macOS panels hide when the app loses focus:
-        // the NUCLEUS instead must always stay on the desktop.
         hidesOnDeactivate = false
-        let host = ReactorHostingView(rootView: CompactReactorView(assistant: assistant))
         host.onClick = { [weak self] in if let self { onOpen(self) } }
         host.assistant = assistant
         contentView = host
+        openHUD = { [weak self] in if let self { onOpen(self) } }
         // The widgets' central panels (Manual, Privacy) sit below the NUCLEUS: it steps aside.
         for name in ["hide", "show"] {
             CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), Unmanaged.passUnretained(self).toOpaque(), { _, observer, name, _, _ in
@@ -60,14 +71,37 @@ final class ReactorPanel: NSPanel {
         if !isOnOwnScreen { placeAtCenter() }
         setFrameAutosaveName(name)
         // Size of the chosen style, around the same centre; it follows a change in Settings.
-        styleWatch = assistant.$config.map(\.nucleusStyle).removeDuplicates().sink { [weak self] style in
-            guard let self else { return }
-            self.floats = style == "satellite"
-            self.resize(to: Self.dimensions(for: style))
-            if self.isVisible { self.orderFrontRegardless() }
+        styleWatch = assistant.$config.map { "\($0.nucleusStyle)|\($0.robotLarge)" }.removeDuplicates().sink { [weak self] _ in
+            self?.applyStyle()
         }
-        // The satellite starts every launch in the top right corner of its display (it can still be dragged).
-        if assistant.config.nucleusStyle == "satellite" { placeTopRight() }
+        // The satellite and the robot start every launch in the top right corner of their display (they can still be dragged).
+        if ["satellite", "robottino"].contains(assistant.config.nucleusStyle) { placeTopRight() }
+    }
+
+    private var openHUD: () -> Void = {}
+
+    /// Content, size and level for the chosen style; it follows a change in Settings.
+    private func applyStyle() {
+        guard let assistant else { return }
+        let style = assistant.config.nucleusStyle
+        usesRobot = style == "robottino" && RobotNucleusView.modelAvailable
+        floats = style == "satellite" || style == "robottino"
+        if usesRobot {
+            let view = robotView ?? RobotNucleusView(assistant: assistant)
+            view.onOpen = openHUD
+            robotView = view
+            if contentView !== view { contentView = view }
+            resize(to: RobotNucleusView.size(large: assistant.config.robotLarge))
+        } else {
+            if contentView !== host { contentView = host }
+            ignoresMouseEvents = widgetCovered || appCovered
+            resize(to: Self.dimensions(for: style))
+        }
+        // Shown again if it was visible, or if it had stepped aside for the robot of the main display.
+        if isVisible || hiddenForRobot {
+            hiddenForRobot = false
+            orderFrontRegardless()
+        }
     }
 
     func placeTopRight() {
@@ -127,7 +161,8 @@ final class ReactorPanel: NSPanel {
     private func applyVisibility() {
         let hidden = widgetCovered || appCovered
         animator().alphaValue = hidden ? 0 : 1
-        ignoresMouseEvents = hidden
+        // The robot decides by itself, frame by frame (only the model catches the mouse).
+        if !usesRobot || hidden { ignoresMouseEvents = hidden }
     }
 
     private func setCovered(_ covered: Bool) {
@@ -145,6 +180,12 @@ final class ReactorPanel: NSPanel {
     /// the NUCLEUS shared that level and macOS kept the widgets in front of it: on the main
     /// display it stayed visible through them but could no longer be clicked or dragged.
     override func orderFrontRegardless() {
+        // One robot only, on the main display.
+        if usesRobot && !isPrimary {
+            hiddenForRobot = true
+            if isVisible { super.orderOut(nil) }
+            return
+        }
         if floats {
             stacking?.invalidate()
             stacking = nil
@@ -287,7 +328,7 @@ final class ReactorHostingView: NSHostingView<CompactReactorView> {
         menu.addItem(withTitle: "Scrivi (⌃⌥T)", action: #selector(write), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Nuova conversazione", action: #selector(reset), keyEquivalent: "").target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Esci da JARVIS", action: #selector(quit), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Esci da AL-76", action: #selector(quit), keyEquivalent: "").target = self
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 
@@ -318,7 +359,8 @@ struct CompactReactorView: View {
                 // to reach the NUCLEUS instead of passing to the wallpaper.
                 Ellipse().fill(Color.black.opacity(0.012))
             }
-            if assistant.config.nucleusStyle == "satellite" {
+            // The robot style without its model falls back to the satellite.
+            if assistant.config.nucleusStyle == "satellite" || assistant.config.nucleusStyle == "robottino" {
                 SatelliteView(assistant: assistant, paused: !assistant.compactVisible)
             } else {
                 ReactorView(assistant: assistant, compact: true, paused: !assistant.compactVisible)
@@ -327,7 +369,7 @@ struct CompactReactorView: View {
         }
         .frame(width: size.width, height: size.height)
         .contentShape(Ellipse())
-        .help("SATELLITE di JARVIS · clic per aprire l'HUD, trascina per spostare")
+        .help("SATELLITE di AL-76 · clic per aprire l'HUD, trascina per spostare")
     }
 }
 

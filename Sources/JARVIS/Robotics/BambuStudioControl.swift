@@ -555,7 +555,7 @@ final class BambuStudioControl {
 
     private func click(_ point: CGPoint, app: NSRunningApplication) async throws {
         guard !appControl.halted else { throw Problem("Interrotto dall'utente.") }
-        guard AXIsProcessTrusted() else { throw Problem("Manca il permesso Accessibilità per JARVIS.") }
+        guard AXIsProcessTrusted() else { throw Problem("Manca il permesso Accessibilità per AL-76.") }
         guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
             throw Problem("Bambu Studio non è più davanti: non clicco.")
         }

@@ -65,7 +65,7 @@ final class PanelWindows: NSObject, ObservableObject, NSWindowDelegate {
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                             styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
                             backing: .buffered, defer: false)
-        panel.title = "JARVIS · \(drawer.title)"
+        panel.title = "AL-76 · \(drawer.title)"
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true

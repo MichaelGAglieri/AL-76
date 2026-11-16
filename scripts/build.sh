@@ -1,11 +1,12 @@
 #!/bin/zsh
-# Builds JARVIS and creates build/JARVIS.app.
+# Builds AL-76 (formerly JARVIS) and creates build/AL-76.app.
 #   ./scripts/build.sh            builds and assembles the app
 #   ./scripts/build.sh --install  also copies it to /Applications and launches it
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-APP="$ROOT/build/JARVIS.app"
+APP="$ROOT/build/AL-76.app"
+rm -rf "$ROOT/build/JARVIS.app"   # the name until 1.30.63
 cd "$ROOT"
 # This Mac's app bundle identifier (local.env, outside Git; example in local.env.example).
 [[ -f "$ROOT/local.env" ]] && source "$ROOT/local.env"
@@ -37,6 +38,7 @@ cp "$ROOT/build/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "$ROOT"/Vendor/porcupine/{libpv_porcupine.dylib,porcupine_params.pv,jarvis_mac.ppn} "$APP/Contents/Resources/porcupine/"
 cp "$ROOT/Resources/tts_server.py" "$APP/Contents/Resources/tts_server.py"
 cp "$ROOT/Resources/voce_jarvis.wav" "$APP/Contents/Resources/voce_jarvis.wav"
+cp "$ROOT/Resources/voce_robottino.wav" "$APP/Contents/Resources/voce_robottino.wav"
 cp "$ROOT/Resources/ros_bridge.py" "$APP/Contents/Resources/ros_bridge.py"
 
 echo "▸ Firma…"
@@ -62,8 +64,9 @@ if [[ "${1:-}" == "--install" ]]; then
     echo "▸ Installazione in /Applications…"
     osascript -e "tell application id \"$BUNDLE_ID\" to quit" 2>/dev/null || true
     sleep 1
-    rm -rf /Applications/JARVIS.app
-    cp -R "$APP" /Applications/JARVIS.app
-    open /Applications/JARVIS.app
+    # Until 1.30.63 the app was /Applications/JARVIS.app: same bundle id and signature, so the permissions stay.
+    rm -rf /Applications/JARVIS.app /Applications/AL-76.app
+    cp -R "$APP" /Applications/AL-76.app
+    open /Applications/AL-76.app
 fi
 echo "✓ Pronto: $APP"
