@@ -25,6 +25,25 @@ paid API.
 > commands and app labels are in Italian. Full manual: [`Manual_AL-76.pdf`](Manual_AL-76.pdf). Version
 > history: [`CHANGELOG.md`](CHANGELOG.md). Installation guide: [`INSTALL.md`](INSTALL.md).
 
+## From JARVIS to AL-76
+
+Until version **1.30.61** this project was published as **JARVIS**, after the AI of Iron Man, and it woke up to
+the word "Jarvis". Over time it stopped being an imitation of a film character: it grew around one person's
+studies, robotics lab, 3D printer and daily habits, with its own voice, its own NUCLEUS and a small robot
+companion. So on 16 November 2026 it got a name of its own, a robot that builds what it needs from what is at
+hand, and a call that sounds like calling a friend: **"Ehi Al"**. The features did not change with the name.
+
+| Name | Versions | Call | Get it |
+|------|----------|------|--------|
+| **JARVIS** | 1.0 – **1.30.61**, the last one published as JARVIS | "Jarvis" | tag [`jarvis-1.30.61`](../../tree/jarvis-1.30.61) · [zip](../../archive/refs/tags/jarvis-1.30.61.zip) · `git checkout jarvis-1.30.61` |
+| **AL-76** | from **1.30.64** on | "Ehi Al" | this branch (`main`) |
+
+Versions 1.30.62 and 1.30.63 (diagrams and the ROBOTTINO) were never published on their own: they are part of
+AL-76 1.30.64. What exactly changed with the rename is in [`CHANGELOG.md`](CHANGELOG.md) under 1.30.64.
+JARVIS and AL-76 share the same internal identifiers (bundle id, data folder, Keychain, iPhone pairing):
+moving from one to the other keeps settings, data and macOS permissions, but they are not meant to be installed
+side by side.
+
 ## Requirements
 
 - A Mac with Apple Silicon and macOS 15 or later; 16 GB of RAM is the practical minimum for the
@@ -194,6 +213,21 @@ reinstalled every 7 days (it warns two days before); pairing and settings are ke
   AL-76 listens or speaks; a click opens the HUD around it on that display (if the HUD is open on another
   display, it shrinks there first).
 - The animation runs at 30 fps while AL-76 works, 12 while waiting, 6 after a minute, and stops when hidden.
+
+## The ROBOTTINO companion (optional 3D model)
+
+Besides the reactor and the satellite, the NUCLEUS can be a small 3D robot that floats on jet flames, acts out
+AL-76's states, walks along the bottom edge of the screen and answers typed questions in a speech bubble. The
+3D model is **not** in this repository; download it yourself, it is free:
+
+1. Open ["Mini Robot" by Onur on Sketchfab](https://sketchfab.com/3d-models/mini-robot-3454c84d6eff4a9dabbfadbfd1f56524) (a free Sketchfab account is needed) and choose
+   **Download 3D Model › glTF**.
+2. Unzip it into `~/Library/Application Support/JARVIS/Companion/`, so that `scene.gltf`, `scene.bin` and the
+   `textures` folder sit directly in it. Optional, to save memory: `sips -Z 1024 textures/*` in that folder.
+3. Settings (⚙︎) › SATELLITE › Aspetto: **Robottino**. Without the model the satellite is shown.
+
+Credit, as the licence requires: this work is based on "Mini Robot" (https://sketchfab.com/3d-models/mini-robot-3454c84d6eff4a9dabbfadbfd1f56524) by Onur (https://sketchfab.com/onurpearl),
+licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/).
 
 ## Brains: Gemma and Claude
 
@@ -375,7 +409,7 @@ only if they carry the key in `dev_token` (readable only by your user); the HUD 
 
 WhisperKit (MIT), Kokoro / kokoro-onnx (Apache 2.0), Supertonic 3 (code MIT, model BigScience Open RAIL-M),
 Qwen3-TTS (Apache 2.0) with mlx-audio (MIT), Picovoice Porcupine (Apache 2.0, in `Vendor/porcupine`),
-Ollama (MIT), Gemma 4 model (Gemma terms of use). The voice sample `Resources/voce_jarvis.wav` is synthetic.
+Ollama (MIT), Gemma 4 model (Gemma terms of use). The voice sample `Resources/voce_jarvis.wav` is synthetic. The ROBOTTINO model ("Mini Robot" by Onur, CC-BY 4.0) is not included; see [The ROBOTTINO companion](#the-robottino-companion-optional-3d-model).
 
 "AL-76" is the robot of Isaac Asimov's story "Robot AL-76 Goes Astray" (1942); this is an independent hobby
 project, not affiliated with or endorsed by the Asimov estate or its publishers.

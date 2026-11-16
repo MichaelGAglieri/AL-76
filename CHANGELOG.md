@@ -3,6 +3,13 @@
 Every version was built, installed and tested on the Mac (and on the iPhone and iPad app when it was
 involved) before moving to the next one. All dates are in 2026.
 
+## 1.30.65 — 16 November
+
+- **The ROBOTTINO's speech bubble always stays on screen, and its tail follows the mouth.** The bubble's side used to be chosen once per sentence, so when Al then moved it went past the edge. Now it changes side only when it no longer fits, and its position is always corrected to stay inside the screen. The tail leaves the side of the bubble and reaches the mouth's height wherever the robot is: from the lower corner when the bubble is above the mouth (the usual case), from the upper corner or the side when the screen pushes it lower.
+- **No line cut in half.** The bubble is a whole number of lines tall (up to half the screen, at most 260 points), and a long answer scrolls by whole lines.
+- **It no longer comes back.** After fading out, on the next frame the same answer reopened it and typed it again from the start, so it seemed never to go away. Now an answer already read does not return unless new text arrives, and then it goes on from where it had got to. It stays up long enough to read it (about 18 characters a second), between 3 and 20 seconds.
+- **Docs:** the READMEs have a "From JARVIS to AL-76" section, with why the name changed and the versions (JARVIS up to 1.30.61, tag `jarvis-1.30.61`; AL-76 from 1.30.64), and one on the ROBOTTINO, with the link to the model on Sketchfab and the credit its CC-BY 4.0 licence requires.
+
 ## 1.30.64 — 16 November
 
 - **JARVIS becomes AL-76.** The project is now the user's own, and they no longer wanted Iron Man's name. The new name comes from Isaac Asimov's story *Robot AL-76 Goes Astray* (1942): a robot built for mining on the Moon gets lost on Earth and, in a shack, builds itself a disintegrator out of the scrap it finds. Randolph Payne, the man who keeps it, simply calls it "Al".

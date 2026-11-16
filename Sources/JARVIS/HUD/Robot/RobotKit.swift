@@ -682,9 +682,15 @@ static func voiceLevel(_ t: CGFloat) -> CGFloat { max(0, 0.5 + 0.5 * sin(t * 13)
 // MARK: - Speech bubble
 
 /// A comic speech bubble beside the head, its tail pointing at the mouth; the text types itself in.
+/// The bubble and the tail's tip are placed each frame by `Bubble.update`: the tip always sits at the mouth's
+/// height, wherever the robot is, and the bubble always stays inside the screen (16 November, user request).
 final class BubbleView: NSView {
-    static let tailW: CGFloat = 26, rise: CGFloat = 20, pad: CGFloat = 11, margin: CGFloat = 5, maxWidth: CGFloat = 230, maxHeight: CGFloat = 170
+    static let tailW: CGFloat = 26, rise: CGFloat = 20, pad: CGFloat = 11, margin: CGFloat = 6, maxWidth: CGFloat = 230
+    /// The tail leaves the bubble's left side (the bubble is on the right of the mouth).
     var tailLeft = true
+    /// In the view: the bubble's rectangle and the tail's tip (the mouth, or as close as the screen allows).
+    var bubble = NSRect.zero
+    var tip = NSPoint.zero
     let scroll = NSScrollView()
     let text = NSTextView()
 
@@ -705,8 +711,11 @@ final class BubbleView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Size of the text area for a string.
-    func measure(_ string: String) -> NSSize {
+    var lineHeight: CGFloat { ceil(NSLayoutManager().defaultLineHeight(for: text.font!)) }
+
+    /// Size of the text area for a string, at most `maxHeight` tall and always a whole number of lines,
+    /// so the top line is never cut in half.
+    func measure(_ string: String, maxHeight: CGFloat) -> NSSize {
         let storage = NSTextStorage(string: string, attributes: [.font: text.font!])
         let container = NSTextContainer(size: NSSize(width: Self.maxWidth, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0
@@ -715,41 +724,51 @@ final class BubbleView: NSView {
         storage.addLayoutManager(layout)
         layout.glyphRange(for: container)
         let used = layout.usedRect(for: container)
-        return NSSize(width: max(24, ceil(used.width) + 6), height: min(Self.maxHeight, max(17, ceil(used.height))))
+        let line = lineHeight
+        let lines = max(1, min(floor(maxHeight / line), ceil(used.height / line)))
+        return NSSize(width: max(24, ceil(used.width) + 6), height: lines * line)
     }
 
-    var bubbleRect: NSRect {
-        NSRect(x: tailLeft ? Self.tailW : Self.margin, y: Self.margin + Self.rise, width: bounds.width - Self.tailW - Self.margin, height: bounds.height - Self.margin * 2 - Self.rise)
-    }
-    /// Height of the tail's tip in the panel: level with the mouth, below the bubble, which sits higher (beside the head's top).
-    static var tipY: CGFloat { margin + 2 }
-    static func size(for content: NSSize) -> NSSize {
-        NSSize(width: content.width + pad * 2 + tailW + margin, height: content.height + (pad - 2) * 2 + margin * 2 + rise)
+    /// The bubble around a text area of this size.
+    static func bubbleSize(for content: NSSize) -> NSSize {
+        NSSize(width: content.width + pad * 2, height: content.height + (pad - 2) * 2)
     }
 
     func layoutText() {
-        let r = bubbleRect.insetBy(dx: Self.pad, dy: Self.pad - 2)
+        let r = bubble.insetBy(dx: Self.pad, dy: Self.pad - 2)
         scroll.frame = r
         text.frame = NSRect(x: 0, y: 0, width: r.width, height: max(r.height, text.frame.height))
         text.textContainer?.containerSize = NSSize(width: r.width, height: .greatestFiniteMagnitude)
         text.sizeToFit()
-        text.scrollToEndOfDocument(nil)
+        // A long answer shows its last lines while it types: scrolled by whole lines, so the top one is whole.
+        let line = lineHeight
+        let overflow = max(0, text.frame.height - r.height)
+        let y = min(overflow, ceil(overflow / line) * line)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: text.isFlipped ? y : overflow - y))
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let r = bubbleRect.insetBy(dx: 1, dy: 1)
+        let r = bubble.insetBy(dx: 1, dy: 1)
         let path = NSBezierPath(roundedRect: r, xRadius: 14, yRadius: 14)
         let tail = NSBezierPath()
-        if tailLeft {
-            // A wedge from the bubble's lower corner down to the mouth's height, just outside the head.
-            tail.move(to: NSPoint(x: r.minX + 3, y: r.minY + 14))
-            tail.line(to: NSPoint(x: 1, y: Self.tipY))
-            tail.line(to: NSPoint(x: r.minX + 24, y: r.minY + 1))
+        // A wedge from the side of the bubble to the tip. With the mouth below the bubble (the usual case)
+        // it leaves the lower corner, above it the upper corner, otherwise the side at the mouth's height.
+        let x = tailLeft ? r.minX : r.maxX, inward: CGFloat = tailLeft ? 1 : -1
+        let a: NSPoint, b: NSPoint
+        if tip.y < r.minY + 16 {
+            a = NSPoint(x: x + inward * 3, y: r.minY + 14)
+            b = NSPoint(x: x + inward * 24, y: r.minY + 1)
+        } else if tip.y > r.maxY - 16 {
+            a = NSPoint(x: x + inward * 24, y: r.maxY - 1)
+            b = NSPoint(x: x + inward * 3, y: r.maxY - 14)
         } else {
-            tail.move(to: NSPoint(x: r.maxX - 24, y: r.minY + 1))   // same winding as the left one
-            tail.line(to: NSPoint(x: bounds.width - 1, y: Self.tipY))
-            tail.line(to: NSPoint(x: r.maxX - 3, y: r.minY + 14))
+            a = NSPoint(x: x + inward * 3, y: tip.y + 9)
+            b = NSPoint(x: x + inward * 3, y: tip.y - 9)
         }
+        tail.move(to: a)
+        tail.line(to: tip)
+        tail.line(to: b)
         tail.close()
         path.append(tail)
         path.windingRule = .nonZero
@@ -772,7 +791,7 @@ final class Bubble {
     private var full = "", typed = 0
     private var started: CGFloat = 0, finished: CGFloat = 0
     private(set) var typing = false
-    private var side: Bool?   // true: bubble on the right of the mouth; chosen once per sentence
+    private var side: Bool?   // true: bubble on the right of the mouth; changes only when it no longer fits
 
     init() {
         panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -788,6 +807,9 @@ final class Bubble {
     }
 
     private var shownID: UUID?
+    /// The answer that was already read and faded out: it must not come back (16 November: it reappeared a few
+    /// seconds after fading, typed again from the start). Only new text for the same answer reopens it.
+    private var doneID: UUID?, doneText = ""
 
     func say(_ text: String, at t: CGFloat) { show(text, id: UUID(), at: t) }
 
@@ -796,7 +818,17 @@ final class Bubble {
     func show(_ text: String, id: UUID, at t: CGFloat) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
-        if id != shownID || !panel.isVisible {
+        if id == doneID {
+            // Faded already: back only if the answer went on, and then from where it had arrived.
+            guard clean.count > doneText.count, clean.hasPrefix(doneText) else { return }
+            doneID = nil
+            shownID = id
+            typed = doneText.count
+            started = t - CGFloat(typed) / 38
+            side = nil
+            panel.alphaValue = 1
+            panel.orderFrontRegardless()
+        } else if id != shownID || !panel.isVisible {
             shownID = id
             typed = 0
             side = nil
@@ -830,27 +862,54 @@ final class Bubble {
             }
             if n >= full.count { typing = false; finished = t }
         } else {
-            // Stays long enough to read, then fades.
-            let hold = max(2.5, CGFloat(full.count) / 16)
+            // Stays long enough to read (about 18 characters a second, 3 to 20 s), then fades for good.
+            let hold = min(20, max(3, CGFloat(full.count) / 18))
             let fade = (t - finished - hold) / 0.5
-            if fade >= 1 { hide(); return false }
+            if fade >= 1 {
+                doneID = shownID
+                doneText = full
+                hide()
+                return false
+            }
             panel.alphaValue = 1 - max(0, fade)
         }
-        let content = view.measure(String(full.prefix(max(1, typed))))
-        let size = BubbleView.size(for: content)
-        if side == nil {
-            let whole = view.measure(full)
-            side = edge + 3 + BubbleView.size(for: whole).width < screen.maxX
+        let inset: CGFloat = 4
+        let maxHeight = min(260, screen.height * 0.5)
+        let content = view.measure(String(full.prefix(max(1, typed))), maxHeight: maxHeight)
+        let size = BubbleView.bubbleSize(for: content)
+
+        // The side: right of the head if it fits on the screen, else left; it changes only when the robot
+        // moves so that the bubble no longer fits where it is.
+        let rightX = edge + BubbleView.tailW, leftX = left - BubbleView.tailW - size.width
+        let fitsRight = rightX + size.width <= screen.maxX - inset, fitsLeft = leftX >= screen.minX + inset
+        if side == nil || (side! && !fitsRight && fitsLeft) || (!side! && !fitsLeft && fitsRight) {
+            side = fitsRight || (!fitsLeft && screen.maxX - edge >= left - screen.minX)
         }
         let right = side!
         view.tailLeft = right
-        // The tail points at the mouth from just outside the head; the bubble sits beside the head and grows upwards.
-        var origin = NSPoint(x: right ? edge + 3 - 1 : left - 3 - size.width + 1, y: mouth.y - BubbleView.tipY)
-        origin.y = min(origin.y, screen.maxY - size.height)
-        let frame = NSRect(origin: origin, size: size)
-        if frame != panel.frame {
+
+        // The bubble beside the head, its bottom a little above the mouth, inside the screen.
+        var bubble = NSRect(x: right ? rightX : leftX, y: mouth.y + BubbleView.rise, width: size.width, height: size.height)
+        bubble.origin.x = min(max(bubble.minX, screen.minX + inset), screen.maxX - inset - size.width)
+        bubble.origin.y = min(max(bubble.minY, screen.minY + inset), screen.maxY - inset - size.height)
+        // The tip at the mouth's height, just outside the head, never inside the bubble.
+        var tip = NSPoint(x: right ? edge + 3 : left - 3, y: mouth.y)
+        tip.x = right ? min(tip.x, bubble.minX - 8) : max(tip.x, bubble.maxX + 8)
+        tip.x = min(max(tip.x, screen.minX + 2), screen.maxX - 2)
+        tip.y = min(max(tip.y, screen.minY + 2), screen.maxY - 2)
+
+        let m = BubbleView.margin
+        let frame = bubble.union(NSRect(x: tip.x - 1, y: tip.y - 1, width: 2, height: 2)).insetBy(dx: -m, dy: -m).integral
+        let localBubble = bubble.offsetBy(dx: -frame.minX, dy: -frame.minY)
+        let localTip = NSPoint(x: tip.x - frame.minX, y: tip.y - frame.minY)
+        let moved = frame != panel.frame
+        if moved {
             panel.setFrame(frame, display: false)
-            view.frame = NSRect(origin: .zero, size: size)
+            view.frame = NSRect(origin: .zero, size: frame.size)
+        }
+        if moved || localBubble != view.bubble || localTip != view.tip {
+            view.bubble = localBubble
+            view.tip = localTip
             view.layoutText()
             view.needsDisplay = true
         } else if typing { view.layoutText() }
