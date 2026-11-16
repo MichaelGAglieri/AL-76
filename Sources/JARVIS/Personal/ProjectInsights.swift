@@ -29,7 +29,8 @@ enum ProjectInsights {
 
     static func info(_ args: [String: Any]) async -> String {
         guard let name = args.string("name"), let dir = find(name) else {
-            return "Progetto non trovato. Progetti disponibili: " + projectFolders().map(\.lastPathComponent).joined(separator: ", ")
+            return "Progetto non trovato tra i suoi. If the name may come from the news you gave today, call news_detail with it instead of listing projects. Progetti disponibili: "
+                + projectFolders().map(\.lastPathComponent).joined(separator: ", ")
         }
         var out = "Progetto \(dir.lastPathComponent) (percorso \(dir.path))\n"
 

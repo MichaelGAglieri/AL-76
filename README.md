@@ -27,6 +27,8 @@ paid API.
 - An Apple Development certificate (Xcode › Settings › Accounts). A stable signature lets macOS
   remember the app's permissions between builds.
 - Optional: a Claude subscription and Claude Code (`claude`), Tailscale, an iPhone or iPad.
+- For mail: Full Disk Access for JARVIS (System Settings › Privacy & Security), so it reads Mail's index on
+  disk in under a second; without it JARVIS asks Mail through AppleScript, which is slow with a large inbox.
 
 ## Installation
 
@@ -79,6 +81,9 @@ claude auth login --claudeai
 - A protocol with `"sintetico": true` in protocolli.json is a sequence of actions: it acknowledges at once and speaks only at the end.
 - Or press **⌃⌥Space** (Control + Option + Space) and speak. Press it again to interrupt. With AirPods, a press
   on the stem does the same while JARVIS uses their microphone.
+- Or press **⌃⌥T** and type: a small bar opens right under the SATELLITE (next to the sphere when its window is
+  open, where you can drag it by the keyboard icon). Return sends, Esc closes it. The answer is written under the
+  bar and JARVIS stays silent; the speaker icon on the bar makes it read the answer aloud as well.
 - Long sentences are fine: a short command ends after 0.8 s of silence, a longer sentence waits up to 1.7 s, so you
   can pause to think.
 - "Stop" or "cancel" ("basta", "annulla") stop it. It answers in the language you speak.
@@ -91,18 +96,23 @@ claude auth login --claudeai
 | Area | Examples |
 |---|---|
 | Apps | "open Visual Studio Code", "quit Safari and Netflix", "which apps are open?" |
-| System | "volume to 30", "mute", "turn on dark mode", "how is the battery?" |
+| System | "volume to 30", "mute", "turn on dark mode", "how is the battery?", "how hot is the Mac?" (chip, disk and battery sensors, busiest processes) |
 | Music | "play the Study playlist", "next track", "what's playing?" (Apple Music, library and catalog) |
 | Files and projects | "which robotics projects do I have?", "open MioRobot in VS Code", "find the firmware file" |
 | Calendar and reminders | "what's on tomorrow?", "remind me to buy servos tomorrow at 9", "delete the robot review event" |
-| Mail | "any new mail?", "read me the one from Marco", "write to Marco that…" (sent only after your "yes") |
+| News | "what's in the news?", "news about humanoid robots?", "go on, more news" (robotics, AI, devices, tech from news sites, with the source) |
+| Mail | "any new mail?" (important first, advertising only counted), "Rossi's mail is important", "ignore Booking's mail", "search mail about the payment", "read me the one from Marco", "write to Marco that…" (sent only after your "yes") |
 | Web | "search for the latest ROS 2 release", "what's the weather?", "open github.com" |
 | Timers and Shortcuts | "25 minute study timer", "how long is left?", "run the Home shortcut" |
 | Memory | "remember that the chemistry exam is on 15 December", "what do you remember about me?" |
 | Study | "I'm starting to study Chemistry", "quiz me on Chemistry", "make flashcards on Fourier series" |
-| Breaks and reports | "let's take a break" (10-minute timer, then "shall we resume?"), at the end of a session JARVIS asks what to write in its report and reminds you of it next time |
-| Notes | "what do my notes say about capacitors?" → answers quoting document and page |
-| Briefing | "good morning Jarvis" → weather, appointments, reminders, mail, study and projects |
+| Study plan | "the Physics 1 exam is on 20 January, I want to study it 6 hours a week", "how is studying going?", "what should I study today?"; summary at 21:00 |
+| Breaks and reports | "let's take a break" (10-minute timer, then "shall we resume?"), at the end of a session JARVIS asks what to write in its report and reminds you of it next time, then offers five flashcards on the topic |
+| Notes | "what do my notes say about capacitors?" → answers quoting document and page; with no result it retries other spellings (giacobiana → jacobian) |
+| Code | "look at the code I'm writing", "comment it without changing the indentation", "put it back" (the file open in VS Code, with a backup) |
+| PDF | "combine these PDFs into one", "save pages 1-3 as a new PDF", "rename the file", "save this page as PDF" |
+| Streaming | "put on Rick and Morty on Netflix" (Netflix, Prime Video, YouTube web apps) |
+| Briefing | "good morning Jarvis" → weather, appointments, reminders, important mail, study, projects and three or four news items |
 | Vision | "explain this error", "what's wrong in this schematic?", "summarise this page", "look at the camera" |
 | TV | "turn on the TV", "open Netflix on the TV" (Samsung Tizen on the local network) |
 | Protocols | one phrase, several actions: study mode, end of study, good morning, good night (`protocolli.json`) |
@@ -236,7 +246,8 @@ after a few days. ⌃⌥Space always works, and if the check fails JARVIS answer
 | Break over | when a break started with "pausa" ends, it asks whether to resume the session |
 | Battery | at 20 % or less on battery, once |
 | Printer | when a Bambu print finishes, pauses or fails; if the printer does not answer, JARVIS looks for it on the network less and less often (up to every 30 minutes), never in quiet hours or privacy mode, and at once when you ask about it |
-| Briefing | at the first activation of the day between 5 and 12 |
+| Briefing | at the first activation of the day between 5 and 12 (it also says what to study today and the next exam) |
+| Study summary | at 21:00 on days with study or an exam within two weeks: hours today and this week against the goals, what to study tomorrow (Settings, 0 turns it off) |
 
 Alerts wait while JARVIS is in privacy mode, in a conversation or waiting for a confirmation, and during
 quiet hours (23–8). Each one can be turned off in Settings › Initiative.
@@ -246,11 +257,16 @@ quiet hours (23–8). Each one can be turned off in Settings › Initiative.
 1. **Listening**: `AVAudioEngine` reads the microphone at 16 kHz mono; a voice activity detector cuts the
    phrases, so nothing runs while nobody speaks.
 2. **"Jarvis"**: each phrase goes to Whisper `large-v3 turbo` on the Neural Engine (a small Whisper as a
-   fallback, or Picovoice Porcupine with a key). Only the real word wakes it up.
+   fallback, or Picovoice Porcupine with a key). Only the real word wakes it up, and only as a call: "Jarvis"
+   named inside a sentence ("è il Jarvis", "mi sa che Jarvis…") does not. Steady noise that Whisper writes as
+   "Grazie." is skipped for a minute after three in a row.
 3. **Transcription**: Whisper transcribes the command, picks the language (short phrases are transcribed in
    both languages and the surer one wins) and filters the phrases Whisper invents from noise.
 4. **Direct commands**: "stop", "use Claude", "remember that…", the confirmation "yes"/"no" and the
-   **instant commands** (`Core/InstantCommand.swift`: apps, volume, timers) skip the model.
+   **instant commands** (`Core/InstantCommand.swift`: apps, volume, timers) skip the model. So do the
+   **direct commands** (`Core/DirectCommand.swift`): study sessions, important mail, appointments, reminders,
+   weather, battery, temperature, date, sums, folders and "metti <song>" run a tool and say a fixed sentence,
+   most of them with no internet. The model comes in only for what these cannot do.
 5. **Brain**: Gemma (or Claude) receives JARVIS's personality and rules, the tools, long-term memory, the recent
    conversation and one line of context (date, time, language). The fixed instructions never change between
    requests, so Ollama keeps them cached.
@@ -297,6 +313,8 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
 | `config.json` | settings |
 | `memory.json` | what JARVIS remembers about you |
 | `activity.json` | study and work sessions |
+| `piano_studio.json`, `resoconti.json` | study plan (exams, weekly hours) and session reports |
+| `backup_codice/` | copies of code files before JARVIS changed them |
 | `appunti.sqlite` | search index of your notes (text and one meaning vector per passage) |
 | `protocolli.json`, `schede.json` | protocols and flashcards |
 | `voiceprint.json` | your voiceprint |
@@ -308,14 +326,16 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
 ## Security and privacy
 
 - **JARVIS does not delete files**: it has no tool for it and no terminal. In Claude mode, Claude can only
-  search the web and read files in `~/Projects`.
+  search the web and read files in `~/Projects`. New PDFs never overwrite an existing file; a code file is changed
+  only when you ask, after a copy in `backup_codice`, and in comments mode every code line must stay identical.
+- **Mail** is read from Mail's index on disk, read-only (Full Disk Access); nothing is sent without your "yes".
 - **External content** (mail, pages, files, screenshots, devices) is marked as data: JARVIS does not follow
   instructions found inside it, it reports them.
 - **Local services** listen only on 127.0.0.1, with a token, and refuse browser requests.
 - **Privacy mode**: "Jarvis, privacy" (or ⌃⌥P, or the ◎ menu) turns the microphone off and blocks camera and
   screen; you leave it only with ⌃⌥P or the menu, not by voice.
 - **Stays on the Mac**: audio, transcripts, conversation, memory, calendar, mail, files, screenshots and photos
-  (images are never saved). **Leaves the Mac**: web searches (DuckDuckGo), weather (wttr.in) and, in Claude
+  (images are never saved). **Leaves the Mac**: web searches (DuckDuckGo), weather (wttr.in), the news sites' public feeds and, in Claude
   mode, the requests to Claude, including screenshots you ask it to look at.
 
 ## Troubleshooting

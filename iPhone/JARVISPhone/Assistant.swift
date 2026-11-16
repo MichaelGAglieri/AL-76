@@ -68,7 +68,13 @@ final class Assistant: ObservableObject {
     }
     @Published private(set) var deepIdle = false
     private var idleTask: Task<Void, Never>?
-    @Published private(set) var link: Link = .unpaired
+    @Published private(set) var link: Link = .unpaired {
+        didSet { if !isConnected, dictating { dictating = false } }
+    }
+    /// Dictation on the Mac (13 November): every phrase heard is sent, without "Jarvis", to be written down.
+    @Published private(set) var dictating = false {
+        didSet { if dictating != oldValue { updateEar() } }
+    }
     @Published private(set) var heard = ""
     @Published private(set) var reply = ""
     @Published var notice = ""
@@ -454,6 +460,9 @@ final class Assistant: ObservableObject {
             watching = false
             screen = nil
             notice = message.text ?? ""
+        case .dictation:
+            dictating = message.number == 1
+            test.log("dettatura \(dictating ? "attiva" : "finita")")
         case .stopAudio:
             audio.stopPlaying()
             test.log("voce interrotta")
@@ -595,7 +604,8 @@ final class Assistant: ObservableObject {
             test.log("nulla da mandare")
             return
         }
-        state = .transcribing
+        // While dictating the Mac only writes and stays idle: listening goes on at once for the next phrase.
+        state = dictating ? remoteState : .transcribing
         test.log("mando la frase: \(String(format: "%.1f", Double(samples.count) / 16_000)) s")
         channel?.send(PhoneClip(id: 0, sampleRate: 16_000, samples: samples))
     }
@@ -626,7 +636,7 @@ final class Assistant: ObservableObject {
 
     /// Listens only with the app in front, unlocked, connected and with JARVIS idle.
     private func updateEar() {
-        let wanted = earEnabled && active && !locked && isConnected && !talking && state == .idle
+        let wanted = (earEnabled || dictating) && active && !locked && isConnected && !talking && state == .idle
         guard wanted else {
             // During the wake-up recognition is still needed, to hear "annulla".
             if !(talking && heardWake) {
@@ -664,6 +674,15 @@ final class Assistant: ObservableObject {
     }
 
     private func earHeard(_ text: String) {
+        // Dictating: any speech starts a phrase, without "Jarvis" and without the chime.
+        if dictating {
+            guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+            if talking { gate?.markSpeech(); return }
+            guard state == .idle, isConnected else { return }
+            test.log("dettatura: \(text)")
+            wake(said: true, chime: false)
+            return
+        }
         guard let tail = WakeWord.tail(text) else { return }
         if talking, heardWake {
             guard !tail.isEmpty else { return }
@@ -675,18 +694,19 @@ final class Assistant: ObservableObject {
         wake(said: !tail.isEmpty)
     }
 
-    private func wake(said: Bool) {
+    private func wake(said: Bool, chime: Bool = true) {
         do {
             // What was said before the name was noticed is kept: Whisper on the Mac rereads everything.
-            try audio.startRecording(earlier: 2.5)
+            // Dictating, phrases follow each other: a shorter look back does not repeat the end of the last one.
+            try audio.startRecording(earlier: chime ? 2.5 : 1.2)
         } catch {
             notice = "Il microfono non si avvia."
             return
         }
         notice = ""
         audio.stopPlaying()
-        audio.playChime(loud: true)
-        gate = SilenceGate(ignore: 0.45)
+        if chime { audio.playChime(loud: true) }
+        gate = SilenceGate(ignore: chime ? 0.45 : 0)
         if said { gate?.markSpeech() }
         heardWake = true
         talking = true

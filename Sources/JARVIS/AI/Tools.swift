@@ -51,9 +51,12 @@ final class ToolBox {
     let tv = TVControl()
     let flashcards = Flashcards()
 
+    let studyPlan: StudyPlan
+
     init(memory: MemoryStore, activity: ActivityTracker) {
         self.memory = memory
         self.activity = activity
+        self.studyPlan = StudyPlan(activity: activity)
     }
     private var timers: [UUID: (label: String, fire: Date, task: Task<Void, Never>)] = [:]
     /// Language of the current request: the timer will be announced in the same language.
@@ -77,6 +80,12 @@ final class ToolBox {
 
     /// Called when the briefing is given (so the automatic morning one is not repeated).
     var onBriefing: (() -> Void)?
+    /// New names are in use (news given, a subject added): Whisper's hint is rebuilt.
+    var onNamesChanged: (() -> Void)?
+    /// nil = a new dictation; otherwise which brainstorming to continue ("" = the latest).
+    var onStartDictation: ((String?) -> String)?
+    /// "Le mail di X sono importanti" / "ignora le mail di Y": saved in the settings.
+    var onMailSender: ((String, String) -> String)?
 
     /// Searches that found nothing (files, apps, paths): often a misheard name.
     var failedLookups = 0
@@ -109,7 +118,14 @@ final class ToolBox {
              ["level": num("0-100. Omit to read the current volume"), "mute": bool("true to mute, false to unmute")]),
         tool("set_dark_mode", "Turn macOS dark mode on or off (omit enabled to toggle).", ["enabled": bool("true = dark")]),
         tool("sleep_display", "Turn the display off.", [:]),
-        tool("system_status", "Battery, free disk space, memory and uptime of the Mac.", [:]),
+        tool("start_dictation", "Start dictation for brainstorming (\"scrivi tutto quello che dico\", \"prendi appunti\"): from now on every phrase he says is written down, without \"Jarvis\", until he says \"Jarvis, basta scrivere\"; then it becomes a PDF in Documents/Brainstorming. Call it at once. \"Continua il brainstorming (di ieri)\", \"aggiungi al brainstorming\": pass continue, and the new phrases are added to that same PDF.",
+             ["continue": str("Continue an existing brainstorming: \"latest\", \"ieri\", \"oggi\", a date 2026-11-13 or part of its name")]),
+        tool("brainstorming", "The brainstormings he dictated (PDFs in Documents/Brainstorming). \"Riordina / sistema / rileggi il brainstorming\": action read, then write the tidy version as the result says and save it with action save_tidy (a new PDF next to it; the original is never changed). action list: which ones exist.",
+             ["action": enumeration(["read", "save_tidy", "list"]),
+              "which": str("Which one: omit for the latest, or \"ieri\", a date 2026-11-13, part of its name"),
+              "name": str("For save_tidy: the name given by read"),
+              "text": str("For save_tidy: the whole tidy text, with # headings and - bullets")], required: ["action"]),
+        tool("system_status", "Temperatures (chip, disk, battery) and thermal state, busiest processes, battery, free disk, memory and uptime of the Mac (\"a che temperatura è il PC?\", \"perché scalda?\").", [:]),
         tool("music", "Control Apple Music. The user has a subscription: search plays from his playlists and library, then from the whole catalog. For a mood (\"something to study\") choose a fitting artist or song yourself and search that. Report only what the result says is playing.",
              ["action": enumeration(["play", "pause", "playpause", "next", "previous", "playlist", "search", "status", "volume"]),
               "query": str("Song, artist, or playlist name to play"),
@@ -125,7 +141,7 @@ final class ToolBox {
         tool("grade_flashcard", "Record whether the user answered a flashcard correctly; it schedules the next review.",
              ["id": num("Card number"), "correct": bool("true if the answer was right")], required: ["id", "correct"]),
         tool("flashcards_summary", "How many flashcards exist per subject and how many are due.", [:]),
-        tool("search_files", "Search files and folders (home, Desktop, Documents, Downloads, iCloud Drive, external drives) by a few words of their name (tolerant to case, underscores and small typos). Use it before open_path when you don't know the exact path; never guess paths.", ["query": str("A few words of the name, e.g. chimica organica")], required: ["query"]),
+        tool("search_files", "Search files and folders (home, Desktop, Documents, Downloads, iCloud Drive, external drives, and the apps' data in ~/Library/Application Support such as Minecraft's mods folder) by a few words of their name (tolerant to case, underscores and small typos). Use it before open_path when you don't know the exact path; never guess paths.", ["query": str("A few words of the name, e.g. chimica organica")], required: ["query"]),
         tool("open_path", "Open a file or folder, optionally with a specific app, or reveal it in Finder.",
              ["path": str("Exact path from search_files (absolute or ~/...)"), "app": str("Optional app, e.g. Visual Studio Code"), "reveal": bool("Only if the user asks to show it in Finder; otherwise the file is opened")],
              required: ["path"]),
@@ -146,7 +162,11 @@ final class ToolBox {
         tool("complete_reminder", "Mark a reminder as done.", ["title": str("Part of the reminder title")], required: ["title"]),
         tool("delete_reminder", "Delete a reminder. Use only when the user explicitly asks to delete it. It is deleted only after the user confirms by voice.",
              ["title": str("Part of the reminder title")], required: ["title"]),
-        tool("list_unread_emails", "List the most recent unread emails in Mail (sender, subject, id).", ["limit": num("Max emails, default 10")]),
+        tool("list_unread_emails", "Unread mail of the last week sorted by importance: people and his organisation first, then account and payment notices; advertising and lists are only counted. For \"ho mail nuove?\", \"mail importanti?\".",
+             ["limit": num("Max important emails, default 10"), "all": ["type": "boolean", "description": "true: the latest unread whatever they are, advertising included"]]),
+        tool("set_mail_sender", "Remember how to treat a sender's mail (\"le mail di Rossi sono importanti\", \"ignora le mail di Booking\", \"le mail di X tornano normali\").",
+             ["sender": str("Part of the sender's name or address, e.g. Rossi, booking.com"), "importance": enumeration(["important", "ignore", "normal"])],
+             required: ["sender", "importance"]),
         tool("search_emails", "Search emails in the inbox by sender or subject.", ["query": str("Text to search")], required: ["query"]),
         tool("read_email", "Read the full content of an email by id.", ["id": num("Email id from the list")], required: ["id"]),
         tool("send_email", "Prepare an email to send. It is sent only after the user confirms by voice.",
@@ -155,27 +175,91 @@ final class ToolBox {
         tool("web_search", "Search the web and get the top results with snippets.", ["query": str("Search query")], required: ["query"]),
         tool("read_webpage", "Read the text of a web page.", ["url": str("URL")], required: ["url"]),
         tool("open_url", "Open a website in the browser.", ["url": str("URL")], required: ["url"]),
+        tool("merge_pdfs", "Combine PDFs (and images) into ONE new PDF in the given order, in under a second. Use this instead of PDF apps like PdfCraft. Find the paths first with search_files.",
+             ["files": ["type": "array", "items": ["type": "string"], "description": "Full paths, in order"],
+              "name": str("Name of the new PDF"), "folder": str("Where to save it; default the folder of the first file"),
+              "show": ["type": "boolean", "description": "Show it in Finder, default true"]], required: ["files"]),
+        tool("create_pdf", "Write a document and save it as a PDF, directly (never through TextEdit or Pages): a report, a summary, notes, a list. Lines starting with \"# \" or \"## \" are headings, \"- \" bullets. For a news report include for each item what happened, the source and the link. News reports go in ~/Desktop/Report notizie unless he names another folder; get their content with news recap=true, never with new searches. To add to or correct a document made before (\"aggiungi al report\", \"correggi il PDF\") pass replace=true with the WHOLE new text: the same file is updated, no copy.",
+             ["title": str("Title shown at the top"), "text": str("The whole text of the document"),
+              "name": str("File name; default the title"), "folder": str("Folder (created if missing); default the Desktop"),
+              "replace": ["type": "boolean", "description": "true: update the document JARVIS created before (same name and folder, or the last one created) instead of making a new file"]],
+             required: ["title", "text"]),
+        tool("create_folder", "Create a folder (\"crea una cartella Report sulla scrivania\"). To put a file in it afterwards use rename_file with folder.",
+             ["name": str("Folder name, or a full path"), "in": str("Where; default the Desktop")], required: ["name"]),
+        tool("extract_pdf_pages", "Save some pages of a PDF as a new PDF (\"pagine 1-3, 5\").",
+             ["file": str("Full path"), "pages": str("e.g. 1-3, 5"), "name": str("Name of the new PDF"), "folder": str("Where to save it")],
+             required: ["file", "pages"]),
+        tool("pdf_info", "Pages, size and title of a PDF.", ["file": str("Full path")], required: ["file"]),
+        tool("rename_file", "Rename a file and/or move it to another folder, created if missing (never over an existing file).",
+             ["path": str("Full path"), "new_name": str("New name (the extension is kept); omit to only move"), "folder": str("Destination folder; omit to only rename")],
+             required: ["path"]),
+        tool("webpage_to_pdf", "Save a public web page as PDF. Pages that need his login (Outlook, the university portal) cannot: for those use Safari's File › Esporta come PDF with the app tools.",
+             ["url": str("Address"), "name": str("Name of the PDF"), "folder": str("Where to save it; default the Desktop")], required: ["url"]),
+        tool("clone_repository", "Download a public Git repository (GitHub, GitLab, Codeberg, Hugging Face) into a new folder (\"scarica la repo\", \"clona il progetto\"). Nothing is installed or run. The address must be the real one, from web_search or a page he opened, never guessed.",
+             ["url": str("https://github.com/owner/name"), "folder": str("Parent folder; default ~/Projects (some of his projects are in a subfolder of ~/Projects)"), "name": str("Folder name; default the repository name")],
+             required: ["url"]),
+        tool("read_code", "Read the code file open in VS Code (or the given path), with line numbers. Use it instead of look_at_screen for \"guarda il codice\", \"spiegami questo codice\", \"cosa non va?\".",
+             ["path": str("File path; default the file open in VS Code"), "from_line": num("First line"), "to_line": num("Last line")]),
+        tool("edit_code", "Change a code file when the user asked for it (add comments, reformat, fix). Call read_code first and pass the WHOLE new file. mode comments: only comments added or changed, every code line identical with its indentation (checked). mode rewrite: code may change; for Python the syntax is checked. A backup is kept.",
+             ["content": str("The whole new file"), "mode": enumeration(["comments", "rewrite"]), "path": str("File path; default the file open in VS Code")],
+             required: ["content", "mode"]),
+        tool("restore_code", "Undo the last edit_code on a file (\"rimetti com'era\", \"annulla la modifica al codice\").",
+             ["path": str("File path; default the file open in VS Code")]),
+        tool("watch", "Put on a film, series or video on Netflix, Prime Video or YouTube (\"metti Rick e Morty su Netflix\", \"Big Bang Theory su Prime\"): opens the search for the title in that service's app, then follow the returned steps to start it.",
+             ["title": str("Title of the film, series or video"), "service": enumeration(["netflix", "prime", "youtube"])], required: ["title"]),
         tool("get_weather", "Current weather and 3-day forecast. By default uses the user's current location.",
              ["location": str("City, ONLY if the user explicitly named one. Otherwise leave it out.")]),
         tool("remember", "Save a lasting fact about the user (deadline, exam, preference, person, project detail) to long-term memory.",
              ["fact": str("The fact, written as a short self-contained sentence")], required: ["fact"]),
         tool("forget", "Delete memories containing some text.", ["query": str("Text contained in the memory")], required: ["query"]),
         tool("list_memories", "List everything saved in long-term memory.", [:]),
-        tool("start_activity", "Start tracking time for a study session or work on a project.",
-             ["name": str("Subject or project, e.g. Chimica, MioRobot"), "category": enumeration(["study", "project", "other"])],
+        tool("start_activity", "Start tracking time for a study session or work on a project. If the user says it began earlier (\"è iniziata da un'ora\", \"ho iniziato alle 14\"), pass started_minutes_ago or start_time. School subjects (Analisi, Fisica, Chimica, Python…) are category study.",
+             ["name": str("Subject or project, e.g. Chimica, MioRobot"), "category": enumeration(["study", "project", "other"]),
+              "started_minutes_ago": ["type": "integer", "description": "The session really began this many minutes ago"],
+              "start_time": str("The session really began at this time today, HH:MM")],
              required: ["name", "category"]),
+        tool("log_activity", "Record a session ALREADY DONE, with its length (\"per oggi registra un'ora di analisi\", \"ieri ho studiato fisica due ore\"). It is saved closed; it does not start anything. Without end_time it ends now, or where the session in progress began.",
+             ["name": str("Subject or project"), "category": enumeration(["study", "project", "other"]),
+              "minutes": ["type": "integer", "description": "Length in minutes"],
+              "end_time": str("When it ended, HH:MM (optional)"), "day": str("today, yesterday or YYYY-MM-DD; default today")],
+             required: ["name", "category", "minutes"]),
+        tool("edit_activity", "Correct a session already recorded or in progress: when it began, how long it lasted, its name or category (\"la sessione è iniziata da un'ora\", \"fisica è durata 40 minuti\", \"analisi era studio\"). Default: the session in progress, otherwise the last one.",
+             ["name": str("Which session (its current name); default the open or last one"), "new_name": str("New name"),
+              "category": enumeration(["study", "project", "other"]),
+              "started_minutes_ago": ["type": "integer", "description": "It began this many minutes ago"],
+              "start_time": str("It began at HH:MM"), "day": str("Day of start_time: today, yesterday or YYYY-MM-DD"),
+              "minutes": ["type": "integer", "description": "Its real length in minutes (closes it if it would end in the past)"]]),
         tool("stop_activity", "End the session currently being tracked. NOT for a break: for \"pausa\" use pause_activity.", [:]),
         tool("pause_activity", "Pause the current study/work session for a break (\"pausa\", \"facciamo una pausa\"): the session stays open, breaks are counted, and after the given minutes JARVIS says the break is over and asks to resume.",
              ["minutes": ["type": "integer", "description": "Length of the break, default 10"]]),
         tool("resume_activity", "Resume the paused session (\"ricominciamo\", \"riprendiamo\").", [:]),
         tool("save_session_report", "Save the report of a session as the user dictated it (where they got to), recalled at the next session with the same name.",
              ["text": str("The report, in the user's words"), "name": str("Session name; default the last session")], required: ["text"]),
+        tool("set_study_plan", "Add or change a subject in the study plan: exam date and/or weekly study hours (\"l'esame di Fisica 1 è il 20 gennaio\", \"voglio studiare Analisi 5 ore a settimana\"). Only the values given change.",
+             ["subject": str("Subject, e.g. Fisica 1, Chimica 2"), "exam_date": str("Exam date YYYY-MM-DD"),
+              "weekly_hours": num("Study hours per week; 0 removes the goal")], required: ["subject"]),
+        tool("remove_study_subject", "Remove a subject from the study plan, only when the user asks (exam passed, course dropped).",
+             ["subject": str("Subject")], required: ["subject"]),
+        tool("study_plan", "The study plan: this week's hours per subject against the goals, days to each exam, and what to study today (\"come va lo studio?\", \"cosa studio oggi?\", \"quanto manca all'esame?\").", [:]),
         tool("activity_report", "How much time was spent studying or working.",
              ["period": enumeration(["today", "yesterday", "week", "month", "all"]), "category": enumeration(["study", "project", "other"])],
              required: ["period"]),
         tool("project_info", "Details of one project: README, git branch and recent commits, recently modified files.",
              ["name": str("Project name, e.g. MioRobot, Rover")], required: ["name"]),
         tool("recent_project_activity", "Which projects were worked on recently.", ["days": num("Days to look back, default 7")]),
+        tool("news", "Today's and yesterday's news on robotics, AI, devices and tech from news sites (Sky TG24, ANSA, Bloomberg, Wired, IEEE Spectrum, The Robot Report…). For \"che notizie ci sono?\", \"novità sulla robotica?\", \"cosa esce di nuovo di Apple?\". Say 3 or 4, one sentence each in the user's language, naming the source; robotics and AI first. Report only what the items say: never add details from memory, and call a rumour a rumour.",
+             ["topic": str("Optional: only news about this, a few keywords in Italian and English (e.g. robot umanoidi humanoid, Apple iPhone, OpenAI)"),
+              "recap": ["type": "boolean", "description": "true: ALL the news already given today, nothing new. Use it for \"le notizie che mi hai detto\", \"fai un report delle notizie\", \"aggiungi le altre che mi avevi dato\""],
+              "more": ["type": "boolean", "description": "true for \"continua\", \"dimmi altre notizie\", \"ancora\": the next ones, never those already said, also from the large newspapers (BBC, Guardian, New York Times, Financial Times, 9to5Mac…)"]]),
+        tool("university", "His university (the one set in Settings › Università), read live from the server of the university's student app: \"che lezioni ho oggi/domani/questa settimana\", \"saltano lezioni?\", \"cosa ho in agenda\", \"a quali lezioni sono iscritto\", \"ho esiti da accettare?\", \"messaggi dell'università\", \"che esami ho dato / mi mancano\", \"qual è la mia media\". Read only on the university: it cannot enrol, sign, book or accept anything. The booklet (libretto) is a copy on the Mac read once from the university's student portal: when he says he passed an exam, record it with segna_esame (grade \"\" removes it).",
+             ["action": ["type": "string", "enum": ["agenda", "lezioni_iscritte", "presenze", "esiti_da_accettare", "messaggi", "profilo", "libretto", "segna_esame"],
+                         "description": "agenda: his calendar (lessons, changes, cancellations, events) from `from`; lezioni_iscritte: lessons he is enrolled in; presenze: attendance; esiti_da_accettare: exam results waiting; messaggi: university messages; profilo: his name, course, matricola; libretto: passed exams with grades, exams still to take, averages, credits; segna_esame: record the grade of `exam`"],
+              "from": str("agenda only: first day, yyyy-MM-dd; default today"),
+              "days": ["type": "integer", "description": "agenda only: how many days from `from`, default 1 (7 for a week)"],
+              "exam": str("segna_esame only: the exam as he said it (e.g. fisica uno)"),
+              "grade": str("segna_esame only: 18-30, 30L for honours, Idoneo, or empty to remove")], required: ["action"]),
+        tool("news_detail", "More about a news item already given today (\"dammi più dettagli su…\", \"approfondisci quella su…\", \"cos'è Praxis?\" right after the news): finds it even if the name was misheard and reads the article. Try this BEFORE project_info or web_search when he asks about a name that may come from the news.",
+             ["about": str("What he asked about, as heard (e.g. Proxis 1, il robot di Amazon)")], required: ["about"]),
         tool("daily_briefing", "Morning briefing: weather, today's events, reminders, unread email, study time, recent project work.", [:]),
         // Robotics: ROS 2, Robot Console, Arduino, Bambu Studio.
         tool("ros_graph", "List the running ROS 2 nodes and topics (laboratory workspace, domain 42).", [:]),
@@ -299,23 +383,35 @@ final class ToolBox {
         case "quit_app":
             // Quitting an app can lose unsaved work: ask for confirmation,
             // a single one even for several apps, and only if they are really open.
-            let apps = await MacActions.matchingApps(a)
+            let apps = MacActions.matchingApps(a)
             guard !apps.isEmpty else {
                 // "Chiudi YouTube": often it is not an app but a browser tab.
                 if appControlEnabled, !privacyMode, let name = a.string("name"),
                    let closed = await appControl.closeBrowserTab(named: name) { return .result(closed) }
-                return .result("Nessuna app aperta corrisponde a \"\(a.string("name") ?? "")\". \(await MacActions.runningApps())")
+                return .result("Nessuna app aperta corrisponde a \"\(a.string("name") ?? "")\". \(MacActions.runningApps())")
             }
             let free = apps.filter(MacActions.closesWithoutAsking)
             let ask = apps.filter { !free.contains($0) }
-            let closed = free.isEmpty ? "" : await MacActions.quit(free)
+            let closed = free.isEmpty ? "" : MacActions.quit(free)
             guard !ask.isEmpty else { return .result(closed) }
             let names = ask.map(MacActions.displayName).joined(separator: ", ")
-            return .needsConfirmation(PendingAction(summary: (closed.isEmpty ? "" : closed + ". ") + "Chiudere \(names)") { await MacActions.quit(ask) })
+            return .needsConfirmation(PendingAction(summary: (closed.isEmpty ? "" : closed + ". ") + "Chiudere \(names)") { MacActions.quit(ask) })
         case "list_running_apps": return .result(MacActions.runningApps())
         case "set_volume": return .result(await MacActions.setVolume(a))
         case "set_dark_mode": return .result(await MacActions.setDarkMode(a))
         case "sleep_display": return .result(await MacActions.sleepDisplay())
+        case "start_dictation":
+            guard let onStartDictation else { return .result("Dettatura non disponibile.") }
+            let which = a.string("continue").map { ["latest", "ultimo", "l'ultimo"].contains($0.lowercased()) ? "" : $0 }
+            return .result(onStartDictation(which))
+        case "brainstorming":
+            switch a.string("action") {
+            case "save_tidy": return .result(Dictation.saveTidy(name: a.string("name") ?? a.string("which"), text: a.string("text")))
+            case "list":
+                let all = Dictation.documents()
+                return .result(all.isEmpty ? "Nessun brainstorming ancora." : "Brainstorming, dal più recente: " + all.prefix(10).map { $0.deletingPathExtension().lastPathComponent }.joined(separator: "; "))
+            default: return .result(Dictation.readForTidying(a.string("which")))
+            }
         case "system_status": return .result(await MacActions.systemStatus())
         case "music": return .result(await MacActions.music(a))
         case "tv": return .result(await tv.run(action: a.string("action") ?? "status", value: a.string("value") ?? a.number("value").map { String(Int($0)) }))
@@ -348,7 +444,25 @@ final class ToolBox {
         case "list_memories": return .result(memory.list())
         case "start_activity":
             let category = ActivityTracker.Category(rawValue: a.string("category") ?? "") ?? .other
-            return .result(activity.start(a.string("name") ?? "attività", category: category))
+            let began = a.number("started_minutes_ago").map { Date().addingTimeInterval(-$0 * 60) }
+                ?? ActivityTracker.clockTime(a.string("start_time"))
+            return .result(activity.start(a.string("name") ?? "attività", category: category, at: began))
+        case "log_activity":
+            let category = ActivityTracker.Category(rawValue: a.string("category") ?? "") ?? .study
+            let day = ActivityTracker.dayFrom(a.string("day"))
+            var end = ActivityTracker.clockTime(a.string("end_time"), on: day)
+            if end == nil, !Calendar.current.isDateInToday(day) {
+                // A past day without a time: it is placed to end at 18:00 of that day.
+                end = Calendar.current.date(bySettingHour: 18, minute: 0, second: 0, of: day)
+            }
+            return .result(activity.log(a.string("name") ?? "attività", category: category,
+                                        minutes: a.number("minutes").map { Int($0) } ?? 0, end: end))
+        case "edit_activity":
+            let start = a.number("started_minutes_ago").map { Date().addingTimeInterval(-$0 * 60) }
+                ?? ActivityTracker.clockTime(a.string("start_time"), on: ActivityTracker.dayFrom(a.string("day")))
+            return .result(activity.edit(name: a.string("name"), newName: a.string("new_name"),
+                                         category: a.string("category").flatMap(ActivityTracker.Category.init(rawValue:)),
+                                         start: start, minutes: a.number("minutes").map { Int($0) }))
         case "stop_activity":
             onBreakTimer?(0)
             return .result(activity.stop())
@@ -362,9 +476,79 @@ final class ToolBox {
             return .result(activity.resume())
         case "save_session_report":
             return .result(activity.saveReport(a.string("text") ?? "", name: a.string("name")))
+        case "set_study_plan":
+            let exam = a.string("exam_date").flatMap { DateArg.parse($0) }
+            if a.string("exam_date") != nil, exam == nil { return .result("Data d'esame non valida: serve AAAA-MM-GG.") }
+            defer { onNamesChanged?() }
+            return .result(studyPlan.set(a.string("subject") ?? "", exam: exam, weeklyHours: a.number("weekly_hours")))
+        case "remove_study_subject": return .result(studyPlan.remove(a.string("subject") ?? ""))
+        case "study_plan": return .result(studyPlan.status())
         case "activity_report": return .result(activity.report(period: a.string("period") ?? "today", category: a.string("category")))
         case "project_info": return .result(Security.external("file del progetto", await ProjectInsights.info(a)))
         case "recent_project_activity": return .result(await ProjectInsights.recentActivity(a))
+        case "university":
+            let paths = ["lezioni_iscritte": "lezioni/iscrizione/list", "presenze": "lezioni/rilevazione/list",
+                         "esiti_da_accettare": "esami/verbali/listFirmabili", "messaggi": "messages/list", "profilo": "user/me"]
+            let action = a.string("action") ?? "agenda"
+            do {
+                let json: Any
+                if action == "agenda" {
+                    let from = DateArg.parse(a["from"]) ?? Date()
+                    let days = max(1, min(60, Int(a.number("days") ?? 1)))
+                    let lessons = try await UniversityClient.shared.lessons(from: from, days: days)
+                    let next = lessons.isEmpty ? try? await UniversityClient.shared.lessons(from: Calendar.current.date(byAdding: .day, value: days, to: from) ?? from, days: 21).first : nil
+                    return .result(UniversityClient.spoken(lessons, from: from, days: days, next: next ?? nil))
+                } else if action == "libretto" || action == "segna_esame" {
+                    guard var booklet = Booklet.load() else { return .result("Il libretto non è ancora sul Mac: va letto una volta dal portale studenti dell'università.") }
+                    if action == "segna_esame" {
+                        let exam = a.string("exam") ?? ""
+                        let given = a.string("grade") ?? ""
+                        let grade = given.isEmpty ? nil : (Booklet.grade(from: given) ?? (given == "30L" ? "30L" : nil))
+                        if !given.isEmpty && grade == nil { return .result("Voto non valido: \(given).") }
+                        let answer = booklet.record(exam, grade: grade)
+                        if answer.hasPrefix("Segnato") || answer.hasPrefix("Tolto") { try booklet.save() }
+                        return .result(answer)
+                    }
+                    switch a.string("domanda") ?? "" {
+                    case "superati": return .result(booklet.spokenPassed())
+                    case "media": return .result(booklet.spokenAverage())
+                    case "crediti": return .result(booklet.summary())
+                    case let ask where ask.hasPrefix("mancanti"): return .result(booklet.spokenMissing(year: Int(ask.dropFirst("mancanti_".count))))
+                    default: return .result(booklet.text())
+                    }
+                } else if action == "lezioni_iscritte" {
+                    json = try await UniversityClient.shared.get("lezioni/iscrizione/list", ["matricola": try await UniversityClient.shared.activeMatricola()])
+                } else if let path = paths[action] {
+                    json = try await UniversityClient.shared.get(path)
+                } else {
+                    return .result("Azione sconosciuta: \(action)")
+                }
+                return .result(Security.external("università, \(action)", UniversityClient.readable(json)))
+            } catch {
+                return .result(error.localizedDescription)
+            }
+        case "news":
+            if a.bool("recap") == true {
+                let given = NewsFeed.alreadyGiven()
+                guard !given.isEmpty else { return .result("Oggi non ho ancora dato notizie.") }
+                return .result(Security.external("notizie già date oggi", await NewsFeed.spoken(given, topic: nil)))
+            }
+            let items = await NewsFeed.latest(topic: a.string("topic"), more: a.bool("more") ?? false)
+            // He may ask to open one of these articles: their sites count as coming from his request.
+            onNamesChanged?()
+            for item in items { if let host = URL(string: item.link)?.host { trustedHosts.insert(host.hasPrefix("www.") ? String(host.dropFirst(4)) : host) } }
+            return .result(Security.external("notizie", await NewsFeed.spoken(items, topic: a.string("topic"))))
+        case "news_detail":
+            guard let item = NewsFeed.givenItem(matching: a.string("about") ?? "") else {
+                return .result("Tra le notizie date oggi non ce n'è una che corrisponda a \"\(a.string("about") ?? "")\". Use web_search.")
+            }
+            if let host = URL(string: item.link)?.host { trustedHosts.insert(host.hasPrefix("www.") ? String(host.dropFirst(4)) : host) }
+            // The article itself and, meanwhile, what other sites say on it, searched with the right name.
+            async let page = WebActions.readPage(["url": item.link])
+            async let others = WebActions.search(["query": item.title])
+            let text = "[\(item.source)] \(item.title)\n\(item.summary)\nLink: \(item.link)\n\nARTICOLO:\n\(await page.prefix(4000))\n\nALTRE FONTI (ricerca web sul titolo):\n\(await others.prefix(1500))"
+            return .result(Security.external("notizia", text)
+                + "\nAnswer what he asked from the article, in a few sentences; add what the other sources confirm or add. If the article is empty or behind a paywall, use the summary and the other sources and say so. For further questions on this topic use web_search with the names written as in the title.")
         case "daily_briefing":
             onBriefing?()
             // Gathered in advance while JARVIS answered the first request of the day, if recent.
@@ -390,6 +574,7 @@ final class ToolBox {
         case "complete_reminder": return .result(await calendar.completeReminder(a))
         case "delete_reminder": return await calendar.prepareDeleteReminder(a)
         case "list_unread_emails": return .result(Security.external("mail", await MailActions.listUnread(a)))
+        case "set_mail_sender": return .result(onMailSender?(a.string("sender") ?? "", a.string("importance") ?? "normal") ?? "Non disponibile.")
         case "search_emails": return .result(Security.external("mail", await MailActions.search(a)))
         case "read_email": return .result(Security.external("mail", await MailActions.read(a)))
         case "send_email": return await prepareEmail(a)
@@ -415,6 +600,21 @@ final class ToolBox {
                     Security.external("pagina web", await WebActions.readPage(["url": url.absoluteString]))
                 })
             }
+        case "watch": return .result(WebActions.watch(a))
+        case "merge_pdfs": return .result(PDFTools.merge(a))
+        case "create_pdf": return .result(PDFTools.fromText(a))
+        case "create_folder": return .result(PDFTools.createFolder(a))
+        case "extract_pdf_pages": return .result(PDFTools.extract(a))
+        case "pdf_info": return .result(PDFTools.info(a))
+        case "rename_file": return .result(PDFTools.rename(a))
+        case "webpage_to_pdf": return .result(await PDFTools.webpage(a))
+        case "clone_repository": return .result(await WebActions.cloneRepository(a))
+        case "read_code":
+            return .result(await CodeHelper.read(path: a.string("path"), from: a.number("from_line").map { Int($0) }, to: a.number("to_line").map { Int($0) }))
+        case "edit_code":
+            return .result(await CodeHelper.edit(path: a.string("path"), content: a["content"] as? String ?? "",
+                                                 mode: CodeHelper.Mode(rawValue: a.string("mode") ?? "") ?? .comments))
+        case "restore_code": return .result(await CodeHelper.restore(path: a.string("path")))
         case "open_url":
             switch Security.checkURL(a.string("url") ?? "", command: currentCommand, trustedHosts: trustedHosts) {
             case .refused(let reason): return .result(reason)
@@ -559,6 +759,7 @@ final class ToolBox {
         // If Mail is slow the briefing does not wait for it.
         async let mail = MailActions.listUnread(["limit": 5, "timeout": mailWait])
         async let projects = ProjectInsights.recentActivity(["days": 3])
+        async let news = NewsFeed.latest(limit: 6)
         let study = activity.report(period: "yesterday", category: "study")
         let week = ActivityTracker.spoken(activity.total(from: Calendar.current.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date(),
                                                          category: .study))
@@ -569,6 +770,8 @@ final class ToolBox {
         EMAIL: \(await mail)
         STUDIO IERI: \(study)
         STUDIO QUESTA SETTIMANA: \(week)
+        PIANO DI STUDIO: \(studyPlan.briefingLine())
+        NOTIZIE (robotica, AI, tech; dinne tre o quattro, una frase l'una, con la fonte): \(await NewsFeed.spoken(await news, topic: nil))
         PROGETTI: \(await projects)
         """
     }

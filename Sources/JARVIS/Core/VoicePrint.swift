@@ -91,6 +91,10 @@ final class VoiceEnrollment: ObservableObject {
         "Spiegami questo errore sullo schermo.", "Chiudi la scheda di YouTube.", "Minimizza questa finestra.",
         "Sì, confermo.", "No, annulla.", "Usa Claude Opus per questa domanda.",
         "What's the weather like today?", "Open Visual Studio Code.",
+        // The short phrases the voiceprint rejected most often in real use (voce.log, 12 November).
+        "Esegui sequenza.", "Abilita robot.", "Torna a home.", "No.", "Sì.", "Un minuto.",
+        "Avvia una sessione di Fisica.", "Interrompi la sessione.", "Che notizie ci sono?", "Ho mail importanti?",
+        "Dammi altre notizie.", "Come va lo studio?",
     ]
 
     private(set) var adding = false

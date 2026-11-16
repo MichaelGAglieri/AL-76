@@ -63,6 +63,19 @@ final class AudioInput {
     var wantsEchoCancellation = true
     private(set) var echoCancellation = false
 
+    /// Echo cancellation is needed only while JARVIS speaks (to hear "basta" over its own voice).
+    /// The rest of the time it is bypassed: its filter lowered the voiceprint score (median 0.65 →
+    /// 0.54, 13 November) and made Whisper mishear more ("Chireson", "our YouTube"), also after new
+    /// recordings. Bypassing needs no engine restart.
+    var processingNeeded = false {
+        didSet { if processingNeeded != oldValue { applyBypass() } }
+    }
+
+    private func applyBypass() {
+        guard echoCancellation else { return }
+        engine.inputNode.isVoiceProcessingBypassed = !processingNeeded
+    }
+
     func start() throws {
         // Repeatable: after a failed attempt it starts clean.
         stopWatching()
@@ -88,6 +101,11 @@ final class AudioInput {
             self?.scheduleRebuild("dispositivo predefinito cambiato")
         }
         deviceListener = listener
+        lidObserver = NotificationCenter.default.addObserver(forName: SystemWatch.lidChanged, object: nil, queue: .main) { [weak self] _ in
+            guard let self, self.usingBuiltInInstead || SystemWatch.lidClosed() == false else { return }
+            self.forceNextRebuild = true
+            self.scheduleRebuild("coperchio cambiato")
+        }
         for selector in Self.defaultDevices {
             var address = Self.address(selector)
             AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
@@ -106,6 +124,8 @@ final class AudioInput {
         watchdog = nil
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         configObserver = nil
+        if let lidObserver { NotificationCenter.default.removeObserver(lidObserver) }
+        lidObserver = nil
         if let deviceListener {
             for selector in Self.defaultDevices {
                 var address = Self.address(selector)
@@ -134,17 +154,23 @@ final class AudioInput {
         let now = CFAbsoluteTimeGetCurrent()
         recentRebuilds.removeAll { now - $0 > 30 }
         let delay: Double = recentRebuilds.count >= 6 ? 8 : recentRebuilds.count >= 3 ? 3 : 1
-        let work = DispatchWorkItem { [weak self] in self?.rebuild(reason) }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let force = self.forceNextRebuild
+            self.forceNextRebuild = false
+            self.rebuild(reason, force: force)
+        }
         pendingRebuild = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    private func rebuild(_ reason: String) {
+    /// `force`: the engine says it is running but no sound arrives, so its word does not count.
+    private func rebuild(_ reason: String, force: Bool = false) {
         guard wanted else { return }
         pendingRebuild = nil
         // The change did not stop the engine and the format still matches: nothing to rebuild.
         let input = engine.inputNode
-        if engine.isRunning, let mono, input.inputFormat(forBus: 0).sampleRate == mono.sampleRate,
+        if !force, engine.isRunning, let mono, input.inputFormat(forBus: 0).sampleRate == mono.sampleRate,
            input.outputFormat(forBus: 0).sampleRate == mono.sampleRate {
             Diagnostics.log("audio     \(reason): microfono ancora attivo, nessun riaggancio")
             return
@@ -179,9 +205,17 @@ final class AudioInput {
             return
         }
         guard wanted, pendingRebuild == nil, now >= nextRetry else { return }
+        // Lid closed: the MacBook disconnects its microphone, silence is normal and reconnecting useless.
+        if SystemWatch.lidClosed() == true {
+            nextRetry = now + 60
+            return
+        }
         failures += 1
-        nextRetry = now + min(60, 5 * pow(2, Double(failures - 1)))
-        rebuild("nessun suono da \(Int(silence)) s")
+        // Until 15 November this call never reconnected: the engine still said "running" and `rebuild`
+        // stopped there, so a dead microphone stayed dead until JARVIS was reopened. Now it is forced:
+        // three close attempts, then one every ten minutes (each one closes the microphone for a moment).
+        nextRetry = now + (failures <= 3 ? 5 * pow(2, Double(failures - 1)) : 600)
+        rebuild("nessun suono da \(Int(silence)) s", force: true)
     }
 
     private static let defaultDevices = [kAudioHardwarePropertyDefaultInputDevice, kAudioHardwarePropertyDefaultOutputDevice]
@@ -189,6 +223,69 @@ final class AudioInput {
     private static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
                                    mElement: kAudioObjectPropertyElementMain)
+    }
+
+    // MARK: AirPods
+
+    /// With AirPods (or another Bluetooth headset) as the Mac's input, listening through them all day
+    /// keeps them in "call" mode: their microphone gives 8-16 kHz (Whisper misheard more), films and
+    /// music in them drop to phone quality, and the Mac and the headset spend more battery (15 November:
+    /// the audio service went from ~7% to 18-45% of a core). With the lid open the Mac's own microphone
+    /// listens instead; with the lid closed it is switched off, so the headset is the only way in.
+    private func preferBuiltInMicrophone(_ input: AVAudioInputNode) {
+        guard let unit = input.audioUnit, let current = Self.defaultInputDevice(),
+              Self.transport(current) == kAudioDeviceTransportTypeBluetooth || Self.transport(current) == kAudioDeviceTransportTypeBluetoothLE,
+              SystemWatch.lidClosed() != true, var builtIn = Self.builtInMicrophone() else {
+            // Back to the Mac's chosen input (the headset with the lid closed).
+            if usingBuiltInInstead, let unit = input.audioUnit, var chosen = Self.defaultInputDevice() {
+                AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                     &chosen, UInt32(MemoryLayout<AudioDeviceID>.size))
+                Diagnostics.log("audio     torno all'ingresso scelto dal Mac")
+            }
+            usingBuiltInInstead = false
+            return
+        }
+        let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                          &builtIn, UInt32(MemoryLayout<AudioDeviceID>.size))
+        if !usingBuiltInInstead || status != noErr {
+            Diagnostics.log("audio     cuffie Bluetooth come ingresso: ascolto col microfono del Mac\(status == noErr ? "" : " non riuscito (\(status))")")
+        }
+        usingBuiltInInstead = status == noErr
+    }
+    private var usingBuiltInInstead = false
+    private var lidObserver: NSObjectProtocol?
+    private var forceNextRebuild = false
+
+    private static func defaultInputDevice() -> AudioDeviceID? {
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = address(kAudioHardwarePropertyDefaultInputDevice)
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device)
+        return status == noErr && device != 0 ? device : nil
+    }
+
+    private static func transport(_ device: AudioDeviceID) -> UInt32 {
+        var value = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = address(kAudioDevicePropertyTransportType)
+        AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value)
+        return value
+    }
+
+    /// The MacBook's microphone: built in, with input channels.
+    private static func builtInMicrophone() -> AudioDeviceID? {
+        var size = UInt32(0)
+        var address = address(kAudioHardwarePropertyDevices)
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr else { return nil }
+        var devices = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &devices) == noErr else { return nil }
+        return devices.first { device in
+            guard transport(device) == kAudioDeviceTransportTypeBuiltIn else { return false }
+            var streams = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeInput,
+                                                     mElement: kAudioObjectPropertyElementMain)
+            var bytes = UInt32(0)
+            return AudioObjectGetPropertyDataSize(device, &streams, 0, nil, &bytes) == noErr && bytes > 0
+        }
     }
 
     /// Only for test-mode tests: reproduces faults without touching the Mac's settings.
@@ -243,6 +340,7 @@ final class AudioInput {
             if input.isVoiceProcessingEnabled != processVoice {
                 try input.setVoiceProcessingEnabled(processVoice)
             }
+            // preferBuiltInMicrophone: macOS refuses another input device on this shared engine (-10851, 15 November).
             if processVoice, #available(macOS 14.0, *) {
                 // Does not duck other apps' music and video while JARVIS listens.
                 input.voiceProcessingOtherAudioDuckingConfiguration =
@@ -260,6 +358,7 @@ final class AudioInput {
                 continue
             }
             echoCancellation = processVoice
+            if processVoice { input.isVoiceProcessingBypassed = !processingNeeded }
             // With echo cancellation the microphone arrives on several channels (7 on a
             // MacBook Air): the clean voice is the first, the others must not be mixed in.
             let monoFormat = AVAudioFormat(standardFormatWithSampleRate: format.sampleRate, channels: 1)!
@@ -305,17 +404,28 @@ final class AudioInput {
         }
     }
 
+    /// Used only on the audio thread.
+    private var workIn: AVAudioPCMBuffer?
+    private var workOut: AVAudioPCMBuffer?
+
     private func convert(_ buffer: AVAudioPCMBuffer) {
         measure(buffer)
         noteSound(buffer)
-        guard let converter, let mono, let source = buffer.floatChannelData,
-              let first = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: buffer.frameLength),
-              let firstData = first.floatChannelData else { return }
-        first.frameLength = buffer.frameLength
-        firstData[0].update(from: source[0], count: Int(buffer.frameLength))
+        guard let converter, let mono, let source = buffer.floatChannelData else { return }
+        // The two working buffers are kept between blocks (about 47 a second): new ones only when the
+        // microphone changes format or sends a longer block.
         let ratio = target.sampleRate / mono.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 64
-        guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
+        if workIn == nil || workIn!.format != mono || workIn!.frameCapacity < buffer.frameLength {
+            workIn = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: max(buffer.frameLength, 4096))
+        }
+        if workOut == nil || workOut!.frameCapacity < capacity {
+            workOut = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: max(capacity, 2048))
+        }
+        guard let first = workIn, let out = workOut, let firstData = first.floatChannelData else { return }
+        first.frameLength = buffer.frameLength
+        firstData[0].update(from: source[0], count: Int(buffer.frameLength))
+        out.frameLength = 0
         var consumed = false
         var error: NSError?
         converter.convert(to: out, error: &error) { _, status in

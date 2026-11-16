@@ -27,6 +27,7 @@ struct JarvisApp: App {
             Button("Mostra HUD") { delegate.showHUD() }
             Button("Riduci a SATELLITE") { delegate.showCompact() }
             Button("Parla (⌃⌥Spazio)") { delegate.assistant.pushToTalk() }
+            Button("Scrivi (⌃⌥T)") { delegate.typeBar.show() }
             Button("Nuova conversazione") { delegate.assistant.resetConversation() }
             Button(delegate.assistant.privacyMode ? "Esci dalla modalità privacy (⌃⌥P)" : "Modalità privacy (⌃⌥P)") {
                 delegate.assistant.togglePrivacy()
@@ -60,6 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The panels (Frasi, Registro, …) as movable windows, opened from the menu bar.
     lazy var panels = PanelWindows(assistant: assistant)
     private var window: HUDWindow?
+    /// The bar to type to JARVIS, hung under the SATELLITE or next to the sphere's window.
+    lazy var typeBar = TypeBar(assistant: assistant)
     /// One NUCLEUS for every connected display.
     private var reactors: [CGDirectDisplayID: ReactorPanel] = [:]
     /// The NUCLEUS hidden under the open HUD: the HUD grew out of it.
@@ -91,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 guard let self, let window = self.window else { return }
                 self.assistant.hudVisible = window.occlusionState.contains(.visible)
+                self.typeBar.anchorChanged()
             }
         }
 
@@ -107,7 +111,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         updateCompactVisible()
         panels.anchor = { [weak self] in self?.jarvisFrame() }
+        typeBar.anchor = { [weak self] in
+            guard let self else { return nil }
+            if let window = self.window, window.isVisible { return .init(window: window, isHUD: true) }
+            // The satellite of the display where the pointer is, if it is there; otherwise any visible one.
+            let near = self.nucleus(on: self.screenAtMouse)
+            return (near?.isVisible == true ? near : self.reactors.values.first { $0.isVisible }).map { .init(window: $0, isHUD: false) }
+        }
         panels.restore()
+        SystemWatch.shared.start()
         assistant.boot()
         enableLaunchAtLoginOnce()
         awake = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep],

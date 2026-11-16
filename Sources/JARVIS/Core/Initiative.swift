@@ -1,6 +1,7 @@
 import EventKit
 import Foundation
 import IOKit.ps
+import CoreGraphics
 
 /// Phase 3: JARVIS speaks first.
 ///
@@ -21,11 +22,24 @@ final class Initiative {
     /// Current settings, whether JARVIS can speak now, how to announce.
     var config: () -> JarvisConfig = { JarvisConfig() }
     var canSpeak: () -> Bool = { false }
+    /// Privacy mode: the microphone is off, so only alerts are said (printer, battery, calendar,
+    /// reminders), never a question that would need an answer, nor the morning briefing.
+    var privacy: () -> Bool = { false }
     var announce: (String) -> Void = { _ in }
     var startBriefing: () -> Void = {}
     /// The briefing will start after this answer: its data can be gathered now.
     var prepareBriefing: () -> Void = {}
     var studySession: () -> ActivityTracker.Session? = { nil }
+    /// The evening study summary, nil when there is nothing to say today.
+    var studySummary: () -> String? = { nil }
+    /// "Sta ancora studiando?": asks it aloud and waits for the answer; false if it could not.
+    var askStillStudying: (ActivityTracker.Session) -> Bool = { _ in false }
+    /// Closes a forgotten session at the given moment and returns what to tell him when he is back.
+    var closeForgotten: (ActivityTracker.Session, Date) -> String? = { _, _ in nil }
+    /// Says the notice about a session closed while he was away (a question: it listens for the answer).
+    var tellClosed: (String) -> Void = { _ in }
+    /// The last time he spoke to JARVIS.
+    var lastHeard: () -> Date = { .distantPast }
 
     private let store = EKEventStore()
     private var timer: Timer?
@@ -37,6 +51,12 @@ final class Initiative {
     }
     private var batteryWarned = false
     private var briefingPending = false
+    // Forgotten study sessions (13 November: Fisica 1 stayed open four hours while he worked on something else).
+    static let studyCheckInterval: TimeInterval = 60 * 60
+    private var confirmedStudy: (session: Date, at: Date)?
+    private var studyAsked: (session: Date, at: Date)?
+    private var lastStudyAlert = Date.distantPast
+    private var closedNotice: String?
     private var checking = false
     private static let briefingKey = "initiative.lastBriefingDay"
 
@@ -90,6 +110,8 @@ final class Initiative {
         if c.alertCalendar { checkEvents(now) }
         if c.alertReminders { await checkReminders(now) }
         if c.alertStudy { checkStudy(now) }
+        checkForgottenStudy(now, quiet: inQuietHours(c))
+        checkStudySummary(now, hour: c.studySummaryHour)
         if c.alertBattery { checkBattery(now) }
         deliver()
     }
@@ -148,9 +170,92 @@ final class Initiative {
         let blocks = Int(session.duration / 7200)
         guard blocks >= 1 else { return }
         let hours = blocks * 2
+        if seen["studio/\(Int(session.start.timeIntervalSince1970))/\(blocks)"] == nil { lastStudyAlert = now }
         enqueue("studio/\(Int(session.start.timeIntervalSince1970))/\(blocks)",
                 "Signore, studia \(session.name) da \(hours) ore. Le propongo una pausa di dieci minuti.",
                 expires: now.addingTimeInterval(30 * 60), forget: now.addingTimeInterval(3 * 3600))
+    }
+
+    /// He said he is still studying: the next question in an hour.
+    func studyConfirmed() {
+        guard let session = studySession() else { return }
+        confirmedStudy = (session.start, Date())
+        studyAsked = nil
+    }
+
+    /// He answered (closed it himself, or said no): nothing pending.
+    func studyAnswered() {
+        studyAsked = nil
+    }
+
+    /// Seconds since the last key, click or mouse move.
+    static func inputIdle() -> TimeInterval {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+    }
+
+    /// An hour into a study session with no word about it, "sta ancora studiando?". No answer in 10 minutes:
+    /// if he is using the Mac (perhaps with headphones) it asks again in half an hour; if not, the session
+    /// closes at the last sign of him (a key, a click, a word to JARVIS), and when he is back JARVIS says so.
+    /// In quiet hours no question: a session idle for 20 minutes closes in silence the same way.
+    private func checkForgottenStudy(_ now: Date, quiet: Bool) {
+        let idle = Self.inputIdle()
+        if let notice = closedNotice, idle < 60, canSpeak(), !privacy(), !quiet {
+            closedNotice = nil
+            Diagnostics.log("iniziativa detta: \(notice)")
+            tellClosed(notice)
+            return
+        }
+        guard let session = studySession(), session.category == .study, !session.isPaused else {
+            studyAsked = nil
+            return
+        }
+        // Since when nothing is known: the start, the end of the last break, the last "sì".
+        var since = max(session.start, session.pauses?.last?.end ?? .distantPast)
+        if let confirmed = confirmedStudy, confirmed.session == session.start { since = max(since, confirmed.at) }
+        let lastSign = max(since, now.addingTimeInterval(-idle), lastHeard())
+        if let asked = studyAsked, asked.session == session.start {
+            guard now.timeIntervalSince(asked.at) >= 10 * 60 else { return }
+            studyAsked = nil
+            if idle < 120 {
+                Diagnostics.log("studio    nessuna risposta, ma il Mac è in uso: richiede tra mezz'ora")
+                confirmedStudy = (session.start, now.addingTimeInterval(-Self.studyCheckInterval + 30 * 60))
+                return
+            }
+            close(session, at: min(asked.at, lastSign))
+            return
+        }
+        guard now.timeIntervalSince(since) >= Self.studyCheckInterval, now.timeIntervalSince(lastStudyAlert) >= 20 * 60 else { return }
+        if quiet {
+            if idle >= 20 * 60 { close(session, at: lastSign) }
+            return
+        }
+        guard queue.isEmpty, canSpeak(), !privacy(), askStillStudying(session) else { return }
+        Diagnostics.log("studio    chiesto se studia ancora \(session.name)")
+        studyAsked = (session.start, now)
+    }
+
+    /// Test channel: the question now, without waiting an hour.
+    func debugAskStudyNow() {
+        guard let session = studySession(), askStillStudying(session) else { return }
+        studyAsked = (session.start, Date())
+    }
+
+    private func close(_ session: ActivityTracker.Session, at end: Date) {
+        Diagnostics.log("studio    sessione dimenticata \(session.name) chiusa alle \(end.formatted(date: .omitted, time: .shortened))")
+        closedNotice = closeForgotten(session, end)
+    }
+
+    /// Once a day from `hour` (21): it waits in the queue until JARVIS is free, at most until 23:00.
+    private func checkStudySummary(_ now: Date, hour: Int) {
+        let calendar = Calendar.current
+        let id = "riepilogo-studio/\(Self.today)"
+        guard (1...22).contains(hour), calendar.component(.hour, from: now) >= hour, seen[id] == nil,
+              let end = calendar.date(bySettingHour: 23, minute: 0, second: 0, of: now), now < end else { return }
+        guard let text = studySummary() else {
+            seen[id] = now.addingTimeInterval(24 * 3600)   // nothing to say today: not checked again
+            return
+        }
+        enqueue(id, text, expires: end, forget: now.addingTimeInterval(24 * 3600))
     }
 
     /// Battery at 20% or less without a charger: one alert, then again only
@@ -201,7 +306,7 @@ final class Initiative {
             queue.removeAll()
             Diagnostics.log("iniziativa detta: \(text)")
             announce(text)
-        } else if briefingPending {
+        } else if briefingPending, !privacy() {
             briefingDone()
             Diagnostics.log("iniziativa: briefing del mattino")
             startBriefing()

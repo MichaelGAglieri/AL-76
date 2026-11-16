@@ -14,13 +14,20 @@ enum InstantCommand: Equatable {
     case time
     case music(MusicAction)
     case tv(on: Bool)
+    /// "Chiudi tutte le applicazioni (tranne il Finder)": every app except JARVIS and Finder.
+    case closeAll
+    /// "Minimizza Netflix": the app's windows go to the Dock.
+    case minimize(String)
+    /// "Minimizza la finestra Chimica Organica": a Finder window by its name.
+    case minimizeWindow(String)
 
     enum MusicAction: String { case pause, play, next, previous, status }
 
     static func parse(_ raw: String) -> InstantCommand? {
         let text = clean(raw)
         guard !text.isEmpty else { return nil }
-        return time(text) ?? music(text) ?? television(text) ?? filament(text) ?? printer(text) ?? volume(text) ?? timer(text) ?? app(text)
+        if let found = time(text) ?? music(text) ?? television(text) ?? filament(text) ?? printer(text) { return found }
+        return volume(text) ?? timer(text) ?? closeAllCommand(text) ?? minimizeCommand(text) ?? app(text)
     }
 
     /// Lowercase, without punctuation at the ends and without "jarvis" and "per favore".
@@ -73,7 +80,11 @@ enum InstantCommand: Equatable {
     /// The time comes from the clock: the model, reading "01:13", ended up saying "le ventuno e tredici".
     private static func time(_ text: String) -> InstantCommand? {
         let phrases = ["che ore sono", "che ora e", "che ora è", "sai che ore sono", "mi dici che ore sono", "mi dici che ora e", "mi dici che ora è",
-                       "what time is it", "whats the time", "what is the time"]
+                       "what time is it", "whats the time", "what is the time",
+                       // How Whisper squashed "che ore sono" with echo cancellation on (13 November).
+                       "chireson", "chiresono", "che oresono", "keoresono", "che ore son",
+                       // ... and without it, from the small Whisper after "Jarvis" (15 November).
+                       "kere sona", "kere sono", "chere sono", "sicure sono", "che resono", "che re sono"]
         return phrases.contains(text) ? .time : nil
     }
 
@@ -150,11 +161,36 @@ enum InstantCommand: Equatable {
         return words
     }
 
+    /// 13 November, from voce.log: six requests in a week went to the model for this.
+    /// "chiudi tutte le hop" is how Whisper wrote "app".
+    private static func closeAllCommand(_ text: String) -> InstantCommand? {
+        let pattern = #"^(?:chiudi|chiudimi|chiudere|close|quit)(?: le applicazioni)? (?:tutte|tutti)(?: le| i)? (?:applicazioni|app|hop|programmi|finestre e app)(?: aperte| che sono aperte)?(?: (?:tranne|eccetto|a parte|meno|except)(?: il| the)? finder)?$|^close all(?: the)? (?:apps|applications)(?: except finder)?$"#
+        return text.range(of: pattern, options: .regularExpression) != nil ? .closeAll : nil
+    }
+
+    private static func minimizeCommand(_ text: String) -> InstantCommand? {
+        guard let m = captures(text, #"^(?:minimizza|minimizzami|riduci a icona|riduci|minimize)(?: la finestra| le finestre)?(?: di| del| della)? (.+)$"#), var name = m.first else { return nil }
+        name = withoutArticle(name)
+        guard !name.isEmpty, name.split(separator: " ").count <= 4 else { return nil }
+        if ["finestra", "finestra del finder", "finder"].contains(name) { return .minimizeWindow("") }
+        // "Minimizza la finestra chimica organica": not an app, a Finder window with that name.
+        if text.contains("finestra") { return .minimizeWindow(name) }
+        return .minimize(appAliases[name] ?? name)
+    }
+
+    /// Names Whisper hears in a way that looks like something else ("apri per memoria", 5 times in a week)
+    /// or that contain a word kept for files ("Prime Video").
+    private static let appAliases: [String: String] = [
+        "per memoria": "promemoria", "per la memoria": "promemoria", "promemorio": "promemoria", "promemoni": "promemoria", "promemorie": "promemoria",
+        "pro memoria": "promemoria", "prime video": "prime video", "amazon prime video": "prime video", "prime": "prime video",
+    ]
+
     private static func app(_ text: String) -> InstantCommand? {
         let words = normalizedVerb(text.split(separator: " ").map(String.init))
         guard let verb = words.first, words.count >= 2, words.count <= 5 else { return nil }
         let isOpen = openVerbs.contains(verb)
         guard isOpen || closeVerbs.contains(verb) else { return nil }
+        if let alias = appAliases[withoutArticle(words.dropFirst().joined(separator: " "))] { return isOpen ? .open(alias) : .close(alias) }
         let name = words.dropFirst()
         guard !name.contains(where: { otherThings.contains($0) || $0.contains(".") }) else { return nil }
         var joined = withoutArticle(name.joined(separator: " "))
@@ -197,7 +233,8 @@ enum InstantCommand: Equatable {
         }
         if ["più volume", "volume più alto", "volume su", "turn the volume up", "volume up"].contains(text) { return .changeVolume(10) }
         if ["meno volume", "volume più basso", "volume giù", "turn the volume down", "volume down"].contains(text) { return .changeVolume(-10) }
-        if let m = captures(text, "^(?:(?:metti|imposta|porta|set) )?\(target) (?:al |a |all'|to |at )?(.+?)(?: ?%| per cento| percent)?$"),
+        // "Alza il volume all'80%": "alza" with a level, not a step (5 November–13 November: went to the model).
+        if let m = captures(text, "^(?:(?:metti|imposta|porta|set|alza|abbassa|aumenta|riduci|diminuisci) )?\(target) (?:al |a |all'|to |at )?(.+?)(?: ?%| per cento| percent)?$"),
            let value = m.first.flatMap(number), (0...100).contains(value) {
             return .setVolume(value)
         }

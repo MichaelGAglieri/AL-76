@@ -61,15 +61,18 @@ final class ActivityTracker: ObservableObject {
 
     // MARK: Commands
 
-    func start(_ name: String, category: Category) -> String {
+    /// `at`: when the session really began ("è iniziata da un'ora"); never in the future.
+    func start(_ name: String, category: Category, at begin: Date? = nil) -> String {
         var message = ""
+        let begin = min(begin ?? Date(), Date())
         if let open = current {
             message = "Chiusa \"\(open.name)\" dopo \(Self.spoken(open.duration)). "
-            stopCurrent()
+            stopCurrent(at: max(open.start, begin))
         }
-        sessions.append(Session(name: name, category: category, start: Date()))
+        sessions.append(Session(name: name, category: category, start: begin))
         save()
-        message += "Avviata la sessione \"\(name)\" (\(category == .study ? "studio" : category == .project ? "progetto" : "attività"))."
+        message += "Avviata la sessione \"\(name)\" (\(Self.kind(category)))"
+        message += begin < Date().addingTimeInterval(-60) ? ", iniziata alle \(Self.time(begin))." : "."
         if let last = reports[Self.key(name)] {
             let day = last.date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "it_IT")))
             message += " Resoconto dell'ultima sessione (\(day)): \(last.text). Remind the user briefly where they had got to."
@@ -80,12 +83,47 @@ final class ActivityTracker: ObservableObject {
     func stop() -> String {
         guard let open = current else { return "Nessuna sessione in corso" }
         stopCurrent()
+        return closedMessage(open)
+            + " Now ask the user what to write in the report of this session (e.g. \"Cosa scriviamo nel resoconto?\") and save their answer with save_session_report."
+    }
+
+    /// A forgotten session (13 November): closed at `end` (never before its start, never in the future),
+    /// without asking for the report.
+    func stop(at end: Date) -> String {
+        guard let open = current else { return "Nessuna sessione in corso" }
+        stopCurrent(at: min(max(end, open.start.addingTimeInterval(60)), Date()))
+        return closedMessage(open)
+    }
+
+    /// "Ho smesso alle 17": the end of the last session with that name moves there,
+    /// not before its start, not after now or after the next session began.
+    func setEnd(of name: String, to end: Date) -> String {
+        guard let index = sessions.lastIndex(where: { Self.key($0.name) == Self.key(name) }) else { return "Nessuna sessione \"\(name)\"." }
+        var limit = Date()
+        if index + 1 < sessions.count { limit = min(limit, sessions[index + 1].start) }
+        let finish = min(max(end, sessions[index].start.addingTimeInterval(60)), limit)
+        if sessions[index].end == nil { stopCurrent(at: finish) } else {
+            sessions[index].end = finish
+            sessions[index].pauses = Self.pauses(sessions[index].pauses, before: finish)
+            save()
+        }
+        let s = sessions[index]
+        return "\"\(s.name)\": dalle \(Self.time(s.start)) alle \(Self.time(finish)), \(Self.spoken(s.duration))."
+    }
+
+    /// Breaks that began after the end go; one still open ends with the session.
+    private static func pauses(_ list: [Pause]?, before end: Date) -> [Pause]? {
+        guard let list else { return nil }
+        let kept = list.filter { $0.start < end }.map { Pause(start: $0.start, end: min($0.end ?? end, end)) }
+        return kept.isEmpty ? nil : kept
+    }
+
+    private func closedMessage(_ open: Session) -> String {
         let closed = sessions.last ?? open
         let today = total(from: Calendar.current.startOfDay(for: Date()), category: open.category)
         let count = closed.pauses?.count ?? 0
         let breaks = count == 0 ? "nessuna pausa" : count == 1 ? "1 pausa (\(Self.spoken(closed.pausedTime)))" : "\(count) pause (\(Self.spoken(closed.pausedTime)) in tutto)"
         return "Chiusa \"\(open.name)\" dopo \(Self.spoken(closed.duration)) di lavoro effettivo su \(Self.spoken(closed.elapsed)) complessivi, \(breaks). Oggi in totale: \(Self.spoken(today))."
-            + " Now ask the user what to write in the report of this session (e.g. \"Cosa scriviamo nel resoconto?\") and save their answer with save_session_report."
     }
 
     /// "Facciamo una pausa": the session stays open, the break is counted apart.
@@ -115,7 +153,13 @@ final class ActivityTracker: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted]
         try? encoder.encode(reports).write(to: reportsURL, options: .atomic)
         Security.protect(reportsURL)
-        return "Resoconto di \"\(name)\" salvato: lo ricorderò alla prossima sessione."
+        var message = "Resoconto di \"\(name)\" salvato: lo ricorderò alla prossima sessione."
+        // Study sessions (12 November): flashcards on what was studied, only after his yes.
+        if sessions.last(where: { Self.key($0.name) == Self.key(name) })?.category == .study {
+            message += " Now ask in one short sentence whether to make flashcards on this topic (e.g. \"Creo cinque schede su questo argomento?\")."
+                + " Only if he says yes: call search_notes on the topic, then save_flashcards with 5 cards taken only from the passages."
+        }
+        return message
     }
 
     func report(period: String, category: String?) -> String {
@@ -163,15 +207,94 @@ final class ActivityTracker: ObservableObject {
     var todayTotal: TimeInterval { total(from: Calendar.current.startOfDay(for: Date())) }
     var weekTotal: TimeInterval { total(from: Calendar.current.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()) }
 
+    // MARK: Sessions recorded or corrected afterwards (12 November)
+
+    /// A session already done ("per oggi registra un'ora di analisi"): it is added closed, in its place in time.
+    /// Without an end it finishes now, or where the open session began, so the two do not overlap.
+    func log(_ name: String, category: Category, minutes: Int, end: Date?) -> String {
+        guard minutes > 0, minutes <= 16 * 60 else { return "Durata non valida: servono da 1 a 960 minuti." }
+        var finish = min(end ?? Date(), Date())
+        if end == nil, let open = current { finish = min(finish, open.start) }
+        let begin = finish.addingTimeInterval(-Double(minutes) * 60)
+        let session = Session(name: name, category: category, start: begin, end: finish)
+        let openIndex = sessions.indices.last.flatMap { sessions[$0].end == nil ? $0 : nil }
+        let limit = openIndex ?? sessions.count
+        let index = sessions[..<limit].firstIndex { $0.start > begin } ?? limit
+        sessions.insert(session, at: index)
+        save()
+        let overlap = sessions.contains { other in
+            other.start != begin && other.start < finish && (other.end ?? Date()) > begin
+        }
+        return "Registrata la sessione \"\(name)\" (\(Self.kind(category))) di \(Self.spoken(Double(minutes) * 60)), "
+            + "dalle \(Self.time(begin)) alle \(Self.time(finish)) di \(Self.day(begin))."
+            + (overlap ? " Attenzione: si sovrappone a un'altra sessione dello stesso periodo." : "")
+    }
+
+    /// Corrects a session: the open one, or the most recent with that name. Only the values given change.
+    func edit(name: String?, newName: String?, category: Category?, start: Date?, minutes: Int?) -> String {
+        let key = name.map(Self.key)
+        guard let index = key.flatMap({ k in sessions.lastIndex { Self.key($0.name) == k } })
+                ?? sessions.indices.last else { return "Nessuna sessione da correggere." }
+        var session = sessions[index]
+        if let newName, !newName.isEmpty { session.name = newName }
+        if let category { session.category = category }
+        if let start {
+            let keep = session.end.map { $0.timeIntervalSince(session.start) }
+            session.start = min(start, Date())
+            if let keep, minutes == nil { session.end = session.start.addingTimeInterval(keep) }
+        }
+        if let minutes {
+            guard minutes > 0, minutes <= 16 * 60 else { return "Durata non valida: servono da 1 a 960 minuti." }
+            let finish = session.start.addingTimeInterval(Double(minutes) * 60 + session.pausedTime)
+            if session.end != nil || finish <= Date() { session.end = min(finish, Date()) }
+        }
+        if let end = session.end, end <= session.start { return "Correzione non valida: la fine verrebbe prima dell'inizio." }
+        sessions[index] = session
+        // The file stays in time order; the open session stays last.
+        let open = sessions.last?.end == nil ? sessions.removeLast() : nil
+        sessions.sort { $0.start < $1.start }
+        if let open { sessions.append(open) }
+        save()
+        let state = session.end == nil ? "in corso, iniziata alle \(Self.time(session.start))"
+            : "dalle \(Self.time(session.start)) alle \(Self.time(session.end!)) di \(Self.day(session.start)), \(Self.spoken(session.duration))"
+        return "Corretta la sessione \"\(session.name)\" (\(Self.kind(session.category))): \(state)."
+    }
+
+    /// "14:30" or "14.30" on the given day; nil if it cannot be read.
+    static func clockTime(_ text: String?, on day: Date = Date()) -> Date? {
+        guard let text else { return nil }
+        let parts = text.replacingOccurrences(of: ".", with: ":").split(separator: ":").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        guard let h = parts.first, (0...23).contains(h) else { return nil }
+        let m = parts.count > 1 ? parts[1] : 0
+        guard (0...59).contains(m) else { return nil }
+        return Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: day)
+    }
+
+    /// "today", "yesterday" or "2026-11-12".
+    static func dayFrom(_ text: String?) -> Date {
+        let today = Calendar.current.startOfDay(for: Date())
+        switch text?.lowercased() {
+        case nil, "", "today", "oggi": return today
+        case "yesterday", "ieri": return Calendar.current.date(byAdding: .day, value: -1, to: today) ?? today
+        default:
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+            return f.date(from: text!) ?? today
+        }
+    }
+
+    private static func kind(_ c: Category) -> String { c == .study ? "studio" : c == .project ? "progetto" : "attività" }
+    private static func time(_ d: Date) -> String { d.formatted(.dateTime.hour().minute().locale(Locale(identifier: "it_IT"))) }
+    private static func day(_ d: Date) -> String {
+        Calendar.current.isDateInToday(d) ? "oggi" : Calendar.current.isDateInYesterday(d) ? "ieri"
+            : d.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "it_IT")))
+    }
+
     // MARK: Internals
 
-    private func stopCurrent() {
+    private func stopCurrent(at end: Date? = nil) {
         guard let index = sessions.indices.last, sessions[index].end == nil else { return }
-        let now = Date()
-        if sessions[index].isPaused, var pauses = sessions[index].pauses {
-            pauses[pauses.count - 1].end = now
-            sessions[index].pauses = pauses
-        }
+        let now = end ?? Date()
+        sessions[index].pauses = Self.pauses(sessions[index].pauses, before: now)
         sessions[index].end = now
         save()
     }
@@ -194,8 +317,10 @@ final class ActivityTracker: ObservableObject {
     static func spoken(_ interval: TimeInterval) -> String {
         let minutes = Int(interval / 60)
         let (h, m) = (minutes / 60, minutes % 60)
-        if h == 0 { return "\(m) minuti" }
-        return m == 0 ? "\(h) ore" : "\(h) ore e \(m) minuti"
+        let minutesText = m == 1 ? "1 minuto" : "\(m) minuti"
+        if h == 0 { return minutesText }
+        let hoursText = h == 1 ? "1 ora" : "\(h) ore"
+        return m == 0 ? hoursText : "\(hoursText) e \(minutesText)"
     }
 
     static func clock(_ interval: TimeInterval) -> String {

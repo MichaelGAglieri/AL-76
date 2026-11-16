@@ -58,6 +58,16 @@ struct HUDView: View {
         // The window moves by dragging the sphere; a double click reduces it to the SATELLITE.
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { onCompact() }
+        // The same menu as the SATELLITE's right click (16 November, user request): with the sphere
+        // open, a two-finger tap and "Scrivi" opens the bar under it.
+        .contextMenu {
+            Button("Parla (⌃⌥Spazio)") { assistant.pushToTalk() }
+            Button("Scrivi (⌃⌥T)") { NotificationCenter.default.post(name: .jarvisTypeBar, object: nil) }
+            Button("Nuova conversazione") { assistant.resetConversation() }
+            Button("Riduci a satellite") { onCompact() }
+            Divider()
+            Button("Esci da JARVIS") { NSApp.terminate(nil) }
+        }
         .gesture(DragGesture(minimumDistance: 3)
             .onChanged { _ in onWindowDrag(false) }
             .onEnded { _ in onWindowDrag(true) })

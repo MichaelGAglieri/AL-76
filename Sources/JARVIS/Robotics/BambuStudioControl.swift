@@ -524,6 +524,7 @@ final class BambuStudioControl {
         return Security.external("avviso di Bambu Studio", text) + "\nNon lo chiudo da solo: leggilo all'utente, deve rispondere lui. Non ho premuto nulla."
     }
 
+    @discardableResult
     private func waitForGreen(_ labels: [String], app: NSRunningApplication, in region: CGRect?, seconds: Double, problem: String) async throws -> Screen {
         let end = Date().addingTimeInterval(seconds)
         repeat {

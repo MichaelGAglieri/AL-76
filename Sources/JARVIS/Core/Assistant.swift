@@ -42,11 +42,13 @@ final class Assistant: ObservableObject {
     @Published private(set) var state: State = .booting("Inizializzazione") {
         didSet {
             guard state != oldValue else { return }
-            pipeline.bargeIn = (state == .speaking || state == .acting) && config.bargeIn && !answeringPhone
+            pipeline.bargeIn = (state == .speaking || state == .acting) && config.bargeIn && !answeringPhone && !answeringTyped
+            setEchoFilter()
             if state == .idle {
                 answering = nil
                 // Once the phone's answer is over, the Mac's alerts go back to the speakers.
                 endPhoneRequest()
+                endTypedRequest()
                 // Outside didSet: an alert changes the state again.
                 DispatchQueue.main.async { [weak self] in self?.initiative.becameIdle() }
             }
@@ -76,6 +78,8 @@ final class Assistant: ObservableObject {
     @Published private(set) var heard = "" {
         didSet {
             guard !heard.isEmpty else { return }
+            // Every new phrase is a new answer: decide now whether it uses the honorific.
+            Honorific.newTurn()
             conversation.append(Exchange(user: heard, reply: ""))
             if conversation.count > 200 { conversation.removeFirst(conversation.count - 200) }
         }
@@ -85,7 +89,7 @@ final class Assistant: ObservableObject {
         didSet {
             guard !reply.isEmpty else { return }
             if conversation.isEmpty { conversation.append(Exchange(user: "", reply: "")) }
-            conversation[conversation.count - 1].reply = reply
+            conversation[conversation.count - 1].reply = Honorific.apply(reply)
         }
     }
     @Published private(set) var language: Language = .italian
@@ -111,7 +115,13 @@ final class Assistant: ObservableObject {
 
     let levels = AudioLevels()
     let phoneBridge = PhoneBridge()
-    @Published private(set) var config = JarvisConfig.load()
+    @Published private(set) var config = JarvisConfig.load() {
+        didSet {
+            Honorific.italian = config.honorific
+            MailActions.importantSenders = config.mailImportant
+            MailActions.ignoredSenders = config.mailIgnored
+        }
+    }
 
     private let pipeline = VoicePipeline()
     private let transcriber = Transcriber()
@@ -135,10 +145,45 @@ final class Assistant: ObservableObject {
     private let mcp = MCPServer()
     /// Action waiting for a spoken "yes" (e.g. sending an email).
     private var pending: PendingAction? {
-        didSet { pendingFromPhone = pending != nil && tools.currentSource.contains("iphone") }
+        didSet {
+            pendingFromPhone = pending != nil && tools.currentSource.contains("iphone")
+            pendingExpiry?.cancel()
+            pendingExpiry = nil
+            guard pending != nil else { return }
+            pendingGeneration += 1
+            let waiting = pendingGeneration
+            // A question left unanswered must not silence JARVIS: on 15 November "apro makerworld.com?"
+            // waited from 20:21 to 21:59, and meanwhile the printer's alerts and the study summary
+            // could not be said (alerts wait while a confirmation is open). After 90 seconds it lapses.
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, let current = self.pending, self.pendingGeneration == waiting else { return }
+                current.onCancel?()
+                Security.audit("conferma scaduta", tool: "conferma", source: self.tools.currentSource, detail: current.summary)
+                Diagnostics.log("conferma  scaduta senza risposta dopo 90 s: \(current.summary)")
+                self.pending = nil
+            }
+            pendingExpiry = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 90, execute: work)
+        }
     }
+    private var pendingExpiry: DispatchWorkItem?
+    private var pendingGeneration = 0
     /// Whoever asked for the action confirms it: a "yes" from the other side must not count by mistake.
     private var pendingFromPhone = false
+
+    /// Several actions to confirm in the same answer (two sites to open) wait together: one "sì" does all.
+    /// Before 13 November the second replaced the first, and "Fabric" was never opened.
+    private func addPending(_ action: PendingAction) {
+        guard let first = pending else { pending = action; return }
+        var both = PendingAction(summary: first.summary + "; " + action.summary.prefix(1).lowercased() + action.summary.dropFirst(),
+                                 secure: first.secure || action.secure, alwaysAsk: first.alwaysAsk || action.alwaysAsk) {
+            let a = await first.run()
+            let b = await action.run()
+            return a + " " + b
+        }
+        both.onCancel = { first.onCancel?(); action.onCancel?() }
+        pending = both
+    }
     private var responseTask: Task<Void, Never>?
     private var currentReplyMentionsName = false
     private var generating = false
@@ -152,6 +197,9 @@ final class Assistant: ObservableObject {
 
     func boot() {
         Security.protectDataDirectory()
+        Honorific.italian = config.honorific
+        MailActions.importantSenders = config.mailImportant
+        MailActions.ignoredSenders = config.mailIgnored
         speech.rate = config.speechRate
         configureNeuralVoice(config)
         speech.englishVoiceName = config.englishVoice
@@ -211,10 +259,11 @@ final class Assistant: ObservableObject {
         sttStatus = "CARICAMENTO…"
         let whisperReady = await retrying("Riconoscimento vocale") { [self] in
             if await transcriber.isReady { return }
-            await transcriber.setVocabulary(config.vocabulary)
+            await refreshVocabulary()
             try await transcriber.load(model: config.whisperModel) { p in
-                Task { @MainActor [weak self] in
-                    self?.state = .booting(p < 1 ? "Download Whisper \(Int(p * 100))%" : "Ottimizzazione per il Neural Engine")
+                // The assistant lives as long as the app: no weak reference needed here.
+                Task { @MainActor in
+                    self.state = .booting(p < 1 ? "Download Whisper \(Int(p * 100))%" : "Ottimizzazione per il Neural Engine")
                 }
             }
         }
@@ -348,10 +397,23 @@ final class Assistant: ObservableObject {
 
     func togglePrivacy() { setPrivacy(!privacyMode) }
 
+    /// The voice and the microphone share one audio engine, and speaking starts it again: until
+    /// 15 November, after "Modalità privacy…" the microphone stayed open (the macOS indicator on)
+    /// although nothing was listening. Once JARVIS is silent the engine is stopped.
+    private func closeMicrophoneAfterSpeech() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, self.privacyMode else { return }
+            guard !self.speech.isSpeaking, self.state == .idle else { return self.closeMicrophoneAfterSpeech() }
+            AudioHub.engine.stop()
+            Diagnostics.log("privacy   microfono chiuso dopo la voce")
+        }
+    }
+
     func setPrivacy(_ on: Bool) {
         guard on != privacyMode else { return }
         privacyMode = on
         tools.privacyMode = on
+        speech.stopsEngineWhenSilent = on
         if on { phoneBridge.stopWatching(reason: "Sul Mac è attiva la modalità privacy: lo schermo non si vede.") }
         // Claude remembers refusals: without this note it would not try again.
         notesForClaude.append(on ? "Privacy mode is now on." : "Privacy mode is now off: tools blocked by it work again.")
@@ -375,6 +437,9 @@ final class Assistant: ObservableObject {
     // MARK: Continuous listening with Whisper
 
     private var checkingWake = false
+    let dictation = Dictation()
+    /// Phrases of the dictation are transcribed one after the other, in the order said.
+    private var dictationQueue: Task<Void, Never>?
     private var waitingSegment: [Float]?
     /// When JARVIS finished speaking: phrases heard while it spoke are
     /// its own voice picked up by the microphone, not commands.
@@ -406,6 +471,69 @@ final class Assistant: ObservableObject {
     /// The last short, loud phrase in which "Jarvis" was not heard: if the next one
     /// arrives right after, the two are listened to again together.
     private var rejectedSegment: (samples: [Float], end: Date)?
+
+    /// Whisper turns steady noise into "Grazie." (59 of 77 rejected phrases on 12 November), about
+    /// one second of GPU every few seconds. After three in a row, for one minute phrases no louder
+    /// than that noise (+4 dB) are not transcribed; louder voice near the Mac is still checked.
+    private var noiseStreak: [(peak: Float, at: Date)] = []
+    private var noiseUntil = Date.distantPast
+    private var noisePeak: Float = 0
+    private var noiseSkipped = 0
+
+    private static func isWhisperNoise(_ text: String) -> Bool {
+        let t = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        return ["grazie", "grazie a tutti", "grazie mille", "so", "sottotitoli e revisione a cura di qtss", "thank you"].contains(t)
+            || (t.hasPrefix("[") && t.hasSuffix("]")) || (text.hasPrefix("[") && text.hasSuffix("]"))
+    }
+
+    /// True when the phrase is the steady noise of the last minute: skipped without Whisper.
+    private func skipAsNoise(_ samples: [Float]) -> Bool {
+        guard Date() < noiseUntil else {
+            if noiseSkipped > 0 { Diagnostics.log("wake --   rumore finito: \(noiseSkipped) frasi saltate senza Whisper"); noiseSkipped = 0 }
+            return false
+        }
+        let peak = samples.reduce(Float(0)) { max($0, abs($1)) }
+        guard peak <= noisePeak * 1.585 else { return false }   // +4 dB
+        noiseSkipped += 1
+        return true
+    }
+
+    private var backgroundTalk = BackgroundTalk()
+
+    private static func decibels(_ samples: [Float]) -> Float {
+        20 * log10(max(samples.reduce(Float(0)) { max($0, abs($1)) }, 1e-7))
+    }
+
+    /// A film or the TV talking: its lines are skipped without Whisper, louder voices go through.
+    private func skipAsBackgroundTalk(_ samples: [Float]) -> Bool {
+        let wasActive = backgroundTalk.active, skippedBefore = backgroundTalk.skipped
+        let skip = backgroundTalk.shouldSkip(peakDB: Self.decibels(samples))
+        if wasActive, !backgroundTalk.active {
+            Diagnostics.log("wake --   sottofondo finito: \(skippedBefore) frasi saltate senza Whisper")
+        }
+        return skip
+    }
+
+    private func noteBackgroundTalk(_ samples: [Float], hadJarvis: Bool) {
+        let wasActive = backgroundTalk.active
+        backgroundTalk.checked(peakDB: Self.decibels(samples), hadJarvis: hadJarvis)
+        if !wasActive, backgroundTalk.active {
+            let bar = backgroundTalk.bar().map { String(format: "sopra %.0f dB", $0) } ?? "tutte (troppo forte per separare)"
+            Diagnostics.log("wake --   parlato di sottofondo (film, TV): a Whisper solo le voci \(bar)")
+        }
+    }
+
+    private func noteWakeResult(_ text: String, peak: Float) {
+        guard Self.isWhisperNoise(text) else { noiseStreak.removeAll(); return }
+        let now = Date()
+        noiseStreak = noiseStreak.filter { now.timeIntervalSince($0.at) < 45 } + [(peak, now)]
+        guard noiseStreak.count >= 3 else { return }
+        noisePeak = noiseStreak.map(\.peak).max() ?? peak
+        if now >= noiseUntil {
+            Diagnostics.log("wake --   rumore continuo (\"\(text)\" ×\(noiseStreak.count), picco \(String(format: "%.0f", 20 * log10(max(noisePeak, 1e-7)))) dB): per un minuto salto le frasi non più forti")
+        }
+        noiseUntil = now.addingTimeInterval(60)
+    }
     private var waitingSegmentEnd: Date?
     /// How the first pass understood the phrase: sometimes it is right exactly where
     /// the full transcription is wrong ("avrei whatsapp" versus "avrighozzotto").
@@ -444,6 +572,10 @@ final class Assistant: ObservableObject {
             return
         }
         guard state == .idle, !privacyMode else { return }
+        if dictation.isActive {
+            dictate(samples)
+            return
+        }
         // The phrase started before JARVIS finished speaking (plus 0.6 s of
         // final silence and a margin): it contains its voice, ignore it.
         let segmentStart = Date().addingTimeInterval(-Double(samples.count) / 16_000 - 0.3)
@@ -453,6 +585,8 @@ final class Assistant: ObservableObject {
         }
         // If a check is still running the phrase is not thrown away: keep
         // the latest one and check it right after (before, "Jarvis" got lost).
+        if skipAsNoise(samples) { return }
+        if skipAsBackgroundTalk(samples) { return }
         guard !checkingWake else {
             waitingSegment = samples
             waitingSegmentEnd = end
@@ -481,10 +615,24 @@ final class Assistant: ObservableObject {
                 startListening(afterWake: false, lookback: Date().timeIntervalSince(start), checkVoice: true)
                 return
             }
+            // "Già vissi che ore sono": a misheard "Jarvis" and then a command JARVIS knows. It goes on as a wake
+            // with that command; the voice is checked as usual.
+            if state == .idle, WakeVerifier.command(from: text) == nil, let rest = WakeVerifier.soundalikeCommand(from: text),
+               !rest.isEmpty, InstantCommand.parse(rest) != nil || DirectCommand.parse(rest) != nil {
+                Diagnostics.log("wake ~    \"\(text)\": somiglia a Jarvis e segue un comando noto")
+                soundalikeWakeCommand = rest
+                text = "Jarvis, " + rest
+            } else {
+                soundalikeWakeCommand = nil
+            }
             if state == .idle, WakeVerifier.command(from: text) == nil {
                 // The level tells a muted microphone from Whisper not understanding.
                 let peak = samples.reduce(Float(0)) { max($0, abs($1)) }
                 Diagnostics.log("wake NO   [\(seconds), \(Diagnostics.since(start)), picco \(String(format: "%.0f", 20 * log10(max(peak, 1e-7)))) dB] \"\(text)\"")
+                noteWakeResult(text, peak: peak)
+                noteBackgroundTalk(samples, hadJarvis: false)
+                // Noise transcribed as "Grazie." is not joined to the next phrase: one Whisper run less.
+                if Self.isWhisperNoise(text) { rejectedSegment = nil; return }
                 guard let joined = joinedWithRejected(samples, peak: peak, end: end),
                       let joinedText = await transcriber.wakeTranscript(joined),
                       WakeVerifier.command(from: joinedText) != nil else { return }
@@ -494,7 +642,10 @@ final class Assistant: ObservableObject {
             }
             guard state == .idle else { return }
             rejectedSegment = nil
-            Diagnostics.log("wake OK   [\(seconds), \(Diagnostics.since(start))] \"\(text)\"")
+            noiseStreak.removeAll()
+            noiseUntil = .distantPast
+            noteBackgroundTalk(samples, hadJarvis: true)
+            Diagnostics.log("wake OK   [\(seconds), \(Diagnostics.since(start)), picco \(String(format: "%.0f", Self.decibels(samples))) dB\(backgroundTalk.bar().map { String(format: ", soglia sottofondo %.0f dB", $0) } ?? "")] \"\(text)\"")
             guard await voiceAccepted(samples, heard: text), state == .idle else {
                 Diagnostics.log("wake --   voce non riconosciuta, ignorata")
                 return
@@ -517,6 +668,82 @@ final class Assistant: ObservableObject {
             // The large Whisper transcribes the whole phrase again and extracts the command
             // (or answers "Sì, signore?" and listens).
             utteranceCaptured(samples, needsWakeCheck: true, wakeConfirmed: true)
+        }
+    }
+
+    // MARK: Dictation
+
+    /// `continuing`: nil = a new brainstorming; otherwise which one to add to ("" = the latest).
+    private func startDictation(continuing: String? = nil) -> String {
+        if dictation.isActive { return "Sto già scrivendo: \(dictation.count) frasi finora. Per finire dica: Jarvis, basta scrivere." }
+        var opening = "Da ora scrivo tutto quello che dice."
+        if let continuing {
+            guard let resumed = dictation.resume(continuing) else {
+                return Dictation.documents().isEmpty ? "Non c'è ancora nessun brainstorming da continuare. Per iniziarne uno dica: Jarvis, scrivi tutto quello che dico."
+                    : "Non trovo quel brainstorming. Il più recente è \(Dictation.documents()[0].deletingPathExtension().lastPathComponent)."
+            }
+            opening = "Riprendo \(resumed.name), che aveva \(resumed.phrases) frasi: aggiungo quello che dice."
+        } else {
+            dictation.start()
+        }
+        phoneBridge.send(PhoneMessage(.dictation, number: 1))
+        return opening + " Quando ha finito dica: Jarvis, basta scrivere."
+    }
+
+    /// While dictating every phrase in his voice is written down, with the large Whisper and without "Jarvis".
+    /// Only "Jarvis, basta scrivere" and "Jarvis, cancella l'ultima frase" are commands.
+    /// From the phone the voice is not checked: its microphone is in his hand.
+    private func dictate(_ samples: [Float], fromPhone: Bool = false) {
+        if !fromPhone {
+            let segmentStart = Date().addingTimeInterval(-Double(samples.count) / 16_000 - 0.3)
+            guard segmentStart > lastSpeechEnd, !skipAsNoise(samples) else { return }
+        }
+        let previous = dictationQueue
+        dictationQueue = Task { [weak self] in
+            await previous?.value
+            guard let self, self.dictation.isActive,
+                  let (raw, _) = try? await self.transcriber.transcribe(samples) else { return }
+            let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, !Self.isWhisperNoise(text), !Transcriber.isCourtesyOnly(text) else {
+                if fromPhone { self.phoneBridge.send(PhoneMessage(.notice, text: "Non ho sentito nulla.")) }
+                return
+            }
+            // A video or someone else in the room is not written down.
+            if !fromPhone {
+                guard await self.voiceAccepted(samples, heard: text, isCommand: true) else {
+                    Diagnostics.log("dettatura voce non sua, non scritta: \"\(text.prefix(60))\"")
+                    return
+                }
+            }
+            self.dictated(text, fromPhone: fromPhone)
+        }
+    }
+
+    /// A phrase of the dictation, already as text: a control or a line of the document.
+    private func dictated(_ text: String, fromPhone: Bool) {
+        guard dictation.isActive else { return }
+        func answer(_ sentence: String) {
+            // The answer goes where the phrase came from: to the phone's speaker or the Mac's.
+            if fromPhone { guard beginPhoneRequest() else { return } }
+            say(sentence, language: .italian)
+        }
+        switch Dictation.control(text) {
+        case .stop:
+            if !fromPhone { speech.playChime() }
+            let (result, phrases) = dictation.finish()
+            phoneBridge.send(PhoneMessage(.dictation, number: 0))
+            guard let result else { answer("Fine della dettatura. Non avevo scritto niente."); return }
+            let ok = result.contains("Creato") || result.contains("Aggiornato")
+            notesForClaude.append("The user dictated a brainstorming of \(phrases) phrases, saved as PDF. \(result) To review or tidy it, use the brainstorming tool.")
+            answer(ok ? "Fatto: \(phrases) frasi nel PDF, in Documenti, cartella Brainstorming. Se vuole lo riordino: Jarvis, riordina il brainstorming."
+                      : "Non sono riuscito a creare il PDF: \(result)")
+        case .undo:
+            let removed = dictation.removeLast()
+            answer(removed == nil ? "Non c'è niente da cancellare." : "Cancellata l'ultima frase.")
+        case nil:
+            dictation.add(text)
+            note("✎ \(text)")
+            if fromPhone { phoneBridge.send(PhoneMessage(.heard, text: "✎ \(text)")) }
         }
     }
 
@@ -543,8 +770,31 @@ final class Assistant: ObservableObject {
             // similarity, because the windows also give other voices more chances.
             let noisyLimit = samples.count <= 40_000 && !isCommand ? Self.noisyThreshold : Self.noisyLongThreshold
             // An answer to one of its questions is short and comes a few seconds later: "Un minuto" scored 0.39 and 0.41.
-            let threshold = isAnswer ? min(config.voiceThreshold, Self.answerThreshold)
+            var threshold = isAnswer ? min(config.voiceThreshold, Self.answerThreshold)
                 : noisy ? min(config.voiceThreshold, noisyLimit) : config.voiceThreshold
+            // Measured on voce.log (12 November): half of the 50 rejections were the user himself, at 0.36–0.45,
+            // on short phrases; TV and video voices never went above 0.33. Four cases where a little less is enough.
+            var rule = ""
+            let said = WakeVerifier.command(from: heard)
+            if isAnswer || isCommand, DirectCommand.isNo(heard) {
+                // "No" can only cancel: it is always taken, whoever says it.
+                Diagnostics.logVoice(String(format: "%.3f sì %@ [%.1f s] intera %.3f rumore %.0f dB soglia 0.00 ", score, config.voiceCheck,
+                                            Double(samples.count) / 16_000, whole, noise) + "risposta \"\(heard)\" (un no vale sempre)")
+                return true
+            }
+            if !noisy, !isAnswer {
+                if isCommand, let wake = lastWakeVoice, Date().timeIntervalSince(wake.at) <= 20, wake.score >= 0.50 {
+                    // The command right after a "Jarvis" clearly his: the same person goes on speaking.
+                    threshold = min(threshold, Self.relaxedThreshold); rule = "segue un Jarvis suo"
+                } else if !isCommand, let said, said.isEmpty, samples.count <= 48_000 {
+                    // "Jarvis" alone: the command after the beep is checked again.
+                    threshold = min(threshold, 0.40); rule = "Jarvis da solo"
+                } else if !isCommand, let said, InstantCommand.parse(said) != nil || DirectCommand.parse(said) != nil
+                            || RobotVoiceCommand.parse(said, consoleInFront: false) != nil {
+                    // A whole known command ("Jarvis, esegui sequenza"): the sentence itself is evidence.
+                    threshold = min(threshold, Self.relaxedThreshold); rule = "comando noto"
+                }
+            }
             if noisy, samples.count > Self.window {
                 for start in stride(from: 0, through: samples.count - Self.window, by: Self.window / 3) where score < threshold {
                     let piece = Array(samples[start..<start + Self.window])
@@ -552,6 +802,8 @@ final class Assistant: ObservableObject {
                 }
             }
             let passed = score >= threshold
+            if passed, !isCommand, !isAnswer { lastWakeVoice = (score, Date()) }
+            if passed, !rule.isEmpty, score < config.voiceThreshold { Diagnostics.log(String(format: "voce      accettata a %.2f con soglia %.2f: ", score, threshold) + rule) }
             Diagnostics.logVoice(String(format: "%.3f %@ %@ [%.1f s] intera %.3f rumore %.0f dB soglia %.2f ",
                                         score, passed ? "sì" : "no", config.voiceCheck, Double(samples.count) / 16_000,
                                         whole, noise, threshold) + (isAnswer ? "risposta " : isCommand ? "comando " : "") + "\"\(heard)\"")
@@ -567,6 +819,10 @@ final class Assistant: ObservableObject {
     private static let noisyThreshold: Float = 0.33
     private static let noisyLongThreshold: Float = 0.40
     private static let answerThreshold: Float = 0.33
+    /// For the user's short phrases in a quiet room: above every TV or video voice measured (0.33 at most).
+    private static let relaxedThreshold: Float = 0.36
+    /// The last "Jarvis" accepted and its score: the command that follows is judged with it.
+    private var lastWakeVoice: (score: Float, at: Date)?
     /// Window of the check in noise: about the length of "Jarvis" plus a margin (0.9 s).
     private static let window = 14_400
 
@@ -785,6 +1041,7 @@ final class Assistant: ObservableObject {
     private func startListening(afterWake: Bool, followUp: Bool = false, lookback: Double = 0, checkVoice: Bool = false, isAnswer: Bool = false, startTimeout: Double? = nil) {
         // Someone is speaking to the Mac: the answer is for the Mac too.
         endPhoneRequest()
+        endTypedRequest()
         commandNeedsVoice = checkVoice
         commandIsAnswer = isAnswer
         state = .listening
@@ -825,11 +1082,66 @@ final class Assistant: ObservableObject {
         return named || model
     }
 
+    /// The university's agenda every two hours (from 7 to 22): a lesson gone or moved becomes an alert.
+    private var universityWatch: Timer?
+
+    private func watchUniversityAgenda() {
+        universityWatch?.invalidate()
+        universityWatch = Timer.scheduledTimer(withTimeInterval: 2 * 3600, repeats: true) { [weak self] _ in
+            onMainThread { self?.checkUniversityAgenda() }
+        }
+        universityWatch?.tolerance = 600
+        DispatchQueue.main.asyncAfter(deadline: .now() + 300) { [weak self] in self?.checkUniversityAgenda() }
+    }
+
+    private func checkUniversityAgenda() {
+        let hour = Calendar.current.component(.hour, from: Date())
+        guard UniversityClient.savedUsername != nil, (7..<22).contains(hour) else { return }
+        Task { @MainActor in
+            do {
+                let alerts = try await UniversityClient.shared.changes()
+                Diagnostics.log("ateneo    agenda controllata: \(alerts.count) cambiamenti")
+                for alert in alerts { self.initiative.alert(id: alert.id, text: alert.text) }
+            } catch {
+                Diagnostics.log("ateneo    agenda non controllata: \(error.localizedDescription)")
+            }
+        }
+    }
+
     private func setUpInitiative() {
+        watchUniversityAgenda()
         initiative.config = { [weak self] in self?.config ?? JarvisConfig() }
         initiative.canSpeak = { [weak self] in
             guard let self else { return false }
-            return state == .idle && !privacyMode && pending == nil && !generating && !checkingWake && !voiceEnrollment.isActive
+            // Not while dictating either: his answer would be written into the brainstorming.
+            // Privacy mode no longer silences alerts (15 November: four printer alerts lost while it was on).
+            return state == .idle && pending == nil && !generating && !checkingWake && !voiceEnrollment.isActive && !dictation.isActive
+        }
+        initiative.privacy = { [weak self] in self?.privacyMode ?? false }
+        initiative.lastHeard = { [weak self] in self?.lastHeardFromUser ?? .distantPast }
+        initiative.askStillStudying = { [weak self] session in
+            guard let self else { return false }
+            let open = ActivityTracker.spoken(session.duration)
+            self.directQuestion = (.stillStudying(session: session.name), Date().addingTimeInterval(10 * 60))
+            self.announce("La sessione di \(session.name) è aperta da \(open): sta ancora studiando?", listen: true)
+            return true
+        }
+        initiative.closeForgotten = { [weak self] session, end in
+            guard let self, self.activity.current?.start == session.start else { return nil }
+            _ = self.activity.stop(at: end)
+            let closed = self.activity.sessions.last { $0.start == session.start }
+            let worked = ActivityTracker.spoken(closed?.duration ?? 0)
+            let time = end.formatted(date: .omitted, time: .shortened)
+            self.note("Sessione \(session.name) chiusa alle \(time): nessuna risposta")
+            self.notesForClaude.append("While he was away JARVIS closed the forgotten study session \(session.name) at \(time) (\(worked)).")
+            self.closedSessionName = session.name
+            return "Non rispondeva, quindi ho chiuso la sessione di \(session.name) alle \(time), l'ultima volta che ha usato il Mac: \(worked) di studio. Ha studiato più a lungo?"
+        }
+        initiative.tellClosed = { [weak self] notice in
+            guard let self else { return }
+            if let name = self.closedSessionName { self.directQuestion = (.sessionEnd(session: name), Date().addingTimeInterval(3 * 60)) }
+            self.closedSessionName = nil
+            self.announce(notice, listen: true)
         }
         initiative.announce = { [weak self] text in self?.announce(text) }
         printer.onHostFound = { [weak self] host in
@@ -860,7 +1172,25 @@ final class Assistant: ObservableObject {
         initiative.startBriefing = { [weak self] in self?.startMorningBriefing() }
         initiative.prepareBriefing = { [weak self] in self?.tools.prepareBriefing() }
         initiative.studySession = { [weak self] in self?.activity.current }
+        initiative.studySummary = { [weak self] in self?.tools.studyPlan.eveningSummary() }
         tools.onBriefing = { [weak self] in self?.initiative.briefingDone() }
+        tools.onNamesChanged = { [weak self] in Task { await self?.refreshVocabulary() } }
+        tools.onStartDictation = { [weak self] which in self?.startDictation(continuing: which) ?? "Dettatura non disponibile." }
+        tools.onMailSender = { [weak self] sender, importance in
+            guard let self else { return "Non disponibile." }
+            let key = sender.trimmingCharacters(in: .whitespaces)
+            guard key.count >= 3 else { return "Dimmi il mittente: un nome o un indirizzo." }
+            self.config.mailImportant.removeAll { $0.caseInsensitiveCompare(key) == .orderedSame }
+            self.config.mailIgnored.removeAll { $0.caseInsensitiveCompare(key) == .orderedSame }
+            switch importance {
+            case "important": self.config.mailImportant.append(key)
+            case "ignore": self.config.mailIgnored.append(key)
+            default: break
+            }
+            self.config.save()
+            return importance == "important" ? "Le mail di \(key) ora sono sempre tra le importanti."
+                : importance == "ignore" ? "Le mail di \(key) non verranno più lette tra le novità." : "Le mail di \(key) tornano alla regola normale."
+        }
         tools.onUnloadModel = { [weak self] in await self?.unloadLocalModel() ?? "Non disponibile." }
         tools.appControlEnabled = config.appControl
         initiative.start()
@@ -869,7 +1199,31 @@ final class Assistant: ObservableObject {
     }
 
     /// JARVIS speaks first: appointment, reminder, study break, battery.
-    private func announce(_ text: String) {
+    /// The session closed while he was away: the notice when he is back is about this one.
+    private var closedSessionName: String?
+    /// When he last spoke to JARVIS: a sign he is there (forgotten study sessions).
+    private var lastHeardFromUser = Date.distantPast
+    /// A question JARVIS asked by itself: after it, it listens for the answer as after any question.
+    private var listenAfterAnnounce = false
+    /// The known command heard after a misheard "Jarvis" ("già vissi che ore sono").
+    private var soundalikeWakeCommand: String?
+
+    /// The echo filter follows JARVIS's voice: on at once when it speaks, off half a second after
+    /// it stops (the tail of its voice in the room).
+    private func setEchoFilter() {
+        let needed = state == .speaking || state == .acting
+        if needed {
+            pipeline.echoFilterOn = true
+        } else if pipeline.echoFilterOn {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, !(self.state == .speaking || self.state == .acting) else { return }
+                self.pipeline.echoFilterOn = false
+            }
+        }
+    }
+
+    private func announce(_ text: String, listen: Bool = false) {
+        listenAfterAnnounce = listen
         startStandaloneExchange()
         note("Avviso: \(text)")
         NotificationCenter.default.post(name: .jarvisActivated, object: nil)
@@ -977,7 +1331,7 @@ final class Assistant: ObservableObject {
                 // started 0.4 s earlier: use that one.
                 let early = pauseFinal ? earlyTranscript : nil
                 earlyTranscript = nil
-                let (text, lang): (text: String, language: Language)
+                var (text, lang): (text: String, language: Language)
                 // If it is empty, redo it on the whole phrase: at the first pause Whisper may
                 // have understood nothing, and the command was lost without a word.
                 if let early, let value = try? await early.value, !value.text.isEmpty {
@@ -985,18 +1339,37 @@ final class Assistant: ObservableObject {
                 } else {
                     (text, lang) = try await transcriber.transcribe(samples, lenient: isAnswer)
                 }
+                // "Jarvis" already heard, but the large Whisper dropped every piece as uncertain (13 November:
+                // three long requests lost this way, with echo cancellation on): once more, less strict.
+                if text.isEmpty, needsWakeCheck, wakeConfirmed, !isAnswer, !Task.isCancelled {
+                    (text, lang) = try await transcriber.transcribe(samples, lenient: true)
+                    Diagnostics.log("frase     vuota, riprovata più tollerante: \"\(text)\"")
+                }
                 guard !Task.isCancelled else { return }
                 Diagnostics.log("frase     [\(Diagnostics.since(start))\(early != nil ? ", anticipata" : "")] \"\(text)\" (\(lang == .italian ? "it" : "en"))")
-                var command = text
+                var command = WakeVerifier.withoutRepetition(text)
+                if command != text { Diagnostics.log("frase     ripetuta, tengo una volta: \"\(command)\"") }
                 namedMidPhrase = nil
                 if needsWakeCheck {
-                    if let extracted = WakeVerifier.command(from: text) {
+                    if let extracted = WakeVerifier.command(from: command) {
                         command = extracted
-                        if WakeVerifier.isNamedMidPhrase(text) { namedMidPhrase = text }
+                        if WakeVerifier.isNamedMidPhrase(command) { namedMidPhrase = command }
                     } else if wakeConfirmed, let extracted = WakeVerifier.command(from: text, loose: true) {
                         // The small Whisper already heard "Jarvis": if the large one
                         // spells it oddly ("Charvis", "Jervis") it still counts.
                         command = extracted
+                    } else if wakeConfirmed,
+                              let small = alternativeTranscript.flatMap({ WakeVerifier.command(from: $0) }),
+                              small.split(separator: " ").count >= 2 || InstantCommand.parse(small) != nil || DirectCommand.parse(small) != nil {
+                        // The large Whisper has no "Jarvis" (empty, or the looser retry wrote "Ciao, ciao."
+                        // for "Jarvis, che ore sono", 15 November): the small one's phrase, which had it, is used.
+                        command = small
+                        Diagnostics.log("frase     uso la frase sentita al risveglio: \"\(small)\"")
+                    } else if wakeConfirmed, let heard = soundalikeWakeCommand {
+                        // Woken by "già vissi che ore sono": the large Whisper wrote something else
+                        // ("già l'visikare sono"), the command the small one heard is a known one.
+                        command = WakeVerifier.soundalikeCommand(from: text).flatMap { InstantCommand.parse($0) != nil || DirectCommand.parse($0) != nil ? $0 : nil } ?? heard
+                        Diagnostics.log("frase     uso il comando sentito al risveglio: \"\(command)\"")
                     } else {
                         note("Falsa attivazione ignorata: \"\(text)\"")
                         Diagnostics.log("scartata: il controllo grande non ha trovato Jarvis")
@@ -1056,6 +1429,7 @@ final class Assistant: ObservableObject {
     // MARK: Answer
 
     private func respond(to command: String, language lang: Language) async {
+        lastHeardFromUser = Date()
         think("» \(command)")
         let started = Date()
         defer {
@@ -1163,10 +1537,18 @@ final class Assistant: ObservableObject {
         }
         let alternative = alternativeTranscript.flatMap { WakeVerifier.command(from: $0) }
         alternativeTranscript = nil
+        var command = command
+        switch await answerDirectQuestion(command, language: lang) {
+        case .handled: return
+        case .forward(let request): command = request
+        case .none: break
+        }
         if await runRobotCommand(command, language: lang) { return }
         if await runProtocol(command, language: lang) { return }
         if await runInstantCommand(command, language: lang) { return }
         if let alternative, alternative != command, await runInstantCommand(alternative, language: lang) { return }
+        if await runDirectCommand(command, language: lang) { return }
+        if let alternative, alternative != command, await runDirectCommand(alternative, language: lang) { return }
         // "Mi sa che Jarvis ti ha dato ragione": said about JARVIS, to someone else. No acknowledgment:
         // the model reads the whole phrase and, if it is not addressed to it, answers only with silence.
         var asked = command
@@ -1216,6 +1598,265 @@ final class Assistant: ObservableObject {
         }
     }
 
+    // MARK: Direct commands (no model)
+
+    /// A question JARVIS itself asked after a direct command, waiting for the answer for a minute.
+    private enum DirectQuestion {
+        case report(session: String)
+        case flashcards(session: String, topic: String)
+        /// "Sta ancora studiando?", asked by JARVIS an hour into a session.
+        case stillStudying(session: String)
+        /// "A che ora ha smesso?" after closing one: the answer moves its end.
+        case sessionEnd(session: String)
+        /// "Per quanto tempo?" after "metti un timer"; "Cosa le ricordo?" after "imposta un promemoria".
+        case timerDuration
+        case reminderText
+    }
+    private var directQuestion: (question: DirectQuestion, until: Date)?
+    private enum DirectAnswer { case none, handled, forward(String) }
+
+    /// "Cosa scrivo nel resoconto?" and "creo cinque schede?": the answers are saved without the model;
+    /// only making the flashcards goes to it, as a clear request.
+    private func answerDirectQuestion(_ command: String, language lang: Language) async -> DirectAnswer {
+        guard directQuestion != nil else { return .none }
+        // Answered here, no model speaks: the "cervello" line of the first sentence would be wrong.
+        let pending = firstSentencePending
+        firstSentencePending = false
+        let answer = await answerDirectQuestionBody(command, language: lang)
+        if case .handled = answer {} else { firstSentencePending = pending }
+        return answer
+    }
+
+    private func answerDirectQuestionBody(_ command: String, language lang: Language) async -> DirectAnswer {
+        guard let asked = directQuestion else { return .none }
+        directQuestion = nil
+        guard Date() < asked.until else { return .none }
+        tools.currentLanguage = lang
+        switch asked.question {
+        case .report(let session):
+            if DirectCommand.isNo(command) {
+                say("Va bene, nessun resoconto.", language: lang)
+                return .handled
+            }
+            // Another command instead of an answer ("apri Safari"): it is not a report.
+            guard InstantCommand.parse(command) == nil, DirectCommand.parse(command) == nil else { return .none }
+            let text = command.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard case .result(let result) = await runTracedTool(ToolCall(name: "save_session_report", arguments: ["text": text, "name": session])) else { return .handled }
+            turns.append([["role": "user", "content": command], ["role": "assistant", "content": result]])
+            let study = activity.sessions.last { $0.name == session }?.category == .study
+            if study {
+                directQuestion = (.flashcards(session: session, topic: text), Date().addingTimeInterval(60))
+                say("Resoconto salvato. Creo cinque schede su questo argomento?", language: lang)
+            } else {
+                say("Resoconto salvato: lo ricorderò alla prossima sessione.", language: lang)
+            }
+            return .handled
+        case .stillStudying(let session):
+            guard let answer = DirectCommand.studyAnswer(command) else {
+                directQuestion = asked   // another request: the question stays open
+                return .none
+            }
+            switch answer {
+            case .yes:
+                initiative.studyConfirmed()
+                say("Bene, continuo a contare.", language: lang)
+            case .no(let said):
+                initiative.studyAnswered()
+                guard let open = activity.current, open.name == session else {
+                    say("La sessione è già chiusa.", language: lang)
+                    return .handled
+                }
+                // A time before the session began is a mishearing: it closes now and asks.
+                let end = said.flatMap { $0 > open.start ? $0 : nil }
+                _ = activity.stop(at: end ?? Date())
+                let closed = activity.sessions.last { $0.start == open.start }
+                let worked = ActivityTracker.spoken(closed?.duration ?? 0)
+                Diagnostics.log("diretto   sessione \(session) chiusa su risposta, \(worked)")
+                notesForClaude.append("JARVIS asked whether he was still studying \(session); he said no, the session was closed (\(worked)).")
+                if let end {
+                    say("Chiusa la sessione di \(session) alle \(end.formatted(date: .omitted, time: .shortened)): \(worked) di studio.", language: lang)
+                } else {
+                    directQuestion = (.sessionEnd(session: session), Date().addingTimeInterval(90))
+                    say("Chiusa la sessione di \(session): \(worked) di studio. Se ha smesso prima, a che ora?", language: lang)
+                }
+            }
+            return .handled
+        case .sessionEnd(let session):
+            if let end = DirectCommand.pastTime(command) {
+                if let start = activity.sessions.last(where: { $0.name == session })?.start, end <= start {
+                    directQuestion = (.sessionEnd(session: session), Date().addingTimeInterval(90))
+                    say("È prima dell'inizio, alle \(start.formatted(date: .omitted, time: .shortened)). A che ora ha smesso?", language: lang)
+                    return .handled
+                }
+                say("Corretto: " + activity.setEnd(of: session, to: end), language: lang)
+                return .handled
+            }
+            let text = DirectCommand.clean(command)
+            if DirectCommand.isNo(command) || ["va bene così", "va bene", "giusto", "esatto", "è giusto", "così va bene", "no va bene così"].contains(text) {
+                say("Va bene.", language: lang)
+                return .handled
+            }
+            if DirectCommand.isYes(command) || DirectCommand.studyAnswer(command) == .yes {
+                directQuestion = (.sessionEnd(session: session), Date().addingTimeInterval(90))
+                say("Fino a che ora?", language: lang)
+                return .handled
+            }
+            // "Vabbè, un'ora" (heard as "Babbé neun'oro" and sent to Claude in English, 30 s): a short answer
+            // with no time and no command leaves the session as it is.
+            if text.split(separator: " ").count <= 4, InstantCommand.parse(command) == nil, DirectCommand.parse(command) == nil {
+                say("Va bene, la lascio così.", language: .italian)
+                return .handled
+            }
+            return .none
+        case .timerDuration:
+            if DirectCommand.isNo(command) { say("Va bene.", language: lang); return .handled }
+            var answer = DirectCommand.clean(command)
+            for lead in ["di ", "da ", "per "] where answer.hasPrefix(lead) { answer.removeFirst(lead.count) }
+            // "Cinque minuti" becomes "metti un timer di cinque minuti": the instant command does the rest.
+            let request = "metti un timer di " + answer
+            return InstantCommand.parse(request) == nil ? .none : .forward(request)
+        case .reminderText:
+            if DirectCommand.isNo(command) { say("Va bene.", language: lang); return .handled }
+            let answer = DirectCommand.clean(command)
+            guard !answer.isEmpty, InstantCommand.parse(command) == nil else { return .none }
+            // "Di chiamare Marco domani alle 9": the usual way, direct when the date is clear, otherwise the model.
+            return .forward("Ricordami " + (answer.hasPrefix("di ") || answer.hasPrefix("che ") ? answer : "di " + answer))
+        case .flashcards(let session, let topic):
+            if DirectCommand.isYes(command) {
+                return .forward("Crea cinque schede di ripasso dai miei appunti di \(session) su questo argomento: \(topic)")
+            }
+            if DirectCommand.isNo(command) {
+                say("Va bene.", language: lang)
+                return .handled
+            }
+            return .none
+        }
+    }
+
+    private static func toolDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        return formatter.string(from: date)
+    }
+
+    /// The morning briefing without a model, for when Claude is not there (no internet, not logged in):
+    /// loading Gemma takes about 45 seconds and this takes one. Weather only if there is a connection.
+    private func directBriefing() async -> String {
+        func tool(_ name: String, _ arguments: [String: Any] = [:]) async -> String {
+            guard case .result(let result) = await runTracedTool(ToolCall(name: name, arguments: arguments)) else { return "" }
+            return result
+        }
+        let hour = Calendar.current.component(.hour, from: Date())
+        var parts = [(hour < 13 ? "Buongiorno. " : hour < 18 ? "Buon pomeriggio. " : "Buonasera. ") + DirectCommand.spokenDate()]
+        if online {
+            let weather = DirectCommand.spoken(.weather(place: "", tomorrow: false), result: await tool("get_weather"))
+            if weather.hasPrefix("Meteo") { parts.append(weather) }
+        }
+        parts.append(DirectCommand.spoken(.events(tomorrow: false), result: await tool("list_events", ["days": 1])))
+        parts.append(DirectCommand.spoken(.reminders, result: await tool("list_reminders")))
+        parts.append(DirectCommand.spoken(.mail, result: await tool("list_unread_emails")))
+        let study = tools.studyPlan.briefingLine()
+        if study != "nessun piano di studio" { parts.append(study.prefix(1).uppercased() + study.dropFirst()) }
+        initiative.briefingDone()
+        return parts.filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// Sessions, mail, agenda, weather, battery, sums, folders, a song: a tool and a fixed sentence, no model.
+    private func runDirectCommand(_ command: String, language lang: Language) async -> Bool {
+        guard lang == .italian, let direct = DirectCommand.parse(command) else { return false }
+        tools.currentLanguage = lang
+        think("→ comando diretto · \(direct)")
+        func tool(_ name: String, _ arguments: [String: Any] = [:]) async -> String? {
+            guard case .result(let result) = await runTracedTool(ToolCall(name: name, arguments: arguments)) else { return nil }
+            return result
+        }
+        let result: String?
+        switch direct {
+        case .startSession(let name, let category): result = await tool("start_activity", ["name": name, "category": category])
+        case .stopSession:
+            let open = activity.current?.name
+            result = await tool("stop_activity")
+            if let open, result != nil { directQuestion = (.report(session: open), Date().addingTimeInterval(60)) }
+        case .pauseSession(let minutes): result = await tool("pause_activity", ["minutes": minutes])
+        case .resumeSession: result = await tool("resume_activity")
+        case .studyReport(let period): result = await tool("activity_report", ["period": period, "category": "study"])
+        case .studyPlan: result = await tool("study_plan")
+        case .mail, .mailCount: result = await tool("list_unread_emails")
+        case .events(let tomorrow):
+            let day = Calendar.current.date(byAdding: .day, value: tomorrow ? 1 : 0, to: Date()) ?? Date()
+            result = await tool("list_events", ["start_date": day.formatted(.iso8601.year().month().day()), "days": 1])
+        case .reminders: result = await tool("list_reminders")
+        case .lessons(let offset, let days):
+            let day = Calendar.current.date(byAdding: .day, value: offset, to: Date()) ?? Date()
+            result = await tool("university", ["action": "agenda", "from": day.formatted(.iso8601.year().month().day()), "days": days])
+        case .booklet(let question):
+            let ask: String
+            switch question {
+            case .passed: ask = "superati"
+            case .missing(let year): ask = year.map { "mancanti_\($0)" } ?? "mancanti"
+            case .average: ask = "media"
+            case .credits: ask = "crediti"
+            }
+            result = await tool("university", ["action": "libretto", "domanda": ask])
+        case .recordExam(let name, let grade):
+            result = await tool("university", ["action": "segna_esame", "exam": name, "grade": grade ?? ""])
+        case .weather(let place, _): result = await tool("get_weather", place.isEmpty ? [:] : ["location": place])
+        case .temperature: result = await tool("system_status")
+        case .music(let query): result = await tool("music", ["action": "play", "query": query])
+        case .folder(let name, let place): result = await tool("create_folder", place.map { ["name": name, "in": $0] } ?? ["name": name])
+        case .sleepDisplay: result = await tool("sleep_display")
+        case .darkMode(let on): result = await tool("set_dark_mode", ["enabled": on])
+        case .reminder(let title, let due):
+            var arguments: [String: Any] = ["title": title]
+            if let due { arguments["due"] = Self.toolDate(due) }
+            result = await tool("create_reminder", arguments)
+        case .event(let title, let start): result = await tool("create_event", ["title": title, "start": Self.toolDate(start)])
+        case .openFolder(let name):
+            // Not one clear folder with that name: the model looks for it.
+            guard let folder = FolderNames.find(name) else { return false }
+            result = await tool("open_path", ["path": folder.path]).map { _ in "Aperta la cartella \(folder.lastPathComponent)." }
+        case .closeFinderWindows(let all):
+            let script = all ? "tell application \"Finder\" to close every window"
+                : "tell application \"Finder\" to if (count of windows) > 0 then close front window"
+            let outcome = await Shell.osascript(script, timeout: 8)
+            Security.audit("eseguito", tool: "finder_close", arguments: ["all": all], source: tools.currentSource, detail: outcome.ok ? "finestre chiuse" : outcome.err)
+            result = outcome.ok ? (all ? "Chiuse le finestre del Finder." : "Chiusa la finestra del Finder.") : "Non riesco a chiudere la finestra del Finder."
+        case .briefing:
+            // With Claude the briefing stays his: he tells it better, with the news.
+            guard !(brain == .claude && online) else { return false }
+            result = await directBriefing()
+        case .startDictation:
+            result = startDictation()
+        case .continueDictation(let which):
+            result = startDictation(continuing: which)
+        case .completeReminder(let title):
+            result = await tool("complete_reminder", ["title": title])
+        case .askTimer:
+            directQuestion = (.timerDuration, Date().addingTimeInterval(60))
+            result = "Per quanto tempo?"
+        case .askReminder:
+            directQuestion = (.reminderText, Date().addingTimeInterval(90))
+            result = "Cosa le ricordo, e quando?"
+        case .battery:
+            result = Initiative.battery().map { "La batteria è al \($0.percent) per cento, \($0.onBattery ? "senza alimentatore" : "con l'alimentatore collegato")." }
+                ?? "Non riesco a leggere la batteria."
+        case .date: result = DirectCommand.spokenDate()
+        case .math(let expression):
+            result = DirectCommand.compute(expression).map { "Fa \($0)." } ?? "Questo calcolo non si può fare."
+        }
+        guard !Task.isCancelled else { return true }
+        // A tool that wants a confirmation or failed to answer: the usual path decides.
+        guard let result else { return true }
+        let spoken = DirectCommand.spoken(direct, result: result)
+        Diagnostics.log("diretto   [\(Diagnostics.since(Diagnostics.requestStart ?? Date()))] \(direct) senza modello")
+        firstSentencePending = false   // no model answered: the "cervello" line would be wrong
+        notesForClaude.append("JARVIS already answered \"\(command)\" by itself: \(spoken). Do not repeat it.")
+        turns.append([["role": "user", "content": command], ["role": "assistant", "content": spoken]])
+        say(spoken, language: lang)
+        return true
+    }
+
     /// How sure an app name must be: here no model checks the sentence again.
     private static let instantCertainty = 0.75
 
@@ -1237,6 +1878,16 @@ final class Assistant: ObservableObject {
 
     private func runProtocol(_ command: String, language lang: Language) async -> Bool {
         guard let (item, rest) = Protocols.match(command) else { return false }
+        // "Buongiorno" with no Claude: the briefing made here, at once, instead of waiting for Gemma.
+        if item.name == "buongiorno", !(brain == .claude && online) {
+            Diagnostics.log("protocollo buongiorno senza modello")
+            tools.currentLanguage = lang
+            let text = await directBriefing()
+            turns.append([["role": "user", "content": command], ["role": "assistant", "content": text]])
+            firstSentencePending = false
+            say(text, language: lang)
+            return true
+        }
         Diagnostics.log("protocollo \(item.name)")
         think("→ protocollo \(item.name)")
         tools.currentLanguage = lang
@@ -1396,6 +2047,39 @@ final class Assistant: ObservableObject {
             case .image:
                 return false
             }
+        case .closeAll:
+            switch await run("quit_app", ["all": true]) {
+            case .result(let result):
+                text = result.hasPrefix("Chiuse") ? (italian ? "Chiudo tutte le applicazioni, tranne il Finder, \(sir)." : "Closing every app except Finder, \(sir).") : result
+            case .needsConfirmation(let action):
+                pending = action
+                text = action.summary + (italian ? ". Procedo, \(sir)?" : ". Shall I go ahead, \(sir)?")
+            case .image:
+                return false
+            }
+        case .minimize(let name):
+            guard let app = MacActions.runningApp(named: name, sure: Self.instantCertainty),
+                  let running = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == app }) else { return false }
+            // Its windows to the Dock (Accessibility, which app control already uses); if that fails, the app is hidden.
+            let script = "tell application \"System Events\" to tell process \"\(app.replacingOccurrences(of: "\"", with: ""))\" to set value of attribute \"AXMinimized\" of every window to true"
+            let outcome = await Shell.osascript(script, timeout: 6)
+            if !outcome.ok { running.hide() }
+            Security.audit("eseguito", tool: "minimize", arguments: ["app": app], source: tools.currentSource, detail: outcome.ok ? "finestre ridotte" : "app nascosta")
+            text = italian ? "Riduco \(app), \(sir)." : "Minimising \(app), \(sir)."
+        case .minimizeWindow(let name):
+            let quoted = name.replacingOccurrences(of: "\"", with: "")
+            let script = name.isEmpty
+                ? "tell application \"Finder\" to if (count of windows) > 0 then set collapsed of front window to true"
+                : "tell application \"Finder\" to set collapsed of (every window whose name contains \"\(quoted)\") to true"
+            // A name that is no open Finder window: the model looks at what is on screen.
+            if !name.isEmpty {
+                let count = await Shell.osascript("tell application \"Finder\" to count (every window whose name contains \"\(quoted)\")", timeout: 6)
+                guard count.ok, (Int(count.out.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) > 0 else { return false }
+            }
+            let outcome = await Shell.osascript(script, timeout: 6)
+            Security.audit("eseguito", tool: "finder_minimize", arguments: ["name": name], source: tools.currentSource, detail: outcome.ok ? "finestra ridotta" : outcome.err)
+            guard outcome.ok else { return false }
+            text = italian ? "Finestra ridotta, \(sir)." : "Window minimised, \(sir)."
         case .tv(let on):
             guard case .result(let result) = await run("tv", ["action": on ? "on" : "off"]) else { return false }
             text = result
@@ -1520,7 +2204,7 @@ final class Assistant: ObservableObject {
                     case .result(let result):
                         turn.append(["role": "tool", "tool_name": call.name, "content": result])
                     case .needsConfirmation(let action):
-                        pending = action
+                        addPending(action)
                         turn.append(["role": "tool", "tool_name": call.name,
                                      "content": "Prepared, NOT done yet. Ask the user to confirm in one sentence: \(action.summary)"])
                     case .image(let jpeg, let note):
@@ -1594,8 +2278,8 @@ final class Assistant: ObservableObject {
         case .result(let result):
             return [["type": "text", "text": result]]
         case .needsConfirmation(let action):
-            pending = action
-            return [["type": "text", "text": "Prepared, NOT done yet. Ask the user to confirm in one sentence: \(action.summary)"]]
+            addPending(action)
+            return [["type": "text", "text": "Prepared, NOT done yet. Ask the user to confirm in one sentence: \(pending?.summary ?? action.summary)"]]
         case .image(let jpeg, let note):
             return [["type": "image", "data": jpeg.base64EncodedString(), "mimeType": "image/jpeg"], ["type": "text", "text": note]]
         }
@@ -1656,6 +2340,35 @@ final class Assistant: ObservableObject {
                 "you didn't understand", "i said", "that's not what", "i meant"].contains { t.contains($0) }
     }
 
+    /// Whisper's hint: the personal vocabulary plus the names in use right now, which change by themselves:
+    /// subjects of the study plan and of the sessions, project folders, proper names from today's news
+    /// (12 November: "Praxis-1" was heard as "Proxis", "Proxys" and "Proxima"). At most 30 extra words: the hint must stay well inside Whisper's 224 tokens.
+    private func refreshVocabulary() async {
+        var extra: [String] = tools.studyPlan.subjects.map(\.name)
+        extra += activity.sessions.suffix(30).map(\.name)
+        let projects = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Projects")
+        // ~/Projects and its collections of projects (subfolders with "project" in the name).
+        let collections = ((try? FileManager.default.contentsOfDirectory(atPath: projects.path)) ?? [])
+            .filter { $0.lowercased().contains("project") }.map { projects.appendingPathComponent($0) }
+        for folder in [projects] + collections {
+            extra += ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { !$0.hasPrefix(".") && $0.count <= 24 }
+                .map { $0.replacingOccurrences(of: "_", with: " ") }
+        }
+        // From the news: words with a capital inside a title, or with a digit or a hyphen ("Praxis-1", "NVIDIA").
+        for item in NewsFeed.alreadyGiven().suffix(16) {
+            let words = item.title.split(separator: " ").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".,:;!?()\"'’‘“”")) }
+            for (index, word) in words.enumerated() where word.count >= 4 && word.count <= 16 {
+                let special = word.contains("-") || word.contains(where: \.isNumber) || word.dropFirst().contains(where: \.isUppercase)
+                if special || (index > 0 && word.first?.isUppercase == true) { extra.append(word) }
+            }
+        }
+        let known = Set(config.vocabulary.lowercased().components(separatedBy: CharacterSet(charactersIn: ",.")).map { $0.trimmingCharacters(in: .whitespaces) })
+        var seen = Set<String>(), added: [String] = []
+        for word in extra.reversed() where !known.contains(word.lowercased()) && seen.insert(word.lowercased()).inserted && added.count < 30 { added.append(word) }
+        let base = config.vocabulary.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        await transcriber.setVocabulary(added.isEmpty ? config.vocabulary : base + ", " + added.joined(separator: ", ") + ".")
+    }
+
     /// Adds the words given by Claude to Whisper's vocabulary (at most 60 entries).
     private func learnVocabulary(from text: String) async {
         guard let line = text.components(separatedBy: "\n").last(where: { $0.contains(Self.vocabularyMarker) }) else { return }
@@ -1672,7 +2385,7 @@ final class Assistant: ObservableObject {
         if entries.count > 60 { entries.removeFirst(entries.count - 60) }
         config.vocabulary = entries.joined(separator: ", ") + "."
         config.save()
-        await transcriber.setVocabulary(config.vocabulary)
+        await refreshVocabulary()
         note("Vocabolario: imparato \(new.joined(separator: ", "))")
         Diagnostics.log("impara    nuove parole per Whisper: \(new.joined(separator: ", "))")
     }
@@ -1843,7 +2556,10 @@ final class Assistant: ObservableObject {
         note("Timer scaduto: \(label)")
         NotificationCenter.default.post(name: .jarvisActivated, object: nil)
         speech.playChime(rising: false)
-        let text = lang == .italian ? "Signore, il timer \(label) è scaduto." : "Sir, your \(label) timer is done."
+        // Without a name the label is "timer": "il timer timer è scaduto" (13 November).
+        let named = label.lowercased() != "timer" && !label.isEmpty
+        let text = lang == .italian ? (named ? "Signore, il timer per \(label) è scaduto." : "Signore, il timer è scaduto.")
+            : (named ? "Sir, your timer for \(label) is done." : "Sir, your timer is done.")
         if state == .idle {
             say(text, language: lang)
         } else {
@@ -1900,14 +2616,18 @@ final class Assistant: ObservableObject {
         guard !generating, state == .speaking || state == .thinking || state == .acting else { return }
         currentReplyMentionsName = false
         // On the phone you answer by pressing again: the Mac's microphone stays out.
-        if answeringPhone {
+        // In privacy mode too: the microphone is off, an alert is only said.
+        if answeringPhone || answeringTyped || privacyMode {
             state = .idle
+            if privacyMode { closeMicrophoneAfterSpeech() }
             return
         }
         // After each answer it goes back to waiting: it keeps listening only if it waits for a "yes" or "no",
         // or if it asked a question. The answer to the question must also have the user's voice.
         let askedQuestion = reply.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?")
-        if config.followUpConversation || pending != nil || askedQuestion, responseTask != nil {
+        let announced = listenAfterAnnounce
+        listenAfterAnnounce = false
+        if !dictation.isActive, config.followUpConversation || pending != nil || askedQuestion, responseTask != nil || (announced && askedQuestion) {
             if askedQuestion { Diagnostics.log("ascolto   ha fatto una domanda, aspetta la risposta") }
             Task {
                 try? await Task.sleep(for: .milliseconds(350))
@@ -1925,6 +2645,54 @@ final class Assistant: ObservableObject {
         responseTask = nil
         speech.stop()
         pipeline.cancelCapture()
+    }
+
+    // MARK: Written requests (the bar next to the SATELLITE)
+
+    /// The answer in progress is to something typed: the Mac does not reopen the microphone afterwards,
+    /// the next line is typed too (a "sì" to a confirmation included).
+    private var answeringTyped = false
+    /// Typed requests are answered in writing only, unless the speaker on the bar is on.
+    @Published var typedVoice = UserDefaults.standard.bool(forKey: "typedVoice") {
+        didSet { UserDefaults.standard.set(typedVoice, forKey: "typedVoice") }
+    }
+
+    /// A line typed in the bar: the same path as a spoken command, without microphone and wake word.
+    /// Returns false when JARVIS cannot take it yet.
+    @discardableResult
+    func typed(_ raw: String) -> Bool {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        if case .booting = state { return false }
+        if dictation.isActive, !privacyMode {
+            dictated(text, fromPhone: false)
+            return true
+        }
+        if state != .idle { interrupt() }
+        endPhoneRequest()
+        if pending != nil, pendingFromPhone { dropPendingFromOtherSide() }
+        answeringTyped = true
+        speech.silent = !typedVoice
+        pipeline.bargeIn = false
+        tools.currentSource = "tastiera"
+        firstSentencePending = true
+        Diagnostics.requestStart = Date()
+        // "Jarvis, apri Safari" typed out of habit: the name is not part of the command.
+        var command = text
+        namedMidPhrase = nil
+        if text.lowercased().hasPrefix("jarvis"), let extracted = WakeVerifier.command(from: text), !extracted.isEmpty { command = extracted }
+        heard = command
+        let lang = SpeechEngine.detectLanguage(text, hint: language)
+        language = lang
+        state = .thinking
+        responseTask = Task { await respond(to: command, language: lang) }
+        return true
+    }
+
+    private func endTypedRequest() {
+        guard answeringTyped else { return }
+        answeringTyped = false
+        speech.silent = false
     }
 
     // MARK: iPhone
@@ -1947,7 +2715,11 @@ final class Assistant: ObservableObject {
             // something in the car, on 4G, and then lose the line. Only the voice is skipped, since nobody hears it.
             if self.answeringPhone { self.speech.phoneAway = true }
         }
-        phoneBridge.onBack = { [weak self] in self?.speech.phoneAway = false }
+        phoneBridge.onBack = { [weak self] in
+            guard let self else { return }
+            self.speech.phoneAway = false
+            self.phoneBridge.send(PhoneMessage(.dictation, number: self.dictation.isActive ? 1 : 0))
+        }
         phoneBridge.screenAllowed = { [weak self] in self?.privacyMode == false }
         updatePhoneBridge()
     }
@@ -1980,11 +2752,12 @@ final class Assistant: ObservableObject {
             phoneBridge.stopAudio()
         }
         pipeline.cancelCapture()
+        endTypedRequest()
         if pending != nil, !pendingFromPhone { dropPendingFromOtherSide() }
         answeringPhone = true
         pipeline.bargeIn = false
         speech.phoneRoute = { [weak self] buffer, done in
-            MainActor.assumeIsolated {
+            onMainThread {
                 guard let self else { return done() }
                 self.phoneBridge.play(buffer, done: done)
             }
@@ -2017,6 +2790,10 @@ final class Assistant: ObservableObject {
     }
 
     private func phoneCommand(_ text: String) {
+        if dictation.isActive, !privacyMode {
+            dictated(text, fromPhone: true)
+            return
+        }
         guard beginPhoneRequest() else { return }
         heard = text
         let lang = SpeechEngine.detectLanguage(text, hint: language)
@@ -2026,6 +2803,10 @@ final class Assistant: ObservableObject {
     }
 
     private func phoneSpoke(_ samples: [Float]) {
+        if dictation.isActive, !privacyMode {
+            dictate(samples, fromPhone: true)
+            return
+        }
         guard beginPhoneRequest() else { return }
         state = .transcribing
         responseTask = Task {
@@ -2056,7 +2837,8 @@ final class Assistant: ObservableObject {
 
     /// Test channels for development, without a microphone:
     ///   debug.audio (object = path of an audio file) simulates a phrase heard after "Jarvis";
-    ///   debug.text  (object = text) simulates an already transcribed command.
+    ///   debug.text  (object = text) simulates an already transcribed command;
+    ///   debug.typed (object = text) types it in the writing bar (empty: only opens the bar).
     /// Test mode (development only, turned off by config "developerMode").
     /// Every message must start with the key in ~/Library/Application Support/JARVIS/dev_token,
     /// readable only by the user: sandboxed apps and web pages cannot give JARVIS orders.
@@ -2083,7 +2865,35 @@ final class Assistant: ObservableObject {
                 }
             }
         }
+        // Test of the main-thread sentinel (SystemWatch): the main thread sleeps for N seconds (default 7, at most 30).
+        center.addObserver(forName: .init(jarvisBundleID + ".debug.stall"), object: nil, queue: .main) { note in
+            guard let text = Security.unwrapDeveloperMessage(note.object) else { return }
+            Thread.sleep(forTimeInterval: min(Double(text) ?? 7, 30))
+        }
+        // "Sta ancora studiando?" at once, without the hour of waiting.
+        center.addObserver(forName: .init(jarvisBundleID + ".debug.studycheck"), object: nil, queue: .main) { [weak self] note in
+            guard Security.unwrapDeveloperMessage(note.object) != nil else { return }
+            Task { @MainActor in self?.initiative.debugAskStudyNow() }
+        }
         // As after a robot movement command: the instant STOP listens (test of the channel only).
+        // University: "<path> [json parameters]" → the raw answer in universita_prova.json (readable only by the user).
+        center.addObserver(forName: .init(jarvisBundleID + ".debug.university"), object: nil, queue: .main) { note in
+            guard let text = Security.unwrapDeveloperMessage(note.object) else { return }
+            let parts = text.split(separator: " ", maxSplits: 1).map(String.init)
+            let parameters = parts.count > 1 ? (try? JSONSerialization.jsonObject(with: Data(parts[1].utf8))) as? [String: String] ?? [:] : [:]
+            Task {
+                let file = JarvisConfig.directory.appendingPathComponent("universita_prova.json")
+                do {
+                    let json = try await UniversityClient.shared.get(parts.first ?? "user/me", parameters)
+                    let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys, .fragmentsAllowed])
+                    try data.write(to: file, options: .atomic)
+                    Security.protect(file)
+                    Diagnostics.log("prova     ateneo \(parts.first ?? ""): \(data.count) byte in universita_prova.json")
+                } catch {
+                    Diagnostics.log("prova     ateneo \(parts.first ?? ""): \(error.localizedDescription)")
+                }
+            }
+        }
         center.addObserver(forName: .init(jarvisBundleID + ".debug.robotwatch"), object: nil, queue: .main) { [weak self] note in
             guard Security.unwrapDeveloperMessage(note.object) != nil else { return }
             Task { @MainActor in self?.watchRobotMotion() }
@@ -2143,6 +2953,11 @@ final class Assistant: ObservableObject {
         center.addObserver(forName: .init(jarvisBundleID + ".debug.enroll"), object: nil, queue: .main) { [weak self] note in
             guard let what = Security.unwrapDeveloperMessage(note.object) else { return }
             Task { @MainActor in self?.startVoiceEnrollment(adding: what != "start", commands: what == "commands") }
+        }
+        // debug.typed (object = text): opens the writing bar and sends the text through it, as if typed.
+        center.addObserver(forName: .init(jarvisBundleID + ".debug.typed"), object: nil, queue: .main) { note in
+            guard let text = Security.unwrapDeveloperMessage(note.object) else { return }
+            NotificationCenter.default.post(name: .jarvisTypeBar, object: text)
         }
         center.addObserver(forName: .init(jarvisBundleID + ".debug.text"), object: nil, queue: .main) { [weak self] note in
             guard let text = Security.unwrapDeveloperMessage(note.object) else { return }
@@ -2264,6 +3079,17 @@ final class Assistant: ObservableObject {
         } else {
             speech.speak(text, language: language)
         }
+    }
+
+    /// Settings › Università, "Salva e prova l'accesso": only the university's name, server and agent
+    /// are saved, without touching voices and wake word like `apply` does.
+    func applyUniversity(from draft: JarvisConfig) {
+        var updated = config
+        updated.universityName = draft.universityName
+        updated.universityServer = draft.universityServer
+        updated.universityAgent = draft.universityAgent
+        config = updated
+        updated.save()
     }
 
     func apply(_ newConfig: JarvisConfig) {

@@ -274,7 +274,7 @@ private final class SphereMetalView: MTKView {
         pass.colorAttachments[0].storeAction = .store
         pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
         var values = uniforms
-        values.viewport = SIMD4(Float(size.width), Float(size.height), Float(scale), 0)
+        values.viewport = SIMD4(Float(size.width), Float(size.height), Float(scale), values.viewport.w)
         resources.encode(command: command, pass: pass, uniforms: values, compact: compact)
         let gate = availableFrame
         command.addCompletedHandler { _ in gate.signal() }
@@ -305,6 +305,9 @@ final class SphereMotion {
     /// animator would (still slow after a minute, when the frame rate drops to 6 fps).
     private(set) var spin: Double = 0
     private var idleBoost: Double = 0
+    /// Liquid undulation (16 November): 1 while waiting, 1.4 while speaking (on top of the
+    /// voice's wave and pulse), 0 in the other states. It fades in and out gradually.
+    private(set) var calm: Double = 0
     /// Clock of the neurons firing, wrapped at 400 (a multiple of every firing period).
     private(set) var fire: Double = 0
 
@@ -315,6 +318,7 @@ final class SphereMotion {
         last = now
         let ease = 1 - exp(-dt * 3)
         idleBoost += ((state == .idle && !deepIdle ? 0.5 : 0) - idleBoost) * ease
+        calm += ((state == .idle ? (deepIdle ? 0.6 : 1) : state == .speaking ? 1.4 : 0) - calm) * (1 - exp(-dt * 1.5))
         spin += dt * (a.speed + idleBoost)
         fire = (fire + dt * (0.45 + a.speed * 0.5 + idleBoost * 0.3)).truncatingRemainder(dividingBy: 400)
         direction += ((state == .listening ? 1 : -1) - direction) * ease
@@ -333,7 +337,7 @@ private struct SphereUniforms {
     var motion = SIMD4<Float>(0, 0, 0.4, 0) // time, phase, energy, level
     var state = SIMD4<Float>(1, 0, 0, 0) // boot, alert, privacy, flow phase
     var rotation = SIMD4<Float>(1, 0, 1, 0) // cos/sin yaw, cos/sin tilt
-    var viewport = SIMD4<Float>(980, 980, 2, 0)
+    var viewport = SIMD4<Float>(980, 980, 2, 0) // width, height, pixel scale, liquid undulation (0...1.4)
     var primary = SIMD4<Float>(0, 0, 0, 1)
     var ice = SIMD4<Float>(0, 0, 0, 1)
     var deep = SIMD4<Float>(0, 0, 0, 1)
@@ -354,6 +358,7 @@ private struct SphereUniforms {
         let breath = Float(1 + 0.008 * sin(a.time * 1.35))
         let swell = m?.swell ?? level * (assistantState == .speaking ? 0.065 : 0.025)
         let fire = m?.fire ?? (a.time * 0.5).truncatingRemainder(dividingBy: 400)
+        viewport.w = Float(m?.calm ?? (assistantState == .idle ? 1 : assistantState == .speaking ? 1.4 : 0))
         dynamics = SIMD4(breath + Float(swell) * muted, Float(a.speed), Float(fire), Float(m?.density ?? 0))
         let palette = SpherePalette.shared
         primary = simd_mix(simd_mix(palette.cyan, palette.amber, SIMD4(repeating: Float(a.alert))),
@@ -425,7 +430,7 @@ private struct SphereGeometry {
         }
         /// A soft ribbon: several parallel strands plus two wide, faint passes for the glow.
         /// `plane` set: the strands spread in that plane (vortex); nil: along the sphere surface.
-        func ribbon(steps: Int, strands: Int, group: Float, plane: SIMD3<Float>?, glow: Float, seed: Float,
+        func ribbon(steps: Int, strands: Int, group: Float, plane: SIMD3<Float>?, glow: Float, seed: Float, fade: Float = 1,
                     width: (Float) -> Float, path: (Float) -> SIMD3<Float>) {
             for strand in 0..<strands {
                 let s = strands == 1 ? 0 : Float(strand) / Float(strands - 1) - 0.5
@@ -442,7 +447,7 @@ private struct SphereGeometry {
                     let p = c + side * (s * width(f) + 0.004 * sin(f * 23 + wobble))
                         + lift * (0.012 * abs(s) * sin(f * 17 + wobble * 1.3))
                     if let q = previous {
-                        line(q, p, group: group, opacity: 0.30 + 0.26 * core, width: 0.85 + 0.35 * core, flow: f, seed: seed)
+                        line(q, p, group: group, opacity: (0.30 + 0.26 * core) * fade, width: 0.85 + 0.35 * core, flow: f, seed: seed)
                     }
                     previous = p
                 }
@@ -452,8 +457,8 @@ private struct SphereGeometry {
                 let a = path(Float(step) / Float(steps)), b = path(Float(min(steps, step + 2)) / Float(steps))
                 let f = Float(step) / Float(steps)
                 let swell = 0.4 + 0.6 * max(0, sin(.pi * f))
-                line(a, b, group: group, opacity: 0.085 * glow * swell, width: 22, flow: f, seed: seed)
-                line(a, b, group: group, opacity: 0.15 * glow * swell, width: 7, flow: f, seed: seed)
+                line(a, b, group: group, opacity: 0.085 * glow * swell * fade, width: 22, flow: f, seed: seed)
+                line(a, b, group: group, opacity: 0.15 * glow * swell * fade, width: 7, flow: f, seed: seed)
             }
         }
 
@@ -527,26 +532,40 @@ private struct SphereGeometry {
                 }
             }
         }
-        // Axons: each neuron to its nearest ones (three in the full sphere) and, sometimes, to a far one.
+        // Axons: each neuron to its nearest ones (three in the full sphere). Until 13 November
+        // some neurons also reached their farthest one: those long axons crossed the whole sphere
+        // and the user asked to remove them. Their random numbers are still drawn, so everything
+        // placed after them (shell ribbons, data screens) stays exactly where it was.
         var joined = Set<Int>()
+        let strands = compact ? 2 : 6
         for (i, n) in neurons.enumerated() {
             let near = neurons.indices.filter { $0 != i }.sorted {
                 simd_distance(n.p, neurons[$0].p) < simd_distance(n.p, neurons[$1].p)
             }
             var targets = Array(near.prefix(compact ? 2 : 3))
-            if random.next() < 0.35, let far = near.last { targets.append(far) }
+            let far = random.next() < 0.35 ? near.last : nil
+            if let far { targets.append(far) }
             for j in targets where !joined.contains(min(i, j) * 100 + max(i, j)) {
                 joined.insert(min(i, j) * 100 + max(i, j))
+                if j == far {
+                    for _ in 0..<(3 + strands) { _ = random.next() }
+                    continue
+                }
                 let a = n.p, b = neurons[j].p
-                // Like brain tissue: some axons run almost straight, others bend in any direction.
-                let control = (a + b) / 2 + unit() * simd_distance(a, b) * (random.next() < 0.45 ? 0.05 : 0.35)
+                // Like brain tissue: some axons run almost straight, others bend. The bend is always
+                // sideways to the axon and gentle, so the network reads as one tissue, not as scribbles.
+                let along = simd_normalize(b - a)
+                var side = unit()
+                side -= along * simd_dot(side, along)
+                side = simd_length(side) < 1e-3 ? SIMD3(0, 0, 0) : simd_normalize(side)
+                let control = (a + b) / 2 + side * simd_distance(a, b) * (random.next() < 0.45 ? 0.05 : 0.22)
                 let path: (Float) -> SIMD3<Float> = { f in
                     var p = a * (1 - f) * (1 - f) + control * 2 * f * (1 - f) + b * f * f
                     let l = simd_length(p)
                     if l > 0.95 { p *= 0.95 / l }
                     return p
                 }
-                ribbon(steps: compact ? 16 : 44, strands: compact ? 2 : 6, group: 2, plane: nil, glow: 1, seed: n.seed,
+                ribbon(steps: compact ? 16 : 44, strands: strands, group: 2, plane: nil, glow: 1, seed: n.seed,
                        width: { f in 0.006 + 0.032 * pow(max(0, sin(.pi * f)), 0.8) }, path: path)
             }
         }
@@ -572,15 +591,81 @@ private struct SphereGeometry {
                  group: 1, opacity: thick ? 0.95 : 0.6, width: thick ? 3 : 1.2, flow: r(0, 1), seed: seed)
         }
 
-        // 6. Small data screens (bars, waveforms, scrolling lines) on the shell and a few inside.
-        // They turn with the sphere; none circles around the outline.
+        // 6. The small data screens (bars, waveforms, scrolling lines) were removed on 15 November
+        // at the user's request. Their random numbers are still drawn, so the core keeps its seeds.
         for i in 0..<(compact ? 6 : 8) {
-            dot(unit() * (i % 3 == 0 ? r(0.3, 0.8) : r(0.85, 0.98)), group: 0, radius: r(4, 7), brightness: r(0.65, 1), kind: 1)
+            _ = unit(); _ = i % 3 == 0 ? r(0.3, 0.8) : r(0.85, 0.98); _ = r(4, 7); _ = r(0.65, 1)
         }
 
         // 7. Core: a wide halo and a white-hot centre. Analytic sprites, no blur.
         dot(.zero, group: 1, radius: compact ? 16 : 46, brightness: 1.0, kind: 2)
         dot(.zero, group: 1, radius: compact ? 6 : 9, brightness: 1.2, kind: 2)
+
+        // 8. Denser outline (15 November): more plexus nodes in the outer shell and three more
+        // shell ribbons, so the edges (top, bottom, left, right) look fuller. They use a random
+        // stream of their own, so everything above stays exactly where it was.
+        if !compact {
+            random = SeededRandom(seed: 0x4A41_5256_4953 &+ 15)
+            let first = nodes.count
+            for _ in 0..<900 {
+                let p = unit() * r(0.88, 0.985)
+                nodes.append(p)
+                dot(p, group: 0, radius: 2.7, brightness: r(0.8, 1.6), kind: 0)
+            }
+            var outer: [SIMD3<Int32>: [Int]] = [:]
+            for (i, p) in nodes.enumerated() { outer[key(p), default: []].append(i) }
+            for i in first..<nodes.count {
+                let p = nodes[i], k = key(p)
+                var near: [(Float, Int)] = []
+                for dx: Int32 in -1...1 { for dy: Int32 in -1...1 { for dz: Int32 in -1...1 {
+                    for j in outer[k &+ SIMD3(dx, dy, dz)] ?? [] where j != i { near.append((simd_distance(p, nodes[j]), j)) }
+                } } }
+                near.sort { $0.0 < $1.0 }
+                // Each new node links to its nearest (old or new); a pair of new nodes is linked once.
+                for (d, j) in near.prefix(3) where (j < first || j > i) && d < cell {
+                    line(p, nodes[j], group: 0, opacity: r(0.45, 0.72), width: 0.85, flow: r(0, 1), seed: r(0, 20))
+                }
+            }
+            for _ in 0..<3 {
+                let axis = unit()
+                let right = simd_normalize(simd_cross(axis, abs(axis.y) < 0.9 ? SIMD3(0, 1, 0) : SIMD3(1, 0, 0)))
+                let up = simd_cross(axis, right)
+                let start = r(0, 2 * .pi), span = r(2.2, 4.2), seed = r(0, 20), radius = r(0.88, 0.94), wave = r(0.25, 0.5)
+                ribbon(steps: 110, strands: 8, group: 0, plane: nil, glow: 0.8, seed: seed,
+                       width: { f in 0.012 + 0.06 * pow(max(0, sin(.pi * f)), 0.7) }) { f in
+                    let t = start + span * f
+                    return simd_normalize(right * cos(t) + up * sin(t) + axis * wave * sin(t * 2 + seed)) * radius
+                }
+            }
+
+            // 9. More axons (16 November): each neuron is also joined to its 4th and 5th nearest,
+            // so more pulses of light run between the neurons. Same style as the other axons; the
+            // longer a new axon, the dimmer it is, so none stands out across the sphere.
+            random = SeededRandom(seed: 0x4A41_5256_4953 &+ 16)
+            for (i, n) in neurons.enumerated() {
+                let near = neurons.indices.filter { $0 != i }.sorted {
+                    simd_distance(n.p, neurons[$0].p) < simd_distance(n.p, neurons[$1].p)
+                }
+                for j in near.dropFirst(3).prefix(2) where !joined.contains(min(i, j) * 100 + max(i, j)) {
+                    joined.insert(min(i, j) * 100 + max(i, j))
+                    let a = n.p, b = neurons[j].p
+                    let along = simd_normalize(b - a)
+                    var side = unit()
+                    side -= along * simd_dot(side, along)
+                    side = simd_length(side) < 1e-3 ? SIMD3(0, 0, 0) : simd_normalize(side)
+                    let control = (a + b) / 2 + side * simd_distance(a, b) * (random.next() < 0.45 ? 0.05 : 0.22)
+                    let path: (Float) -> SIMD3<Float> = { f in
+                        var p = a * (1 - f) * (1 - f) + control * 2 * f * (1 - f) + b * f * f
+                        let l = simd_length(p)
+                        if l > 0.95 { p *= 0.95 / l }
+                        return p
+                    }
+                    let fade = min(1, max(0.35, 1.35 - simd_distance(a, b) * 1.3))
+                    ribbon(steps: 44, strands: 6, group: 2, plane: nil, glow: 1, seed: n.seed, fade: fade,
+                           width: { f in 0.006 + 0.032 * pow(max(0, sin(.pi * f)), 0.8) }, path: path)
+                }
+            }
+        }
         segments = segs
         points = pts
     }
@@ -687,6 +772,17 @@ private final class SphereGPU {
             float t = u.motion.x;
             float wave = sin(dot(p,float3(1.1,0.8,0.9)) + t*0.55) * 0.7 + sin(t*0.4) * 0.3;
             p *= 1.0 + wave * 0.014 * (0.6 + 0.4 * live);
+            // Liquid undulation (16 November): while waiting on its own, while speaking stronger
+            // and together with the voice's wave and pulse. Two ripples cross the surface, compressing
+            // and widening it. Its clock is the spin, so it slows down with the rotation after a
+            // minute of waiting (6 fps). The outline's own movement comes after the rotation, below.
+            float calm = u.viewport.w * live;
+            if (calm > 0.001) {
+                float s = u.motion.y;
+                float ripple1 = sin(dot(p,float3(4,7,3)) - s*2.2);
+                float ripple2 = sin(dot(p,float3(-5,2,4)) + s*1.6 + 1.3);
+                p *= 1.0 + (ripple1 * 0.034 + ripple2 * 0.017) * calm;
+            }
         }
         if (q.w > 0.5 && q.w < 1.5) {
             // Rim and core: turn about the view axis, so they always sit on the outline.
@@ -698,6 +794,21 @@ private final class SphereGPU {
         } else {
             p.xz = float2(p.x*u.rotation.x + p.z*u.rotation.y, -p.x*u.rotation.y + p.z*u.rotation.x);
             p.yz = float2(p.y*u.rotation.z - p.z*u.rotation.w, p.y*u.rotation.w + p.z*u.rotation.z);
+            // The outline, as seen (16 November): the sphere sways like a drop, stretched along an
+            // axis that turns slowly, so every side of the edge moves in turn (with fixed axes the
+            // diagonals, lower left above all, stayed still). Waves also run around the edge.
+            float calm = u.viewport.w * live;
+            if (calm > 0.001) {
+                float s = u.motion.y;
+                float a = s * 0.31;
+                float2 axis = float2(cos(a), sin(a));
+                float sway = sin(s * 0.9) * 0.018 * calm;
+                p.xy += (axis * dot(p.xy, axis) * 2.0 - p.xy) * sway;
+                float rr = length(p.xy), angle = atan2(p.y, p.x);
+                float edge = smoothstep(0.55, 0.95, rr);
+                float rim = sin(angle * 3.0 - s * 1.7) * 0.6 + sin(angle * 5.0 + s * 1.2 + 0.7) * 0.4;
+                p.xy *= 1.0 + rim * 0.022 * calm * edge;
+            }
         }
         float reveal = smoothstep(0.0, 0.85, u.state.x);
         float scale = 0.93 * (0.86 + 0.14 * reveal) / (1.12 - p.z*0.16);

@@ -193,17 +193,67 @@ enum WakeVerifier {
     /// Returns the command without the wake word, or nil if "Jarvis" is not there.
     /// `loose`: looser recognition, only when the small Whisper has
     /// already heard "Jarvis" and the large one wrote it differently.
+    /// "Jarvis, accendi la tv, Jarvis, accendi la tv": said twice because the first time seemed lost
+    /// (15 November). Twice the same command is not a new request, and as one it is an instant
+    /// command (0 s) instead of a question for Claude (12 s).
+    static func withoutRepetition(_ text: String) -> String {
+        let pieces = text.components(separatedBy: CharacterSet(charactersIn: ".,!?;"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        func key(_ s: String) -> String { s.split(separator: " ").map { normalize(String($0)) }.filter { !$0.isEmpty }.joined(separator: " ") }
+        // Groups "Jarvis" + following pieces into requests.
+        var requests: [[String]] = []
+        for piece in pieces {
+            let first = normalize(String(piece.split(separator: " ").first ?? ""))
+            if requests.isEmpty || isWakeWord(first) { requests.append([piece]) } else { requests[requests.count - 1].append(piece) }
+        }
+        let keys = requests.map { key($0.joined(separator: " ")) }
+        if requests.count >= 2, Set(keys).count == 1, !keys[0].isEmpty { return requests[0].joined(separator: ", ") }
+        // "Jarvis, che ore sono? Che ore sono?", "Accendi la tv. Accendi la tv.": the name only once or not at all.
+        let named = pieces.first.map { isWakeWord(normalize($0)) } ?? false
+        let content = named ? Array(pieces.dropFirst()) : pieces
+        let keysContent = content.map(key)
+        if content.count >= 2, content.count % 2 == 0, !keysContent.contains("") {
+            let half = content.count / 2
+            if Array(keysContent[..<half]) == Array(keysContent[half...]) {
+                return (named ? pieces[0] + ", " : "") + content[..<half].joined(separator: ", ")
+            }
+        }
+        return text
+    }
+
+    private static func isWakeWord(_ word: String) -> Bool {
+        command(from: word) != nil
+    }
+
     static func command(from text: String, loose: Bool = false) -> String? {
         let words = text.split(whereSeparator: { $0 == " " })
         for (i, word) in words.prefix(loose ? 3 : words.count).enumerated() {
             let w = normalize(String(word))
             guard loose ? isLooseJarvis(w) : isJarvis(w) else { continue }
+            if isMention(words.map(String.init), at: i) { return nil }
             let after = words[(i + 1)...].joined(separator: " ")
             let before = words[..<i].joined(separator: " ")
             let rest = after.isEmpty ? before : after
             return rest.trimmingCharacters(in: CharacterSet(charactersIn: " ,.;:!?-"))
         }
         return nil
+    }
+
+    /// Words that make "Jarvis" a name talked about, not someone called: "è il Jarvis", "che Jarvis",
+    /// "assimilare a Jarvis", "non è Jarvis" (12 November, from voce.log: these woke it while he talked to friends).
+    private static let mentionBefore: Set<String> = ["il", "lo", "un", "a", "al", "di", "del", "che", "e", "con", "da", "dal", "su", "per",
+                                                     "questo", "tipo", "come", "chiamato", "chiamarlo", "sono", "sei", "the", "of", "to", "like"]
+
+    /// "Jarvis" as a word in someone's sentence rather than a call. A call is at the start, or after
+    /// "basta", "ciao", "ok"…, or between commas. "Presente? Jarvis. È un sistema…" (a sentence of its own
+    /// between two others) is also a mention.
+    static func isMention(_ words: [String], at i: Int) -> Bool {
+        guard i > 0 else { return false }
+        let previous = words[i - 1]
+        let bare = normalize(previous)
+        if previous.hasSuffix(",") == false, mentionBefore.contains(bare) || previous.lowercased() == "è" { return true }
+        let ends: (String) -> Bool = { $0.last.map { ".?!".contains($0) } ?? false }
+        return i >= 3 && ends(previous) && ends(words[i]) && i < words.count - 1
     }
 
     /// "Mi sa che Jarvis ti ha dato ragione": at least two words before "Jarvis" and some after.
@@ -236,6 +286,25 @@ enum WakeVerifier {
         ["gialhovisto", "giavisto", "gialavviso", "gialaviso", "giadisse", "gialadvista", "giaavvisse",
          "giaalbis", "giornodisse", "gialavista", "giaavisa"].contains(normalize(text))
     }
+
+    /// "Già vissi che ore sono", "già visto che ore sono": a hurried "Jarvis" written as Italian words,
+    /// then the command (13 November: four times in a row with echo cancellation on). Only at the start;
+    /// the caller accepts it only when the rest is a known command and the voice is the user's.
+    static func soundalikeCommand(from text: String) -> String? {
+        let words = text.split(whereSeparator: { $0 == " " }).map(String.init)
+        guard words.count >= 2 else { return nil }
+        for n in 1...min(3, words.count - 1) {
+            let head = normalize(words[..<n].joined())
+            guard soundalikeHeads.contains(head) else { continue }
+            return words[n...].joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " ,.;:!?-"))
+        }
+        return nil
+    }
+
+    private static let soundalikeHeads: Set<String> = [
+        "gialhovisto", "giavisto", "gialavviso", "gialaviso", "giadisse", "gialadvista", "giaavvisse", "giaalbis", "gialavista", "giaavisa",
+        "giavissi", "giavisi", "giadivisto", "giavis", "giaviste", "giavisse", "giavvisi", "giaviss",
+    ]
 
     static func isLooseJarvis(_ w: String) -> Bool {
         (4...9).contains(w.count) && (distance(w, "jarvis") <= 3 || w.hasSuffix("rvis") || w.hasSuffix("rvi"))

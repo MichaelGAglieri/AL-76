@@ -21,7 +21,7 @@ final class ReactorPanel: NSPanel {
     static let desktopLevel = NSWindow.Level.normal
     private var uncover: Timer?
     /// The SATELLITE floats above every window (user request, 11 November: "it is small and
-    /// nice to look at"); the other styles stay on the desktop, behind the apps.
+    /// nice to look at"), but not over full-screen windows; the other styles stay on the desktop, behind the apps.
     private var floats = false
     /// The display this NUCLEUS belongs to.
     let displayID: CGDirectDisplayID
@@ -151,8 +151,13 @@ final class ReactorPanel: NSPanel {
             appCovered = false
             applyVisibility()
             level = .floating
-            collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+            // Not in the spaces of full-screen apps (13 November: over a TV series it was annoying).
+            collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
             super.orderFrontRegardless()
+            // Players that fill the display without a space of their own: it hides while they do.
+            stacking = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                onMainThread { self?.checkFullScreen() }
+            }
             return
         }
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
@@ -160,7 +165,7 @@ final class ReactorPanel: NSPanel {
         orderBack(nil)
         stacking?.invalidate()
         stacking = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkStacking() }
+            onMainThread { self?.checkStacking() }
         }
     }
 
@@ -168,6 +173,37 @@ final class ReactorPanel: NSPanel {
         stacking?.invalidate()
         stacking = nil
         super.orderOut(sender)
+    }
+
+    /// The satellite above everything, except while its display shows a full-screen app (a series, a film).
+    /// macOS says so itself: the current space of the display is of type 4. Checking the window size did not
+    /// work: on a MacBook with the notch a full-screen window starts below it, just like an enlarged one.
+    /// How many checks in a row (one a second) have disagreed with what is shown. While Minecraft went to full
+    /// screen the reading changed every second or two and the satellite blinked six times (13 November): it now
+    /// changes only after three equal readings.
+    private var fullScreenDisagree = 0
+
+    private func checkFullScreen() {
+        let full = Self.showsFullScreenApp(displayID)
+        fullScreenDisagree = full != appCovered ? fullScreenDisagree + 1 : 0
+        if fullScreenDisagree >= 3 {
+            fullScreenDisagree = 0
+            appCovered = full
+            applyVisibility()
+            Diagnostics.log("satellite \(full ? "nascosto: app a schermo intero" : "di nuovo visibile")")
+        }
+    }
+
+    /// Whether the current space of the display is a full-screen app. False if macOS does not tell (private
+    /// function changed): the satellite then simply stays visible, as before.
+    static func showsFullScreenApp(_ display: CGDirectDisplayID) -> Bool {
+        guard let uuid = CGDisplayCreateUUIDFromDisplayID(display)?.takeRetainedValue(),
+              let spaces = jarvisDisplaySpaces(jarvisMainConnection()) as? [[String: Any]] else { return false }
+        let id = CFUUIDCreateString(nil, uuid) as String
+        // With "Displays have separate Spaces" off there is one entry, "Main", for every display.
+        let entry = spaces.first { ($0["Display Identifier"] as? String)?.caseInsensitiveCompare(id) == .orderedSame }
+            ?? (spaces.count == 1 ? spaces.first : nil)
+        return ((entry?["Current Space"] as? [String: Any])?["type"] as? Int) == 4
     }
 
     /// macOS does not always keep the NUCLEUS at the back: an app window enlarged to
@@ -243,8 +279,12 @@ final class ReactorHostingView: NSHostingView<CompactReactorView> {
 
     override func rightMouseDown(with event: NSEvent) {
         let menu = NSMenu()
+        // The hosting view answers macOS's "is this item valid?" with no for actions it does not know:
+        // every row came out grey and could not be clicked (15 November).
+        menu.autoenablesItems = false
         menu.addItem(withTitle: "Apri HUD", action: #selector(openHUD), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Parla (⌃⌥Spazio)", action: #selector(talk), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Scrivi (⌃⌥T)", action: #selector(write), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Nuova conversazione", action: #selector(reset), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Esci da JARVIS", action: #selector(quit), keyEquivalent: "").target = self
@@ -253,6 +293,7 @@ final class ReactorHostingView: NSHostingView<CompactReactorView> {
 
     @objc private func openHUD() { onClick?() }
     @MainActor @objc private func talk() { assistant?.pushToTalk() }
+    @objc private func write() { NotificationCenter.default.post(name: .jarvisTypeBar, object: nil) }
     @MainActor @objc private func reset() { assistant?.resetConversation() }
     @objc private func quit() { NSApp.terminate(nil) }
 
@@ -296,3 +337,7 @@ extension NSScreen {
         (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
     }
 }
+
+// Private macOS functions (used by window managers for years) that list the spaces of each display.
+@_silgen_name("CGSMainConnectionID") private func jarvisMainConnection() -> Int32
+@_silgen_name("CGSCopyManagedDisplaySpaces") private func jarvisDisplaySpaces(_ connection: Int32) -> CFArray?

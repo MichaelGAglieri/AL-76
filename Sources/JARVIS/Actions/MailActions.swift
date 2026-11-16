@@ -8,6 +8,12 @@ enum MailActions {
 
     static func listUnread(_ args: [String: Any]) async -> String {
         let limit = Int(args.number("limit") ?? 10)
+        // Mail's index on disk answers at once; AppleScript only if it cannot be read.
+        if let found = MailStore.unread(limit: limit) {
+            if found.total == 0 { return "Nessuna email non letta." }
+            if args.bool("all") != true, let sorted = await byImportance(total: found.total, limit: limit) { return sorted }
+            return "Non lette: \(found.total). Le più recenti:\n" + found.messages.map(line).joined(separator: "\n")
+        }
         let script = """
         tell application "Mail"
             -- Con una posta grande "whose read status" non finisce mai: il conto è immediato
@@ -46,6 +52,9 @@ enum MailActions {
 
     static func search(_ args: [String: Any]) async -> String {
         guard let query = args.string("query") else { return "Ricerca mancante" }
+        if let found = MailStore.search(query) {
+            return found.isEmpty ? "Nessuna email trovata per \(query)" : found.map(line).joined(separator: "\n")
+        }
         let q = Shell.quote(query)
         let script = """
         tell application "Mail"
@@ -107,6 +116,84 @@ enum MailActions {
         guard let contact = contacts.first(where: { !$0.emailAddresses.isEmpty }),
               let email = contact.emailAddresses.first?.value as String? else { return (nil, value) }
         return (email, "\(contact.givenName) \(contact.familyName) <\(email)>".trimmingCharacters(in: .whitespaces))
+    }
+
+    // MARK: Importance (12 November: 14,507 unread, nearly all advertising; the latest ten were newsletters)
+
+    enum Rank { case important(String), notice, other, advertising }
+
+    /// Senders set by voice ("le mail di X sono importanti", "ignora le mail di Y"): parts of a name or address.
+    nonisolated(unsafe) static var importantSenders: [String] = []
+    nonisolated(unsafe) static var ignoredSenders: [String] = []
+
+    private static let publicProviders: Set<String> = ["gmail.com", "googlemail.com", "icloud.com", "me.com", "mac.com", "outlook.com", "outlook.it",
+                                                       "hotmail.com", "hotmail.it", "live.com", "live.it", "yahoo.com", "yahoo.it", "libero.it",
+                                                       "virgilio.it", "tiscali.it", "alice.it", "tim.it", "fastwebnet.it", "proton.me", "protonmail.com"]
+    private static let automatic = #"(^|[._-])(no-?_?reply|do-?not-?reply|newsletter|news|promo\w*|marketing|offerte|offers|deals|mailer|campaign\w*|notification\w*|notifiche|info|hello|team|update\w*|digest|comunicazion\w*|store|shop|sales|ecommerce|community|feedback|survey|rewards|member\w*)([._+-]|@)"#
+    private static let bulkDomain = #"@(e|em|email|emails|mail|mailing|news|newsletter\w*|info|marketing|promo|engage|updates?|comunicazioni|notifiche|t|sg|click|go|m|mkt|campaign\w*|reply)\."#
+    private static let noticeWords = #"\b(sicurezza|security|accesso|password|verifica|codice|fattura|bolletta|pagamento|ricevuta|ordine|spedizione|consegna|scadenza|rinnovo|addebito|bonifico|invoice|receipt|payment|order|shipped|delivery|appuntamento|prenotazione|conferma)\b"#
+
+    private static var contactsCache: (at: Date, emails: Set<String>)?
+
+    private static func contactEmails() async -> Set<String> {
+        if let cache = contactsCache, Date().timeIntervalSince(cache.at) < 900 { return cache.emails }
+        let store = CNContactStore()
+        guard (try? await store.requestAccess(for: .contacts)) == true else { return [] }
+        var emails = Set<String>()
+        let request = CNContactFetchRequest(keysToFetch: [CNContactEmailAddressesKey as CNKeyDescriptor])
+        try? store.enumerateContacts(with: request) { contact, _ in
+            for email in contact.emailAddresses { emails.insert((email.value as String).lowercased()) }
+        }
+        contactsCache = (Date(), emails)
+        return emails
+    }
+
+    static func rank(_ m: MailStore.Message, contacts: Set<String>, own: Set<String>, writtenTo: Set<String>) -> Rank {
+        let address = m.address, who = (m.sender + " " + address).lowercased()
+        let domain = address.split(separator: "@").last.map(String.init) ?? ""
+        if ignoredSenders.contains(where: { who.contains($0.lowercased()) }) { return .advertising }
+        if importantSenders.contains(where: { who.contains($0.lowercased()) }) { return .important("scelto da te") }
+        if contacts.contains(address) { return .important("nei contatti") }
+        let looksAutomatic = m.isList || address.range(of: automatic, options: .regularExpression) != nil
+            || address.range(of: bulkDomain, options: .regularExpression) != nil
+        // A reply once sent to a shop or a marketplace relay does not make its mailings important.
+        if writtenTo.contains(address), !looksAutomatic { return .important("gli hai scritto") }
+        // The same organisation as one of his addresses (university, company), written by a person.
+        let ownDomains = Set(own.compactMap { $0.split(separator: "@").last.map(String.init) }).subtracting(publicProviders)
+        let sameOrganisation = ownDomains.contains { domain == $0 || domain.hasSuffix("." + $0) || $0.hasSuffix("." + domain) }
+        // Its mass mailings (notices to all students) are not advertising, but not urgent either.
+        if sameOrganisation { return looksAutomatic ? .other : .important("della tua organizzazione") }
+        if m.subject.lowercased().range(of: noticeWords, options: .regularExpression) != nil { return .notice }
+        return looksAutomatic ? .advertising : .other
+    }
+
+    /// The unread mail of the last week sorted: important first, then account and payment notices, then the rest.
+    private static func byImportance(total: Int, limit: Int) async -> String? {
+        guard let recent = MailStore.recentUnread(days: 7), !recent.isEmpty else { return nil }
+        let contacts = await contactEmails()
+        let (own, writtenTo) = MailStore.correspondents()
+        var important: [String] = [], notices: [String] = [], others: [String] = []
+        var advertising = 0
+        for m in recent {
+            switch rank(m, contacts: contacts, own: own, writtenTo: writtenTo) {
+            case .important(let why):
+                important.append(line(m) + " [\(why)]")
+                Diagnostics.log("mail      importante: \(m.sender) <\(m.address)> (\(why)\(m.isList ? ", lista" : ""))")
+            case .notice: notices.append(line(m))
+            case .other: others.append(line(m))
+            case .advertising: advertising += 1
+            }
+        }
+        Diagnostics.log("mail      ultimi 7 giorni: \(important.count) importanti, \(notices.count) avvisi, \(others.count) altre, \(advertising) pubblicità; contatti \(contacts.count), scritti \(writtenTo.count), tuoi indirizzi \(own.count)")
+        var out = "Non lette in tutto: \(total), quasi tutte vecchie liste e pubblicità. Negli ultimi 7 giorni: \(important.count) importanti, \(notices.count) avvisi (account, pagamenti, ordini), \(others.count) altre, \(advertising) pubblicità o liste."
+        out += "\nIMPORTANTI:\n" + (important.isEmpty ? "nessuna" : important.prefix(limit).joined(separator: "\n"))
+        if !notices.isEmpty { out += "\nAVVISI:\n" + notices.prefix(5).joined(separator: "\n") }
+        if !others.isEmpty { out += "\nALTRE:\n" + others.prefix(5).joined(separator: "\n") }
+        return out + "\nSay the important ones (who and what, briefly), then at most the notices that matter in a few words; never list the advertising, only its number if asked. For every unread mail regardless of importance, call again with all=true."
+    }
+
+    private static func line(_ m: MailStore.Message) -> String {
+        "- [id \(m.id)] da \(m.sender): \"\(m.subject)\" (\(DateArg.spoken(m.date)))"
     }
 
     private static func cleanSender(_ sender: String) -> String {

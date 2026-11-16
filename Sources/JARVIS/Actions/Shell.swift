@@ -24,19 +24,50 @@ enum Shell {
                     continuation.resume(returning: Output(status: -1, out: "", err: error.localizedDescription))
                     return
                 }
-                let killer = DispatchWorkItem { if process.isRunning { process.terminate() } }
+                let killer = DispatchWorkItem {
+                    guard process.isRunning else { return }
+                    process.terminate()
+                    // A program that ignores the polite request is closed for good two seconds later.
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+                        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                    }
+                }
                 DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: killer)
-                // Read before waitUntilExit: with long output the pipe would fill up.
-                let outData = out.fileHandleForReading.readDataToEndOfFile()
-                let errData = err.fileHandleForReading.readDataToEndOfFile()
+                // Output and errors are read together while the program runs: read one after the other,
+                // a program that filled the errors' pipe first waited for ever (until the timeout).
+                let collected = Collected()
+                let readers = DispatchGroup()
+                for (pipe, isError) in [(out, false), (err, true)] {
+                    DispatchQueue.global(qos: .userInitiated).async(group: readers) {
+                        while true {
+                            let chunk = pipe.fileHandleForReading.availableData
+                            if chunk.isEmpty { break }
+                            collected.add(chunk, error: isError)
+                        }
+                    }
+                }
                 process.waitUntilExit()
                 killer.cancel()
+                // A child of the program can keep the pipes open after it has ended: one second for
+                // the last bytes, then the answer goes back with what has arrived.
+                _ = readers.wait(timeout: .now() + 1)
+                let (outData, errData) = collected.take()
                 continuation.resume(returning: Output(
                     status: process.terminationStatus,
                     out: String(decoding: outData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines),
                     err: String(decoding: errData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)))
             }
         }
+    }
+
+    /// What the two reading threads have received so far.
+    private final class Collected: @unchecked Sendable {
+        private let lock = NSLock()
+        private var out = Data(), err = Data()
+        func add(_ data: Data, error: Bool) {
+            lock.withLock { if error { err.append(data) } else { out.append(data) } }
+        }
+        func take() -> (Data, Data) { lock.withLock { (out, err) } }
     }
 
     static func osascript(_ script: String, timeout: Double = 30) async -> Output {

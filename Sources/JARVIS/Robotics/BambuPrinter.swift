@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import os
 
 /// Bambu printer on the home network. From here it is read only: the firmware rejects unsigned direct
 /// commands, so commands go through Bambu Studio (`BambuStudioControl`).
@@ -172,7 +173,7 @@ final class BambuPrinter {
         let saved = savedHost
         Task.detached { [weak self] in
             let found = await Self.neighbors(near: saved)
-            await MainActor.run {
+            await MainActor.run { [weak self] in
                 guard let self, self.savedHost == saved, !self.connected else { return }
                 Diagnostics.log("stampante non risponde a \(saved): provo \(found.count) dispositivi della rete")
                 guard !found.isEmpty else { return self.retryLater() }
@@ -204,10 +205,9 @@ final class BambuPrinter {
     nonisolated private static func portOpen(_ ip: String, _ port: UInt16) async -> Bool {
         await withCheckedContinuation { continuation in
             let connection = NWConnection(host: NWEndpoint.Host(ip), port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
-            let lock = NSLock()
-            var done = false
-            func finish(_ open: Bool) {
-                let first = lock.withLock { () -> Bool in defer { done = true }; return !done }
+            let done = OSAllocatedUnfairLock(initialState: false)
+            @Sendable func finish(_ open: Bool) {
+                let first = done.withLock { (done: inout Bool) -> Bool in defer { done = true }; return !done }
                 guard first else { return }
                 connection.cancel()
                 continuation.resume(returning: open)

@@ -116,6 +116,9 @@ struct PhoneMessage: Codable, Equatable {
         case watchEnded
         /// Another paired device connected: whoever receives this does not retry by itself.
         case replaced
+        /// Dictation for brainstorming: `number` 1 on, 0 off. While on, the phone sends every phrase
+        /// it hears, without "Jarvis"; `heard` then carries what was written ("✎ …").
+        case dictation
     }
 
     var kind: Kind

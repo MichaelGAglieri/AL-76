@@ -13,6 +13,8 @@ POST /synth  {"text": ..., "voice": "bm_lewis", "lang": "en-gb", "speed": 1.0}
   arrive after about a third of a second instead of after the whole sentence. The body has no
   length and ends when the connection closes.
   "onlySaved": true returns only an already saved audio, without generating anything.
+  A streamed sentence heard for the second time is saved as it was heard (no new generation);
+  from then on it comes from disk at once, with no GPU work (13 November).
   -> PCM float32 little-endian audio, mono, 24000 Hz
 
 POST /embed  body: PCM float32 little-endian audio, mono, 16000 Hz
@@ -77,7 +79,18 @@ QWEN_STREAM_INTERVAL = 0.6  # seconds of audio per piece
 QWEN_VOICE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voce_jarvis.wav")
 QWEN_VOICE_TEXT = ("Subito, signore. Ho completato il controllo: tutti i sistemi sono operativi "
                    "e possiamo procedere con il volo di prova quando desidera.")
-QWEN_CLIPS = os.path.join(HERE, "conferme")
+# Sampling (12 November): with the library's default, temperature 0.9, every sentence came out with a
+# different intonation. A lower temperature and the same seed for each sentence keep the tone steady;
+# the user chose this setting ("Q2") from samples.
+QWEN_SAMPLING = {"temperature": 0.6, "top_p": 0.9}
+QWEN_SEED = 7
+QWEN_CLIPS = os.environ.get("JARVIS_TTS_CLIPS") or os.path.join(HERE, "conferme")
+# Sentences said often: kept once seen twice, short ones only (long ones never repeat word for word).
+REPEAT_MAX_CHARS = 160
+REPEAT_SEEN = os.path.join(QWEN_CLIPS, "viste.json")   # only hashes, never the text
+REPEAT_SEEN_MAX = 3000
+CLIPS_MAX_BYTES = 200 * 1024 * 1024
+repeat_lock = threading.Lock()
 SUPERTONIC_VOICE = "M4:0.5+M3:0.5"
 qwen_jobs = queue.Queue()
 qwen_ready = threading.Event()
@@ -95,17 +108,19 @@ def qwen_worker():
         reference = mx.array(soundfile.read(QWEN_VOICE, dtype="float32")[0])
 
         def generate(text, speed):
+            mx.random.seed(QWEN_SEED)
             parts = model.generate(text=text, ref_audio=reference, ref_text=QWEN_VOICE_TEXT,
-                                   lang_code="italian", speed=speed, verbose=False)
+                                   lang_code="italian", speed=speed, verbose=False, **QWEN_SAMPLING)
             samples = np.concatenate([np.asarray(part.audio).squeeze() for part in parts])
             mx.clear_cache()
             return samples
 
         def generate_pieces(text, speed, job):
             first = True
+            mx.random.seed(QWEN_SEED)
             for part in model.generate(text=text, ref_audio=reference, ref_text=QWEN_VOICE_TEXT,
                                        lang_code="italian", speed=speed, verbose=False, stream=True,
-                                       streaming_interval=QWEN_STREAM_INTERVAL):
+                                       streaming_interval=QWEN_STREAM_INTERVAL, **QWEN_SAMPLING):
                 if job.get("cancel"):
                     break
                 samples = np.asarray(part.audio).squeeze()
@@ -138,7 +153,9 @@ def qwen_worker():
 
 def saved_clip_path(text, speed):
     model = "" if os.path.basename(QWEN_DIR) == "qwen3" else os.path.basename(QWEN_DIR) + "|"
-    key = f"{os.path.getsize(QWEN_VOICE)}|{model}{speed}|{text}"
+    # The sampling is part of the key: clips saved with another intonation are not reused.
+    sampling = f"t{QWEN_SAMPLING['temperature']}p{QWEN_SAMPLING['top_p']}s{QWEN_SEED}|"
+    key = f"{os.path.getsize(QWEN_VOICE)}|{model}{sampling}{speed}|{text}"
     return os.path.join(QWEN_CLIPS, hashlib.sha256(key.encode()).hexdigest() + ".pcm")
 
 
@@ -177,6 +194,59 @@ def stream_qwen(text, speed):
     job = {"done": threading.Event(), "pieces": queue.Queue()}
     qwen_jobs.put((spoken, speed, job))
     return job
+
+
+def saved_if_any(text, speed):
+    """The saved audio of this sentence, or None. Its date is refreshed: the least used go first."""
+    try:
+        clip = saved_clip_path(text, speed)
+        if not os.path.exists(clip):
+            return None
+        os.utime(clip)
+        return saved_clip(text, speed)
+    except OSError:
+        return None
+
+
+def remember_repeat(text, speed, audio):
+    """A whole streamed sentence: the second time it is heard, its audio is saved."""
+    if len(text) > REPEAT_MAX_CHARS or not audio:
+        return
+    with repeat_lock:
+        try:
+            clip = saved_clip_path(text, speed)
+            key = os.path.basename(clip)[:-4]
+            os.makedirs(QWEN_CLIPS, exist_ok=True)
+            try:
+                with open(REPEAT_SEEN) as file:
+                    seen = json.load(file)
+            except (OSError, ValueError):
+                seen = []
+            if key in seen:
+                with open(clip + ".tmp", "wb") as file:
+                    file.write(audio)
+                os.replace(clip + ".tmp", clip)
+                seen.remove(key)
+                prune_clips()
+            else:
+                seen = (seen + [key])[-REPEAT_SEEN_MAX:]
+            with open(REPEAT_SEEN + ".tmp", "w") as file:
+                json.dump(seen, file)
+            os.replace(REPEAT_SEEN + ".tmp", REPEAT_SEEN)
+        except OSError:
+            pass
+
+
+def prune_clips():
+    """Over the limit, the clips not used for the longest time go (acknowledgments are made again at start)."""
+    clips = [os.path.join(QWEN_CLIPS, name) for name in os.listdir(QWEN_CLIPS) if name.endswith(".pcm")]
+    sizes = {path: os.path.getsize(path) for path in clips}
+    total = sum(sizes.values())
+    for path in sorted(clips, key=os.path.getmtime):
+        if total <= CLIPS_MAX_BYTES:
+            break
+        os.remove(path)
+        total -= sizes[path]
 
 
 # Qwen3 fallback: it loads only when needed, so it takes no memory.
@@ -370,7 +440,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_pieces(self, req):
         """The sentence in pieces as Qwen3 makes them. False if no piece came: the normal path takes over."""
-        job = stream_qwen(req["text"], float(req.get("speed", 1.0)))
+        text, speed = req["text"], float(req.get("speed", 1.0))
+        saved = saved_if_any(text, speed)
+        if saved:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(saved)))
+            self.end_headers()
+            try:
+                self.wfile.write(saved)
+            except OSError:
+                pass
+            return True
+        job = stream_qwen(text, speed)
         if job is None:
             return False
         try:
@@ -384,14 +466,20 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/octet-stream")
         self.end_headers()
         piece = first
+        heard = []
         try:
             while piece is not None:
                 self.wfile.write(piece)
                 self.wfile.flush()
+                heard.append(piece)
                 piece = job["pieces"].get(timeout=80)
         except (OSError, queue.Empty):
             # JARVIS stopped listening ("basta"): the rest of the sentence is not generated.
             job["cancel"] = True
+            return True
+        # Only a sentence heard whole and without errors may be kept.
+        if job["done"].wait(5) and "error" not in job and not job.get("cancel"):
+            remember_repeat(text, speed, b"".join(heard))
         return True
 
     def log_message(self, *args):

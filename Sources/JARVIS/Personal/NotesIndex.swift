@@ -98,13 +98,27 @@ enum NotesSearch {
         }
     }
 
+    /// The same words written another way: Italian "gi" and Latin/English "j", "k"/"c", "ph"/"f", "y"/"i".
+    static func spellings(_ query: String) -> [String] {
+        let q = query.lowercased()
+        func swap(_ pattern: String, _ with: String) -> String { q.replacingOccurrences(of: pattern, with: with, options: .regularExpression) }
+        var out = [
+            swap(#"gi(?=[aou])"#, "j"),            // giacobiana → jacobiana
+            swap(#"j"#, "gi"),                     // jacobiano → giacobiano
+            swap(#"k"#, "c"), swap(#"ph"#, "f"), swap(#"y"#, "i"),
+        ]
+        out.append(out[0].replacingOccurrences(of: #"\b(\w{5,}?)(ana|ano)\b"#, with: "$1ian", options: .regularExpression))  // jacobiana → jacobian
+        var seen = Set<String>()
+        return out.filter { $0 != q && seen.insert($0).inserted }
+    }
+
     private struct Hit {
         let path: String
         let page: Int
         let text: String
     }
 
-    static func search(query: String, subject: String?) -> String {
+    static func search(query: String, subject: String?, retry: Bool = true) -> String {
         var terms = terms(query)
         guard !terms.isEmpty else { return "Dimmi cosa cercare negli appunti: servono parole più precise." }
         guard FileManager.default.fileExists(atPath: NotesDatabase.url.path), let db = NotesDatabase.open(readOnly: true) else {
@@ -156,6 +170,15 @@ enum NotesSearch {
         if !fromMeaning.isEmpty { notes.append("(Alcuni passaggi sono stati trovati per significato: possono non contenere le parole della domanda.)") }
         let note = (notes + [status(db)]).joined(separator: " ")
         guard !ordered.isEmpty else {
+            // "giacobiana" is written "jacobiana" in the notes (12 November): other spellings of the same words.
+            if retry {
+                for variant in spellings(query) where variant != query {
+                    let found = search(query: variant, subject: subject, retry: false)
+                    if !found.hasPrefix("Nessun passaggio") {
+                        return "(Cercato anche come \"\(variant)\".) " + found
+                    }
+                }
+            }
             return "Nessun passaggio trovato per \"\(query)\": negli appunti indicizzati non c'è, o è detto con altre parole. Prova con sinonimi o in inglese. \(note)"
         }
         var perFile: [String: Int] = [:]

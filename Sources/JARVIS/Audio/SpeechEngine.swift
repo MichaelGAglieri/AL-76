@@ -1,11 +1,12 @@
 import AVFoundation
 import NaturalLanguage
+import os
 
 /// Speech synthesis. By default it uses the Kokoro neural voice (Lewis in English, Nicola
 /// in Italian), much more natural; if Kokoro is not available it uses the
 /// macOS voices. With Kokoro the HUD follows the real level, with Apple voices the words.
 final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
-    private let synthesizer = AVSpeechSynthesizer()
+    nonisolated(unsafe) private let synthesizer = AVSpeechSynthesizer()
     let kokoro = KokoroTTS()
     /// Plays Kokoro's audio and the activation sound in the same engine
     /// as the microphone: this way echo cancellation recognises JARVIS's voice.
@@ -62,6 +63,8 @@ final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
     var phoneRoute: ((AVAudioPCMBuffer, @escaping () -> Void) -> Void)?
     /// The phone that asked has disconnected: no voice is prepared that nobody would hear.
     var phoneAway = false
+    /// The request was typed and wants a written answer only: no voice is prepared.
+    var silent = false
 
     var onLevel: ((Float) -> Void)?
     /// Called when the whole queue has been spoken.
@@ -153,7 +156,7 @@ final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
         let actual = Self.detectLanguage(spoken, hint: hint)
         lastLanguage = actual
         queued += 1
-        if phoneAway {
+        if phoneAway || silent {
             DispatchQueue.main.async { self.utteranceEnded() }
             return
         }
@@ -294,26 +297,28 @@ final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
         Task { [weak self] in
             guard let self else { return }
             let start = Date()
-            var pieces = 0
+            // Read and written from the main thread and from this task: behind a lock.
+            let count = OSAllocatedUnfairLock(initialState: 0)
             do {
                 for try await piece in self.kokoro.synthesizeStream(text, speed: speed) {
                     let current = await MainActor.run { () -> Bool in
                         guard gen == self.generation else { return false }
-                        if pieces == 0 {
+                        if count.withLock({ $0 }) == 0 {
                             Diagnostics.log("voce      [\(Diagnostics.since(start))] primo pezzo, \(text.count) caratteri")
                         }
                         self.deliver(piece)
                         return true
                     }
                     guard current else { return }
-                    pieces += 1
+                    count.withLock { $0 += 1 }
                 }
             } catch {
-                Diagnostics.log("voce      a pezzi non riuscita dopo \(pieces) pezzi: \(error.localizedDescription)")
+                Diagnostics.log("voce      a pezzi non riuscita dopo \(count.withLock { $0 }) pezzi: \(error.localizedDescription)")
             }
             if Diagnostics.logsSpeech { Diagnostics.log("voce testo \(text)") }
             await MainActor.run {
                 guard gen == self.generation else { return }
+                let pieces = count.withLock { $0 }
                 Diagnostics.log("voce      [\(Diagnostics.since(start))] fine, \(pieces) pezzi")
                 self.synthesizing = false
                 if pieces > 0 {
@@ -373,6 +378,9 @@ final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
         if !player.isPlaying { player.play() }
     }
 
+    /// Privacy mode: the shared engine is stopped again once JARVIS has finished speaking.
+    var stopsEngineWhenSilent = false
+
     private func startEngine() {
         guard !engine.isRunning else { return }
         engine.prepare()
@@ -419,6 +427,8 @@ final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
                 guard let self, gen == self.generation, self.queued == 0 else { return }
                 // The engine stays on: it is also the microphone's.
                 self.player.stop()
+                // Unless the microphone is off (privacy mode): an alert said with it does not leave it open.
+                if self.stopsEngineWhenSilent { self.engine.stop() }
             }
         }
     }
@@ -482,7 +492,7 @@ final class SpeechEngine: NSObject, AVSpeechSynthesizerDelegate {
     /// Cleans up the model's text: no markdown, emoji or symbols
     /// the voice would read oddly.
     static func prepareForSpeech(_ text: String) -> String {
-        var s = text
+        var s = Honorific.apply(text)
         s = s.replacingOccurrences(of: #"```[\s\S]*?```"#, with: "", options: .regularExpression)
         // Paths like ~/Projects/Robotica/MioRobot: only the final name is read.
         s = s.replacingOccurrences(of: #"(?<![\w])(?:~/|/)(?:[\w.\-]+/)*([\w.\-]+)/?"#, with: "$1", options: .regularExpression)

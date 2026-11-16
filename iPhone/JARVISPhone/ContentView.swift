@@ -364,6 +364,11 @@ struct ContentView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .center, spacing: 8) {
+                    if assistant.dictating {
+                        Text("✎ Dettatura attiva: scrivo tutto quello che dici. Per finire: «Jarvis, basta scrivere».")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(HUD.amber)
+                    }
                     if !assistant.heard.isEmpty {
                         Text(assistant.heard)
                             .font(.subheadline)

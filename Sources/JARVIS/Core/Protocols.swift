@@ -51,7 +51,7 @@ enum Protocols {
          "risposta": "{esito}"],
         ["nome": "buongiorno",
          "frasi": ["buongiorno", "protocollo buongiorno", "good morning"],
-         "chiedi": "Buongiorno. Protocollo buongiorno: usa daily_briefing e printer_status, poi dimmi in poche frasi la giornata: meteo, impegni, promemoria, mail importanti, e la stampa solo se ce n'è una in corso."],
+         "chiedi": "Buongiorno. Protocollo buongiorno: usa daily_briefing e printer_status, poi dimmi in poche frasi la giornata: meteo, impegni, promemoria, mail importanti (mai la pubblicità), cosa studiare, e la stampa solo se ce n'è una in corso. Chiudi con tre o quattro notizie di robotica, AI e tecnologia, una frase l'una, dicendo la fonte."],
         ["nome": "buonanotte",
          "frasi": ["buonanotte", "protocollo buonanotte", "good night"],
          "prima": [["tool": "stop_activity", "arguments": [:]]],

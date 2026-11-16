@@ -14,7 +14,7 @@ for n, f in [("A", "Arial.ttf"), ("AB", "Arial Bold.ttf"), ("AI", "Arial Italic.
     pdfmetrics.registerFont(TTFont(n, F + f))
 pdfmetrics.registerFontFamily("A", normal="A", bold="AB", italic="AI", boldItalic="AB")
 
-EDITION, EDITION_SHORT, VERSION = "12 NOVEMBER 2026", "12 NOV 2026", "1.30.25"
+EDITION, EDITION_SHORT, VERSION = "12 NOVEMBER 2026", "12 NOV 2026", "1.30.38"
 NAVY = colors.HexColor("#12293E"); TEAL = colors.HexColor("#0B7F91"); INK = colors.HexColor("#22313F")
 GREY = colors.HexColor("#6B7B88"); ROW = colors.HexColor("#EDF5F7"); LINE = colors.HexColor("#CFDDE3")
 CREAM = colors.HexColor("#FFF6E5"); AMBER = colors.HexColor("#E7A63C"); MINT = colors.HexColor("#E9F7F8")
@@ -91,6 +91,7 @@ section("start", "First launch and permissions", "First launch and permissions",
            ["App control", "Accessibility: Privacy & Security › Accessibility › JARVIS."],
            ["Calendar and Reminders", "Access to their data; the requests appear on first use."],
            ["Mail, Music and system", "Automation of the apps involved. Mail must have an account configured."],
+           ["Mail in under a second", "Full Disk Access: Privacy & Security › Full Disk Access › JARVIS. It then reads Mail’s index on disk; without it mail still works, but with a large inbox it can take tens of seconds."],
            ["Recipients by name", "Contacts, to look up the person’s address."],
            ["Screen analysis", "Screen & System Audio Recording, in Privacy & Security."],
            ["Photos of objects or circuits", "Camera; using the iPhone’s needs Continuity Camera."],
@@ -161,13 +162,17 @@ section("mac", "Mac, files, music and web", "Mac, files, music and web", "Useful
     table([["Area", "Examples to say"],
            ["Applications", "“Open Visual Studio Code”. “Which apps are open?”. JARVIS knows every app on the Mac and understands mangled names (“PDF Graft” opens PdfCraft); if two are similar it asks which. Opening and quitting apps, volume and timers run at once, without the model. macOS apps can also be called by their Italian names: Orologio, Meteo, Contatti.<br/>“Quit Safari”, “quit Safari and Netflix”, “quit all apps”: no confirmation, unless there are unsaved changes.<br/>“Close YouTube”: if it is a browser tab, it closes that tab."],
            ["Windows", "“Minimise the Safari window”: at once, without confirmation."],
-           ["Audio and system", "“Volume to 30”. “Mute”. “Turn on dark mode”. “Turn off the screen”. “How is the battery?”."],
+           ["Audio and system", "“Volume to 30”. “Mute”. “Turn on dark mode”. “Turn off the screen”. “How is the battery?”. “How hot is the Mac?”: reads the chip, disk and battery sensors, the thermal state and the programs using the most CPU."],
            ["Music", "“Play Bohemian Rhapsody by Queen”. “Play the Study playlist”. “Next song”. “Pause the music”. “What song is this?”. It searches your playlists and the Apple Music catalog, with an active subscription. From the catalog it can take a few seconds, up to half a minute if Music is closed."],
            ["TV", "“Turn on the TV”. “Turn off the TV”. “Turn up the TV volume”. “Open Netflix on the TV”. The first time the TV asks on screen to allow it. To turn it on from off, power on with mobile must be enabled in the TV’s expert network settings."],
+           ["Series and films", "“Put on Rick and Morty on Netflix”, “Big Bang Theory on Prime”, “find a ROS 2 tutorial on YouTube”: opens the search in the Netflix, Prime Video or YouTube app and starts the right result. If a profile chooser appears, it asks which one."],
+           ["PDF", "“Combine these PDFs into one”, images too, in the order given: a few seconds, without opening a PDF app. “Save pages 1 to 3 as a new PDF”. “How many pages does it have?”. “Rename the file to…”. “Save this web page as PDF” (public pages only: pages behind your login, like Outlook, go through Safari › File › Export as PDF). It never overwrites: a taken name gets “(2)”."],
+           ["Code", "“Look at the code I’m writing”: reads the file open in VS Code and explains it by voice. “Comment it without changing the indentation”, “reformat it”, “fix the error”: rewrites the file after a copy in backup_codice. With comments only, every code line must stay identical or the change is refused; for Python the syntax is checked before saving. “Put it back” restores the copy. With unsaved changes in VS Code it asks you to save first."],
            ["Protocols", "“Modalità studio” (study mode), also with the subject: “modalità studio Chimica”. “Fine studio” (end of study). “Buongiorno”. “Buonanotte”. One phrase, several actions: see the Protocols chapter. They are changed in protocolli.json."],
            ["Files and folders", "“Find the firmware file”. “Open the certificate”. “Show the project folder in the Finder”."],
            ["Projects", "“Which robotics projects do I have?”. “How is the MioRobot project doing?”. “What did I work on this week?”."],
            ["Web and weather", "“Search ROS 2 documentation on topics”. “Open github.com”. “What’s the weather in Rome?”."],
+           ["News", "“Che notizie ci sono?” (what’s in the news?): three or four items from today and yesterday on robotics, AI, devices and tech, naming the source (Sky TG24, ANSA, Bloomberg, Wired, IEEE Spectrum, The Robot Report and others). “News about Apple?” for a topic. “Continua” or “more news”: further items, never the same, also from BBC, Guardian, New York Times, Financial Times, 9to5Mac, MacRumors. A story carried by several newsrooms is marked as confirmed. “Open that one” opens the article."],
            ["Timers", "“25 minute study timer”. “How long is left?”. “Cancel the study timer”."],
            ["Shortcuts", "“Which shortcuts do I have?”. “Run the Home shortcut”: “yes” and Touch ID."]], widths=(0.22, 0.78)),
     H("Making requests more precise"),
@@ -195,12 +200,12 @@ section("agenda", "Calendar, reminders and mail", "Calendar, reminders and mail"
     H("Reminders"),
     bullets("“Remind me to buy servos tomorrow at 9”.", "“What do I have to do?”.", "“Mark buy servos as done”.", "“Delete the reminder buy servos”."),
     H("Mail"),
-    P("“Any new mail?”, “find Marco’s emails about the project”, “read me the one about the exam”. To send, give recipient, subject and text; the name is looked up in Contacts."),
+    P("“Any new mail?”, “find Marco’s emails about the project”, “read me the one about the exam”. JARVIS first says last week’s important mail: people in Contacts or already written to, your university or company; then notices about accounts, payments and orders. Advertising and lists are only counted. “Le mail di Rossi sono importanti” and “ignora le mail di Booking” change the rule; “read me all the latest” lists them anyway. Listing and search come from Mail’s index on disk, in under a second and even with Mail closed (Full Disk Access needed). To send, give recipient, subject and text; the name is looked up in Contacts."),
     table([["You", "“Write an email to [address], subject Robot review, text: can we meet tomorrow at 3 pm?”."],
            ["Jarvis", "Sums up recipient, subject and text, and waits."],
            ["You", "“Yes” to send, “no” to cancel."]], header=False, widths=(0.12, 0.88)),
     H("Notes"), P("There is no direct command: JARVIS uses the Notes app through app control."),
-    H("Briefing"), P("“Good morning Jarvis” asks for a summary with weather, appointments, reminders, unread mail, study and projects. It also starts by itself: see the Initiative chapter. Mail answers slowly: the briefing waits for it at most 5 seconds, then goes on without it. When the briefing starts by itself, JARVIS gathers the data while it answers the first request, so the mail arrives in time."))
+    H("Briefing"), P("“Good morning Jarvis” asks for a summary with weather, appointments, reminders, important mail, study and projects, and ends with three or four news items on robotics, AI and tech. It also starts by itself: see the Initiative chapter. It also says what is best to study today and how long until the next exam. When the briefing starts by itself, JARVIS gathers the data while it answers the first request."))
 
 section("initiative", "Initiative: Jarvis speaks first", "Initiative", "Jarvis warns you without being asked.",
     table([["Alert", "When"],
@@ -209,7 +214,8 @@ section("initiative", "Initiative: Jarvis speaks first", "Initiative", "Jarvis w
            ["Study", "Every 2 hours of a session opened with “I’m starting to study…”, it suggests a break."],
            ["End of a break", "When a break started with “pausa” ends, it says “la pausa è finita, ricominciamo?” and resumes the session on your “yes”."],
            ["Battery", "At 20 % or less without a charger, once. Again only after plugging it in."],
-           ["Briefing", "At the first activation of the day between 5 and 12: it answers first, then gives the briefing. Once a day."]], widths=(0.22, 0.78)),
+           ["Briefing", "At the first activation of the day between 5 and 12: it answers first, then gives the briefing. Once a day."],
+           ["Study summary", "At 21:00, on days you studied or with an exam within two weeks: hours today, this week’s hours against the goals, near exams and what to study tomorrow. If JARVIS is busy it waits, at the latest until 23:00. The hour is in Settings › Initiative; 0 turns it off."]], widths=(0.22, 0.78)),
     H("When it waits"), P("Alerts stay queued if JARVIS is in privacy mode, in a conversation or with a pending confirmation, and during quiet hours (from 23:00 to 8:00). Those no longer relevant are dropped: an appointment that already started is not announced. Alerts already given are not repeated after a restart."),
     H("Adjusting them"), P("Settings › Initiative: every alert has its own switch, and you can change the quiet hours."),
     callout("Bambu Studio", "With the printer configured in Settings, JARVIS warns if the print finishes, pauses or gets stuck, and answers “how is the print going?”. If the printer is off or has a new address, JARVIS looks for it on the network less and less often, up to once every half hour, and never during quiet hours or in privacy mode; when you ask about it, it looks at once. It can also load and unload filament and print, always through Bambu Studio’s buttons.", warn=False))
@@ -223,9 +229,11 @@ section("study", "Study, projects and memory", "Study, projects and memory", "Me
            ["“How much did I work yesterday?”", "Report of the previous day’s activities."]], widths=(0.42, 0.58)),
     P("Only one session can be active: starting another closes the previous one. Close it when you finish."),
     H("Breaks"), P("“Let’s take a break” (“facciamo una pausa”) pauses the session instead of closing it and starts a 10-minute timer. When it ends JARVIS asks whether to resume, and a “yes” resumes the same session. Breaks do not count as study time: at the end JARVIS tells you the effective time, the total time and how many breaks you took."),
-    H("Session reports"), P("When you close a session JARVIS asks what to write in its report, for example where you got to. At the start of the next session of the same kind (“I’m starting to study Python”) it reminds you where you had got to."),
+    H("Session reports"), P("When you close a session JARVIS asks what to write in its report, for example where you got to. At the start of the next session of the same kind (“I’m starting to study Python”) it reminds you where you had got to. After the report of a study session it asks whether to make five flashcards on the topic: after your “yes” it takes them from your notes."),
+    H("Sessions recorded afterwards"), P("“Per oggi registra un’ora di analisi” (log an hour of analysis for today) adds a finished session; “the session began an hour ago” or “physics lasted 40 minutes” correct the open or the last one."),
+    H("Study plan"), P("Say the exam date and how many hours a week you want to study: “l’esame di Fisica 1 è il 20 gennaio, voglio studiarla 6 ore a settimana”. “How is studying going?” compares this week’s hours with the goals and says how many days are left to each exam; “what should I study today?” names the subject most behind, or with the nearest exam, and for how long. Sessions with a shorter name count for the subject: “Fisica” counts for “Fisica 1”. “Remove Fisica 1 from the plan” removes it; recorded hours stay. The plan is in piano_studio.json."),
     S("Sessions are in activity.json. A session left open for more than six hours is closed at six hours."),
-    H("Searching your notes"), P("“Search my notes for Ohm’s law” or “what do the Electronics handouts say about capacitors?” search inside PDF, Word, PowerPoint and text files in the folders chosen in the settings (at first Documents/Appunti): personal documents stay out. JARVIS answers from the passages found and quotes document and page; if they are not enough it says so. The index builds itself in the background on the Mac, at low priority, and updates every 6 hours. Scanned pages are read on mains power and with the Mac cool, so they can take hours. Search also understands concepts: “shortest path in a graph” finds pages on shortest paths even if you use different words from the book, and passages found this way are flagged. It corrects misheard names (“Tevenin” becomes “Thevenin”, saying so). The first concept question can take a few seconds more, because the Mac loads the bge-m3 model, and if that model is missing search works by words only."),
+    H("Searching your notes"), P("“Search my notes for Ohm’s law” or “what do the Electronics handouts say about capacitors?” search inside PDF, Word, PowerPoint and text files in the folders chosen in the settings (at first Documents/Appunti): personal documents stay out. JARVIS answers from the passages found and quotes document and page; if they are not enough it says so. The index builds itself in the background on the Mac, at low priority, and updates every 6 hours. Scanned pages are read on mains power and with the Mac cool, so they can take hours. Search also understands concepts: “shortest path in a graph” finds pages on shortest paths even if you use different words from the book, and passages found this way are flagged. It corrects misheard names (“Tevenin” becomes “Thevenin”, saying so). With no result it retries other spellings of the same word: “giacobiana” also finds “jacobian”. The first concept question can take a few seconds more, because the Mac loads the bge-m3 model, and if that model is missing search works by words only."),
     H("Knowing your projects"), P("“How is the MioRobot project doing?” reads README, Git branch, recent commits and changes. “What did I work on this week?” uses the changes indexed by Spotlight: it describes traces in files, without measuring hours."),
     H("Persistent memory"),
     bullets("“Remember that the chemistry exam is on 15 December” saves a fact.", "“What do you remember about me?” lists the facts.", "“Forget the chemistry exam” asks for “yes” and Touch ID."),
@@ -346,13 +354,15 @@ section("privacy", "Privacy and confirmations", "Privacy and confirmations", "Wh
     H("Privacy mode"), P("Say “Jarvis, privacy”, use Control + Option + P or the menu. Microphone off, screen and camera blocked, app control off, grey sphere. To leave it use the keyboard or the menu. <b>It turns off at every JARVIS restart.</b>"),
     H("Where data can go"), P("Audio and transcription stay on the Mac, and so does the voiceprint. Gemma is local. Web searches, weather and websites contact the services involved. Claude receives requests and context when you use it. Calendar, Reminders and Mail sync through your accounts."),
     H("Log and content read"), P("Actions and confirmations go to audit.log: treat it as personal data. Mail, pages, files and app content are marked as data, not as instructions."),
-    S("There are no tools to delete files or run free terminal commands. The effects of authorised actions remain possible, for example a Shortcut or an opened program."))
+    S("A code file changes only when you ask, after a copy in backup_codice; new PDFs never overwrite an existing file. There are no tools to delete files or run free terminal commands. The effects of authorised actions remain possible, for example a Shortcut or an opened program."))
 
 section("problems", "Troubleshooting", "If something does not work", "Start from the message in the HUD and check the service involved.",
     table([["Symptom", "Check and fix"],
            ["It does not hear “Jarvis”", "Leave privacy mode with Control + Option + P. Check the Microphone permission and “JARVIS” ATTIVA · WHISPER. Try Control + Option + Space. From afar or in a hurry it may miss it: repeat."],
            ["It hears but ignores you", "It is the voice recognition: use Add sentences or Add commands, lower the strictness or switch to Observe only."],
-           ["It writes only “Grazie”", "Whisper is not understanding. <b>Before restarting note the time</b>: diagnostica.log measures the level. Then restart JARVIS."],
+           ["It writes only “Grazie”", "Often steady noise that Whisper writes that way: after three in a row JARVIS skips for one minute the phrases no louder than that noise (diagnostica.log: “rumore continuo”). If it also happens when you speak close to the Mac, note the time and restart JARVIS."],
+           ["It wakes when you talk about it", "“Jarvis” named inside a sentence (“è il Jarvis”, “mi sa che Jarvis…”) no longer wakes it. To call it, say it at the start or alone, or “basta Jarvis”, “ciao Jarvis”."],
+           ["Slow mail or “Mail did not answer”", "Give JARVIS Full Disk Access (Privacy & Security): without it, it asks the Mail app, which is slow with a large inbox. diagnostica.log says why the index could not be read."],
            ["It misunderstands the sentence", "Reduce the noise and repeat with explicit names. If you insist or correct it, the vocabulary learns."],
            ["Gemma is in memory", "Check that you did not choose LOCALE, and the connection. Say “scarica Gemma dalla memoria”. From Terminal: ollama ps."],
            ["The local model is offline", "Jarvis tries to start Ollama. From Terminal: ollama list; if it is not running: ollama serve."],
@@ -375,6 +385,8 @@ section("install", "Installation and data", "Installation and maintenance", "Ess
     table([["Item", "Content"],
            ["config.json", "Settings; may contain the Picovoice key and the printer access code."],
            ["memory.json / activity.json", "Personal memories and study or work sessions."],
+           ["piano_studio.json / resoconti.json", "Exams and weekly hours per subject; session reports."],
+           ["backup_codice/", "Copies of code files before JARVIS changed them."],
            ["voiceprint.json / voce.log", "Voiceprint and scores. No audio."],
            ["iphone_code", "Pairing code with the iPhone, readable only by you."],
            ["audit.log / diagnostica.log", "Action log and technical log (wake word, timings, level)."],

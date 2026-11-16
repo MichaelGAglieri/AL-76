@@ -48,7 +48,7 @@ final class ScreenShare {
             let size: (width: Int, height: Int)
             do {
                 let (stream, streamSize) = try await Self.makeStream(output: output, video: video)
-                guard let self, !Task.isCancelled else { stream.stopCapture { _ in }; return }
+                guard let self, !Task.isCancelled else { try? await stream.stopCapture(); return }
                 self.stream = stream
                 size = streamSize
             } catch {

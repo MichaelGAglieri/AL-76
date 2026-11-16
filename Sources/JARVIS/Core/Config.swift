@@ -28,6 +28,8 @@ struct JarvisConfig: Codable, Equatable {
     var echoCancellation = false
     var alertReminders = true
     var alertStudy = true
+    /// Evening study summary at this hour (12 November: 21); 0 turns it off.
+    var studySummaryHour = 21
     var alertBattery = true
     var morningBriefing = true
     /// The briefing starts at the first activation between these hours (5–12).
@@ -46,6 +48,8 @@ struct JarvisConfig: Codable, Equatable {
     var nucleusBackdrop = true
     /// Look of the NUCLEUS: "reattore" (the original reactor) or "satellite" (3D satellite).
     var nucleusStyle = "reattore"
+    /// How JARVIS addresses the user in Italian ("signore" by default); set in config.json.
+    var honorific = "signore"
     var whisperModel = "openai_whisper-large-v3-v20240930_turbo_632MB"
     var localModel = "gemma4:12b-it-qat"
     var ollamaURL = "http://localhost:11434"
@@ -90,8 +94,17 @@ struct JarvisConfig: Codable, Equatable {
     /// Link with the iPhone app: off until the user turns it on.
     var phoneBridge = false
     var notesFolders = ["~/Documents/Appunti"]
+    /// Mail senders (parts of a name or address) always important, or never read out.
+    var mailImportant: [String] = []
+    var mailIgnored: [String] = []
     /// ROS 2 project of the simulated lab (pixi environment with Webots).
     var labProject = "~/Projects/ros2_lab"
+    /// The user's university (Settings › Università). Empty server = off. Name: how JARVIS calls it;
+    /// server: the API base address of the university's student app; agent: its User-Agent, if needed.
+    /// Username and password are never here: they stay in the Keychain.
+    var universityName = ""
+    var universityServer = ""
+    var universityAgent = ""
 
     static let directory: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -134,6 +147,7 @@ struct JarvisConfig: Codable, Equatable {
         developerMode = try c.decodeIfPresent(Bool.self, forKey: .developerMode) ?? d.developerMode
         nucleusBackdrop = try c.decodeIfPresent(Bool.self, forKey: .nucleusBackdrop) ?? d.nucleusBackdrop
         nucleusStyle = try c.decodeIfPresent(String.self, forKey: .nucleusStyle) ?? d.nucleusStyle
+        honorific = try c.decodeIfPresent(String.self, forKey: .honorific) ?? d.honorific
         whisperModel = try c.decodeIfPresent(String.self, forKey: .whisperModel) ?? d.whisperModel
         localModel = try c.decodeIfPresent(String.self, forKey: .localModel) ?? d.localModel
         ollamaURL = try c.decodeIfPresent(String.self, forKey: .ollamaURL) ?? d.ollamaURL
@@ -163,6 +177,7 @@ struct JarvisConfig: Codable, Equatable {
         echoCancellation = try c.decodeIfPresent(Bool.self, forKey: .echoCancellation) ?? d.echoCancellation
         alertReminders = try c.decodeIfPresent(Bool.self, forKey: .alertReminders) ?? d.alertReminders
         alertStudy = try c.decodeIfPresent(Bool.self, forKey: .alertStudy) ?? d.alertStudy
+        studySummaryHour = try c.decodeIfPresent(Int.self, forKey: .studySummaryHour) ?? d.studySummaryHour
         alertBattery = try c.decodeIfPresent(Bool.self, forKey: .alertBattery) ?? d.alertBattery
         morningBriefing = try c.decodeIfPresent(Bool.self, forKey: .morningBriefing) ?? d.morningBriefing
         briefingFrom = try c.decodeIfPresent(Int.self, forKey: .briefingFrom) ?? d.briefingFrom
@@ -185,7 +200,12 @@ struct JarvisConfig: Codable, Equatable {
         bambuCode = try c.decodeIfPresent(String.self, forKey: .bambuCode) ?? d.bambuCode
         phoneBridge = try c.decodeIfPresent(Bool.self, forKey: .phoneBridge) ?? d.phoneBridge
         notesFolders = try c.decodeIfPresent([String].self, forKey: .notesFolders) ?? d.notesFolders
+        mailImportant = try c.decodeIfPresent([String].self, forKey: .mailImportant) ?? d.mailImportant
+        mailIgnored = try c.decodeIfPresent([String].self, forKey: .mailIgnored) ?? d.mailIgnored
         labProject = try c.decodeIfPresent(String.self, forKey: .labProject) ?? d.labProject
+        universityName = try c.decodeIfPresent(String.self, forKey: .universityName) ?? d.universityName
+        universityServer = try c.decodeIfPresent(String.self, forKey: .universityServer) ?? d.universityServer
+        universityAgent = try c.decodeIfPresent(String.self, forKey: .universityAgent) ?? d.universityAgent
     }
 }
 
@@ -198,4 +218,68 @@ enum Language: String {
     case english = "en"
 
     var label: String { self == .italian ? "IT" : "EN" }
+}
+
+/// The Italian form of address. The fixed sentences in the code say "signore"; with another honorific
+/// in config.json they are rewritten where "signore" is used to address the user ("Subito, signore."),
+/// never in other senses ("il Signore degli Anelli").
+enum Honorific {
+    nonisolated(unsafe) static var italian = "signore"
+    /// With a custom honorific it is not said in every answer: about one in six, at random,
+    /// never twice in a row and never more than eight answers without it (12 November, user request:
+    /// it was said too often).
+    nonisolated(unsafe) private(set) static var sayNow = true
+    nonisolated(unsafe) private static var sinceLast = 0
+
+    private static var custom: Bool {
+        italian.trimmingCharacters(in: .whitespaces).lowercased() != "signore"
+    }
+
+    /// An empty honorific: no form of address at all, in Italian or English (12 November, user request).
+    static var none: Bool { italian.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// How the instructions tell the model to address the user.
+    static var instruction: String {
+        none ? "Italian or British English, never addressing him with a title or his name (no \"signore\", no \"sir\")"
+             : "Italian addressing him as \"\(italian)\", or British English addressing him as \"sir\""
+    }
+
+    /// Called when a new request begins: the choice holds for every sentence of that answer.
+    static func newTurn() {
+        guard !none else { sayNow = false; return }
+        guard custom else { sayNow = true; return }
+        sayNow = sinceLast >= 8 || (sinceLast >= 2 && Double.random(in: 0..<1) < 0.17)
+        sinceLast = sayNow ? 0 : sinceLast + 1
+    }
+
+    /// Rewrites "signore" used to address the user ("Subito, signore.", "Signore, la pausa…"); other
+    /// senses ("il Signore degli Anelli") stay. In an answer without the honorific, the address is dropped.
+    static func apply(_ text: String) -> String {
+        guard custom else { return text }
+        let word = italian.trimmingCharacters(in: .whitespaces)
+        // The address in the text: "signore" from the fixed sentences, or the honorific the model already used.
+        // With no honorific, also the English "sir".
+        let any = none ? "(?:[sS]ignore|[sS]ir)" : "(?:[sS]ignore|" + NSRegularExpression.escapedPattern(for: word.lowercased()) + "|"
+            + NSRegularExpression.escapedPattern(for: word.prefix(1).uppercased() + word.dropFirst()) + ")"
+        let capitalAny = none ? "(?:Signore|Sir)" : "(?:Signore|" + NSRegularExpression.escapedPattern(for: word.prefix(1).uppercased() + word.dropFirst()) + ")"
+        // With no honorific there is nothing to say in its place: it is always removed
+        // (13 November: "Buongiorno, signore." came out as "Buongiorno, .").
+        if sayNow, !none {
+            let capital = word.prefix(1).uppercased() + word.dropFirst()
+            var out = text.replacingOccurrences(of: #"(^|[.!?…]\s+)"# + capitalAny + #"(?=[,.!?;:…])"#, with: "$1" + capital, options: .regularExpression)
+            out = out.replacingOccurrences(of: #"([,;:—–]\s*)"# + any + #"(?=[,.!?;:…]|\s*$)"#, with: "$1" + word, options: .regularExpression)
+            return out
+        }
+        // "Subito, signore." → "Subito." · "…Anelli, signore, è lunga" → "…Anelli, è lunga"
+        var out = text.replacingOccurrences(of: #"\s*[,;:—–]\s*"# + any + #"(?=[.!?;:…]|\s*$)"#, with: "", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"([,;:—–])\s*"# + any + #"\s*,\s*"#, with: "$1 ", options: .regularExpression)
+        // "Signore, la pausa è finita." → "La pausa è finita."
+        let pattern = try! NSRegularExpression(pattern: #"(^|[.!?…]\s+)"# + capitalAny + #"\s*,\s*(\p{L})"#)
+        for match in pattern.matches(in: out, range: NSRange(out.startIndex..., in: out)).reversed() {
+            guard let whole = Range(match.range, in: out), let lead = Range(match.range(at: 1), in: out),
+                  let letter = Range(match.range(at: 2), in: out) else { continue }
+            out.replaceSubrange(whole, with: String(out[lead]) + out[letter].uppercased())
+        }
+        return out
+    }
 }

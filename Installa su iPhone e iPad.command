@@ -34,6 +34,19 @@ if [[ ${#DEVICES} -eq 0 && "$1" != "--solo-compila" ]]; then
     finish "Non vedo né iPhone né iPad. Collegane uno col cavo, sbloccalo, tocca Autorizza se te lo chiede, e riprova." 1
 fi
 
+# Xcode reuses the app's profile until it expires, so a reinstall did not move the 7-day deadline (12 November).
+# Profiles of this app with less than 6 days left are moved aside: Xcode then makes a new one, valid 7 days.
+PROFILES="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+OLD="$HOME/Library/Developer/Xcode/UserData/profili-scaduti-jarvis"
+for PROFILE in "$PROFILES"/*.mobileprovision(N); do
+    INFO=$(security cms -D -i "$PROFILE" 2>/dev/null) || continue
+    [[ "$INFO" == *".${JARVIS_IPHONE_BUNDLE_ID:-com.example.jarvis.iphone}<"* ]] || continue
+    LEFT=$(/usr/bin/python3 -I -c 'import plistlib,sys,datetime; d=plistlib.loads(sys.stdin.buffer.read())["ExpirationDate"]; print(int((d.replace(tzinfo=datetime.timezone.utc)-datetime.datetime.now(datetime.timezone.utc)).total_seconds()//86400))' <<<"$INFO" 2>/dev/null)
+    if [[ -n "$LEFT" && "$LEFT" -lt 6 ]]; then
+        mkdir -p "$OLD" && mv "$PROFILE" "$OLD/" && echo "Rinnovo la firma (quella vecchia scadeva tra $LEFT giorni)."
+    fi
+done
+
 echo "Compilo l'app, può volerci un minuto..."
 LOG=$(mktemp)
 if [[ "$1" == "--solo-compila" ]]; then

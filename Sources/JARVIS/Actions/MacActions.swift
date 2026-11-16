@@ -285,7 +285,13 @@ enum MacActions {
         let free = diskParts.count > 3 ? String(diskParts[3]) : "?"
         let batteryLine = battery.out.split(separator: "\n").dropFirst().first.map(String.init) ?? battery.out
         let memory = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
+        // What heats it: the three processes using the most CPU right now.
+        let top = await Shell.run("/bin/ps", ["-Aceo", "pcpu,comm", "-r"])
+        let busy = top.out.split(separator: "\n").dropFirst().prefix(3)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "; ")
         return """
+        Temperature: \(MacTemperature.spoken())
+        Processi più attivi (% CPU): \(busy)
         Batteria: \(batteryLine.trimmingCharacters(in: .whitespaces))
         Disco libero: \(free)
         Memoria totale: \(Int(memory)) GB
@@ -299,7 +305,7 @@ enum MacActions {
         let action = args.string("action")?.lowercased() ?? "playpause"
         let query = args.string("query")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         switch action {
-        case "search", "play" where !query.isEmpty, "playlist" where !query.isEmpty:
+        case "search" where !query.isEmpty, "play" where !query.isEmpty, "playlist" where !query.isEmpty:
             return await playMusic(query)
         case "playlist", "search":
             return "Manca cosa cercare"
@@ -485,6 +491,10 @@ enum MacActions {
     static func openPath(_ args: [String: Any]) async -> String {
         guard var path = args.string("path") else { return "Percorso mancante" }
         path = (path as NSString).expandingTildeInPath
+        // macOS's own folders, passwords and keys stay closed (Applications and external drives are fine).
+        if path.hasPrefix(HomeAccess.home + "/"), !HomeAccess.allowed(path) {
+            return "Questa è una cartella di sistema o con dati privati (password, chiavi, impostazioni di macOS): non la apro."
+        }
         if !FileManager.default.fileExists(atPath: path) {
             // The model rebuilt the path from memory: look for the most similar file.
             guard let found = await resolve(path) else {
@@ -526,20 +536,44 @@ enum MacActions {
     /// Spotlight on the longest word, then sorts by similarity with the whole sentence.
     private static func fuzzyFind(_ query: String) async -> [String] {
         let queryWords = words(query)
-        guard let key = queryWords.max(by: { $0.count < $1.count }) else { return [] }
-        // Word stem: "dispenser" also finds "dispense".
-        let root = String(key.prefix(max(4, key.count - 2)))
-        let result = await Shell.run("/usr/bin/mdfind", ["-onlyin", NSHomeDirectory(), "-name", root], timeout: 10)
-        var paths = result.out.split(separator: "\n").map(String.init)
-            .filter { !$0.contains("/Library/") && !$0.contains("/.") && !$0.contains("/node_modules/") && !$0.contains("/build/") }
-        // Spotlight does not show Desktop, Documents and Downloads to an app without
-        // permission: there the search is also done directly (macOS asks on first use).
-        let scanned = await Task.detached(priority: .userInitiated) { scanProtectedFolders(matching: root) }.value
-        for path in scanned where !paths.contains(path) { paths.append(path) }
-        return paths.map { ($0, similarity(query, ($0 as NSString).lastPathComponent)) }
-            .filter { $0.1 >= 0.5 }
-            .sorted { $0.1 > $1.1 }
+        // Up to the three longest words: "mods minecraft" must also find the folder "mods", whose name has no "minecraft".
+        let keys = Array(Set(queryWords.filter { $0.count >= 3 })).sorted { $0.count > $1.count }.prefix(3)
+        guard !keys.isEmpty else { return [] }
+        var paths: [String] = []
+        for key in keys {
+            // Word stem: "dispenser" also finds "dispense".
+            let root = String(key.prefix(max(4, key.count - 2)))
+            let result = await Shell.run("/usr/bin/mdfind", ["-onlyin", NSHomeDirectory(), "-name", root], timeout: 10)
+            for path in result.out.split(separator: "\n").map(String.init) where HomeAccess.allowed(path) && !Self.isLibraryCode(path) && !paths.contains(path) {
+                paths.append(path)
+            }
+            // Spotlight does not show Desktop, Documents and Downloads to an app without
+            // permission: there the search is also done directly (macOS asks on first use).
+            let scanned = await Task.detached(priority: .userInitiated) { scanProtectedFolders(matching: root) }.value
+            for path in scanned where !paths.contains(path) { paths.append(path) }
+        }
+        // The name, or the folder and the name ("minecraft mods" → …/minecraft/mods). Equally similar: more words
+        // written exactly first ("controlify" before "control-icon"), then the usual folders before Library.
+        func score(_ path: String) -> (Double, Int) {
+            let name = (path as NSString).lastPathComponent
+            let parent = ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent
+            let named = words(parent + " " + name)
+            let exact = queryWords.filter { named.contains($0) }.count
+            return (max(similarity(query, name), similarity(query, parent + " " + name)), exact)
+        }
+        return paths.map { ($0, score($0)) }
+            .filter { $0.1.0 >= 0.5 }
+            .sorted { a, b in
+                if a.1.0 != b.1.0 { return a.1.0 > b.1.0 }
+                if a.1.1 != b.1.1 { return a.1.1 > b.1.1 }
+                return !HomeAccess.inLibrary(a.0) && HomeAccess.inLibrary(b.0)
+            }
             .map(\.0)
+    }
+
+    /// Build output and installed Python packages: thousands of names, never what he is looking for.
+    private static func isLibraryCode(_ path: String) -> Bool {
+        ["/build/", "/site-packages/", "/venv/", "/.venv/", "/dist-packages/", "/DerivedData/"].contains { path.contains($0) }
     }
 
     /// Folders that macOS protects with a permission: Desktop, Documents,
@@ -560,7 +594,7 @@ enum MacActions {
                                             options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
             for case let url as URL in items {
                 if items.level > 4 { items.skipDescendants(); continue }
-                if ["node_modules", "build", "Library", "System"].contains(url.lastPathComponent) { items.skipDescendants(); continue }
+                if ["node_modules", "build", "Library", "System", "venv", ".venv", "site-packages"].contains(url.lastPathComponent) { items.skipDescendants(); continue }
                 if words(url.lastPathComponent).contains(where: { $0.hasPrefix(root) }) { found.append(url.path) }
                 if found.count >= 50 { return found }
             }

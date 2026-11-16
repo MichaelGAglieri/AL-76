@@ -156,7 +156,7 @@ final class PhoneBridge: ObservableObject {
         } else if awakeCheck == nil {
             // Power can be unplugged at any moment.
             awakeCheck = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.stayAwake() }
+                onMainThread { self?.stayAwake() }
             }
             awakeCheck?.tolerance = 20
         }
@@ -189,7 +189,7 @@ final class PhoneBridge: ObservableObject {
         var accepted = false
         // Counts only after the handshake: an attempt without the code does not disconnect the connected phone.
         candidate.onReady = { [weak self] in
-            MainActor.assumeIsolated {
+            onMainThread {
                 guard let self else { return }
                 accepted = true
                 if let previous = self.channel {
@@ -208,16 +208,16 @@ final class PhoneBridge: ObservableObject {
             }
         }
         candidate.onMessage = { [weak self] message in
-            MainActor.assumeIsolated { self?.received(message, from: candidate) }
+            onMainThread { self?.received(message, from: candidate) }
         }
         candidate.onClip = { [weak self] clip in
-            MainActor.assumeIsolated {
+            onMainThread {
                 guard let self, self.channel === candidate else { return }
                 self.onAudio?(clip.samples)
             }
         }
         candidate.onClosed = { [weak self] error in
-            MainActor.assumeIsolated {
+            onMainThread {
                 guard let self else { return }
                 if !accepted, let error {
                     Diagnostics.log("iphone    tentativo non riuscito: \(error)")

@@ -12,7 +12,7 @@
         precondition(again.segments.map(\.a) == SphereGeometry.full.segments.map(\.a))
         precondition(again.points.map(\.position) == SphereGeometry.full.points.map(\.position))
         precondition(SphereGeometry.full.segments.allSatisfy { s in
-            [s.a.x,s.a.y,s.a.z,s.b.x,s.b.y,s.b.z].allSatisfy { $0.isFinite && abs($0) <= 1.1 }
+            [s.a.x,s.a.y,s.a.z,s.b.x,s.b.y,s.b.z].allSatisfy { $0.isFinite && abs($0) <= 1.6 } // the dendrites of the outer neurons reach past the shell
         })
         // Smoothness: a whole voice exchange at 30 fps, with a noisy voice level.
         // No value the shader uses may jump from one frame to the next.

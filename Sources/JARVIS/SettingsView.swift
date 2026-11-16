@@ -30,6 +30,7 @@ struct SettingsView: View {
             }
             VoicePrintSection(assistant: assistant, voicePrint: assistant.voicePrint, draft: $draft)
             PhoneSection(bridge: assistant.phoneBridge, draft: $draft)
+            UniversitySection(assistant: assistant, draft: $draft)
             Section("Stampante Bambu") {
                 TextField("Indirizzo IP", text: $draft.bambuHost)
                 TextField("Numero di serie", text: $draft.bambuSerial)
@@ -79,6 +80,8 @@ struct SettingsView: View {
                 Toggle("Appuntamenti: avviso 10 minuti prima", isOn: $draft.alertCalendar)
                 Toggle("Promemoria: annuncio alla scadenza", isOn: $draft.alertReminders)
                 Toggle("Studio: pausa ogni 2 ore", isOn: $draft.alertStudy)
+                Stepper(draft.studySummaryHour == 0 ? "Riepilogo dello studio: spento" : "Riepilogo dello studio alle \(draft.studySummaryHour):00",
+                        value: $draft.studySummaryHour, in: 0...22)
                 Toggle("Batteria sotto il 20%", isOn: $draft.alertBattery)
                 Toggle("Briefing alla prima attivazione del mattino", isOn: $draft.morningBriefing)
                 Stepper("Silenzio dalle \(draft.quietFrom):00", value: $draft.quietFrom, in: 0...23)
@@ -119,6 +122,62 @@ struct SettingsView: View {
             .filter { $0.language == language }
             .map { $0.name.components(separatedBy: " (").first ?? $0.name }
         return Array(Set(names)).sorted()
+    }
+}
+
+/// The university: name and server go in config.json with the other settings; username and
+/// password go straight to the Keychain, saved by their own button.
+private struct UniversitySection: View {
+    let assistant: Assistant
+    @Binding var draft: JarvisConfig
+    @State private var username = UniversityClient.savedUsername ?? ""
+    @State private var password = ""
+    @State private var status = UniversityClient.savedUsername == nil ? "" : "Credenziali salvate nel Portachiavi."
+    @State private var testing = false
+
+    var body: some View {
+        Section("Università") {
+            TextField("Nome dell'università (come la chiama JARVIS)", text: $draft.universityName)
+            TextField("Indirizzo del server dell'app studenti", text: $draft.universityServer)
+            TextField("User-Agent dell'app (se il server lo chiede)", text: $draft.universityAgent)
+            TextField("Nome utente (come nell'app dell'università)", text: $username)
+                .textContentType(.username)
+            SecureField("Password", text: $password)
+                .textContentType(.password)
+            HStack {
+                Button(testing ? "Provo…" : "Salva e prova l'accesso") { saveAndTest() }
+                    .disabled(testing || username.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty)
+                if UniversityClient.savedUsername != nil {
+                    Button("Rimuovi", role: .destructive) {
+                        UniversityClient.saveCredentials(username: "", password: "")
+                        username = ""; password = ""; status = "Credenziali rimosse."
+                    }
+                }
+            }
+            if !status.isEmpty { Text(status).font(.caption) }
+            Text("Nome utente e password restano solo nel Portachiavi del Mac e vanno solo al server scritto qui sopra, come fa l'app dell'università. JARVIS legge agenda, orario, lezioni ed esiti: non iscrive, non firma, non accetta nulla.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func saveAndTest() {
+        // Name and server are needed for the test: only they are saved now, the other settings wait for "Salva".
+        assistant.applyUniversity(from: draft)
+        UniversityClient.saveCredentials(username: username, password: password)
+        password = ""
+        testing = true
+        status = "Provo l'accesso…"
+        Task {
+            do {
+                _ = try await UniversityClient.shared.get("user/me")
+                status = "Accesso riuscito: JARVIS ora legge i dati dell'università."
+                Diagnostics.log("ateneo    credenziali salvate, accesso provato")
+            } catch {
+                status = error.localizedDescription
+                Diagnostics.log("ateneo    prova d'accesso non riuscita: \(error.localizedDescription)")
+            }
+            testing = false
+        }
     }
 }
 
@@ -195,7 +254,7 @@ private struct VoicePrintSection: View {
                     assistant.startVoiceEnrollment(adding: true)
                     enrolling = true
                 }
-                Button("Aggiungi comandi (24 frasi da leggere)") {
+                Button("Aggiungi comandi (36 frasi da leggere)") {
                     assistant.startVoiceEnrollment(adding: true, commands: true)
                     enrolling = true
                 }

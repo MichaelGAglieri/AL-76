@@ -55,6 +55,70 @@ enum WebActions {
         return "Aperto \(link)"
     }
 
+    /// "Metti Rick e Morty su Netflix" (12 November): the service's search page for the title, in the
+    /// Safari web app of that service if it is installed (~/Applications), otherwise in the browser.
+    @MainActor
+    static func watch(_ args: [String: Any]) -> String {
+        guard let title = args.string("title"), !title.isEmpty else { return "Manca cosa guardare." }
+        let service = (args.string("service") ?? "netflix").lowercased()
+        let q = title.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? title
+        let (search, appName): (String, String) = switch service {
+        case let s where s.contains("prime") || s.contains("amazon"): ("https://www.primevideo.com/search/ref=atv_nb_sug?phrase=\(q)", "Prime Video")
+        case let s where s.contains("youtube"): ("https://www.youtube.com/results?search_query=\(q)", "YouTube")
+        default: ("https://www.netflix.com/search?q=\(q)", "Home - Netflix")
+        }
+        guard let url = URL(string: search) else { return "Titolo non valido." }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let app = [home.appendingPathComponent("Applications/\(appName).app"), URL(fileURLWithPath: "/Applications/\(appName).app")]
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+        if let app {
+            NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            NSWorkspace.shared.open(url)
+        }
+        let name = appName == "Home - Netflix" ? "Netflix" : appName
+        return "Aperta la ricerca di \"\(title)\" su \(name)\(app == nil ? " nel browser" : ""). "
+            + "To start it: wait 3 seconds, app_look the \(app == nil ? "Safari" : name) window, click the result that matches the title, "
+            + "then the play button (or the first episode). If a profile chooser appears, ask the user which profile."
+    }
+
+    /// "Scarica la repo in My_Projects" (12 November): a public Git repository copied into a new folder.
+    /// Only https addresses of GitHub, GitLab, Codeberg or Hugging Face; nothing in it is run: no hooks,
+    /// no submodules, no LFS filters. Default place: ~/Projects.
+    static func cloneRepository(_ args: [String: Any]) async -> String {
+        guard var link = args.string("url")?.trimmingCharacters(in: .whitespaces), !link.isEmpty else { return "Manca l'indirizzo del repository: cercalo con web_search." }
+        if !link.contains("://") { link = "https://" + link }
+        guard let url = URL(string: link), url.scheme == "https", let host = url.host?.lowercased(),
+              ["github.com", "gitlab.com", "codeberg.org", "huggingface.co"].contains(host.hasPrefix("www.") ? String(host.dropFirst(4)) : host),
+              url.pathComponents.filter({ $0 != "/" }).count >= 2 else {
+            return "Scarico solo repository pubblici https di GitHub, GitLab, Codeberg o Hugging Face, con indirizzo completo (github.com/autore/nome)."
+        }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        let repo = "https://\(host)/\(parts[0])/\(parts[1].replacingOccurrences(of: ".git", with: ""))"
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let parent = args.string("folder").map(FolderNames.resolve) ?? home.appendingPathComponent("Projects")
+        let name = (args.string("name") ?? parts[1].replacingOccurrences(of: ".git", with: "")).replacingOccurrences(of: "/", with: "-")
+        let target = parent.appendingPathComponent(name)
+        guard target.standardizedFileURL.path.hasPrefix(home.path + "/"), HomeAccess.allowed(target.path) else { return "Scarico solo dentro la tua cartella Inizio, non nelle cartelle di sistema." }
+        guard !FileManager.default.fileExists(atPath: target.path) else { return "Esiste già \(target.path): scegli un altro nome o un'altra cartella." }
+        do { try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true) }
+        catch { return "Non riesco a creare \(parent.path): \(error.localizedDescription)" }
+        // Checked first, so a wrong or private address fails in two seconds instead of asking for a password.
+        let environment = ["GIT_TERMINAL_PROMPT=0", "GIT_LFS_SKIP_SMUDGE=1"]
+        let check = await Shell.run("/usr/bin/env", environment + ["git", "ls-remote", "--heads", repo], timeout: 20)
+        guard check.ok else { return "Il repository \(repo) non esiste o non è pubblico. Non inventare l'indirizzo: cercalo con web_search." }
+        let clone = await Shell.run("/usr/bin/env", environment + ["git", "-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--no-recurse-submodules", "--quiet", repo, target.path], timeout: 300)
+        guard clone.ok else {
+            try? FileManager.default.removeItem(at: target)   // only the half-made folder just created here
+            return "Scaricamento non riuscito: \(clone.err.split(separator: "\n").last.map(String.init) ?? "errore di git")"
+        }
+        let size = await Shell.run("/usr/bin/du", ["-sh", target.path], timeout: 20)
+        let readme = ["README.md", "readme.md", "README.rst", "README"].first { FileManager.default.fileExists(atPath: target.appendingPathComponent($0).path) }
+        NSWorkspace.shared.activateFileViewerSelecting([target])
+        return "Scaricato \(repo) in \(target.path) (\(size.out.split(separator: "\t").first.map(String.init) ?? "?"))."
+            + (readme.map { " C'è un \($0): leggilo con read_code se chiede cosa contiene o come si usa." } ?? "") + " Nothing was installed or run."
+    }
+
     static func weather(_ args: [String: Any]) async -> String {
         let place = args.string("location") ?? ""
         let encoded = place.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""

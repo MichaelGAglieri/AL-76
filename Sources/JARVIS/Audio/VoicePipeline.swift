@@ -67,6 +67,20 @@ final class VoicePipeline {
     }
     var echoCancellation: Bool { input.echoCancellation }
 
+    /// JARVIS is speaking: the echo filter works. Otherwise the microphone arrives as it is.
+    /// The two have different background levels (about -69 and -58 dB), so each keeps its own.
+    var echoFilterOn = false {
+        didSet {
+            guard echoFilterOn != oldValue, input.echoCancellation else { return }
+            let current = noiseDB
+            noiseDB = otherNoiseDB ?? (echoFilterOn ? current - 10 : current + 10)
+            otherNoiseDB = current
+            input.processingNeeded = echoFilterOn
+            Diagnostics.log("audio     filtro dell'eco \(echoFilterOn ? "attivo (JARVIS parla)" : "in pausa (microfono diretto)"), fondo \(Int(current)) → \(Int(noiseDB)) dB")
+        }
+    }
+    private var otherNoiseDB: Float?
+
     var wakeWordReady: Bool { porcupine != nil }
 
     func start(accessKey: String, sensitivity: Float) throws -> String? {
@@ -155,7 +169,18 @@ final class VoicePipeline {
 
     private func processWake(_ frame: [Float], db: Float) {
         // Background noise: drops at once towards low levels, rises slowly.
-        noiseDB = db < noiseDB ? noiseDB * 0.9 + db * 0.1 : noiseDB + (db - noiseDB) * 0.002
+        // Digital silence (the lid closing, sleep, a microphone being reconnected) is not the room:
+        // it dragged the estimate to -120 dB, and for the next half minute the room itself counted as
+        // voice, so phrases never ended (8-second blocks, two commands merged) and "Jarvis" seemed
+        // not heard after opening the lid (15 November). Such frames are skipped, and from an
+        // impossible level the first real one is taken at once.
+        if db > -100 {
+            if noiseDB < -90 {
+                noiseDB = db
+            } else {
+                noiseDB = db < noiseDB ? noiseDB * 0.9 + db * 0.1 : noiseDB + (db - noiseDB) * 0.002
+            }
+        }
         preroll.append(contentsOf: frame)
         if preroll.count > prerollLimit { preroll.removeFirst(preroll.count - prerollLimit) }
         if porcupine?.feed(frame) == true {
