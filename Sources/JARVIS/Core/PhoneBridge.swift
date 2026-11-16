@@ -353,6 +353,9 @@ final class PhoneBridge: ObservableObject {
                 lastDragPoint = point
                 releaseLater()
                 Security.audit("trascinamento dal telefono", tool: "iphone", source: "iphone", detail: "\(Int(point.x)),\(Int(point.y))")
+            case "move":
+                RemoteInput.move(to: point)
+                return
             case "drag":
                 RemoteInput.drag(to: point)
                 lastDragPoint = point
@@ -367,9 +370,12 @@ final class PhoneBridge: ObservableObject {
             case "right":
                 RemoteInput.rightClick(at: point)
                 Security.audit("clic destro dal telefono", tool: "iphone", source: "iphone", detail: "\(Int(point.x)),\(Int(point.y))")
-            default:
+            case "click":
                 RemoteInput.click(at: point, count: 1)
                 Security.audit("clic dal telefono", tool: "iphone", source: "iphone", detail: "\(Int(point.x)),\(Int(point.y))")
+            default:
+                // An unknown gesture from a newer app is ignored, never turned into a click.
+                return
             }
         case .typing:
             guard let text = message.text, !text.isEmpty else { return }

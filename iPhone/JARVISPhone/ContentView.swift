@@ -11,6 +11,9 @@ struct ContentView: View {
     @State private var pressing = false
     /// Off at every opening: a tap to zoom must not click on the Mac.
     @State private var controlling = false
+    /// With control on, the Mac screen stays still: this button lets one finger move and zoom the view
+    /// instead of the cursor (16 November: moving the cursor also moved the whole screen).
+    @State private var movingView = false
     @State private var macDraft = ""
     @FocusState private var typing: Bool
 
@@ -95,6 +98,7 @@ struct ContentView: View {
                     .lineLimit(1)
                 Spacer()
                 controlButton
+                if controlling { moveViewButton }
                 if !AppOrientation.isPad { rotateButton }
                 stopButton
             }
@@ -141,6 +145,7 @@ struct ContentView: View {
                     HStack(spacing: 4) {
                         closeButton
                         controlButton
+                        if controlling { moveViewButton }
                         stopButton
                         Spacer(minLength: 0)
                         Button {
@@ -161,6 +166,7 @@ struct ContentView: View {
                 VStack(spacing: 2) {
                     closeButton
                     controlButton
+                    if controlling { moveViewButton }
                     if !AppOrientation.isPad { rotateButton }
                     stopButton
                     Button {
@@ -189,7 +195,7 @@ struct ContentView: View {
 
     @ViewBuilder private var macScreen: some View {
         if let image = assistant.screen {
-            ZoomableImage(image: image, sink: assistant.screenSink, controlling: controlling) { kind, x, y, amount in
+            ZoomableImage(image: image, sink: assistant.screenSink, controlling: controlling && !movingView) { kind, x, y, amount in
                 assistant.pointer(kind, x: x, y: y, amount: amount)
             }
         } else {
@@ -208,12 +214,25 @@ struct ContentView: View {
     }
 
     private var controlButton: some View {
-        Button { controlling.toggle() } label: {
+        Button {
+            controlling.toggle()
+            movingView = false
+        } label: {
             Image(systemName: controlling ? "cursorarrow.click.2" : "cursorarrow")
                 .frame(width: 44, height: 44)
                 .background(controlling ? HUD.cyan.opacity(0.25) : .clear, in: Circle())
         }
         .accessibilityLabel(controlling ? "Controllo del Mac attivo" : "Attiva il controllo del Mac")
+    }
+
+    /// With control on: on, one finger moves (and two zoom) the view of the screen, not the Mac's cursor.
+    private var moveViewButton: some View {
+        Button { movingView.toggle() } label: {
+            Image(systemName: movingView ? "hand.draw.fill" : "hand.draw")
+                .frame(width: 44, height: 44)
+                .background(movingView ? HUD.cyan.opacity(0.25) : .clear, in: Circle())
+        }
+        .accessibilityLabel(movingView ? "Sposta la vista: attivo" : "Sposta la vista dello schermo")
     }
 
     /// Rotates the whole view, keyboard included, even with rotation lock on.
@@ -484,8 +503,11 @@ private final class FittingScrollView: UIScrollView {
     }
 }
 
-/// The Mac screen: two fingers zoom and, with control active, a tap is a click, two
-/// taps a double click, a long press a right click and a sliding finger scrolls the window.
+/// The Mac screen. With control active the view stays still and works like a trackpad under the finger
+/// (16 November): one sliding finger only moves the cursor; press and hold, then slide, drags (selects
+/// text, moves windows); press and hold without sliding is a right click; a tap clicks, two taps double
+/// click; two fingers scroll the Mac and pinch to zoom; three fingers move the zoomed view.
+/// Without control, or with "sposta la vista", one finger moves the view and two taps zoom.
 /// The Mac screen view: the image gives size and first frame, the video above it
 /// is shown by the system like a movie, without copying the frames.
 final class ScreenImageView: UIImageView {
@@ -638,21 +660,32 @@ private struct ZoomableImage: UIViewRepresentable {
         let single = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.singleTap(_:)))
         single.require(toFail: double)
         scroll.addGestureRecognizer(single)
-        let long = UILongPressGestureRecognizer(target: coordinator, action: #selector(Coordinator.longPress(_:)))
+        // Press and hold: then sliding drags, not sliding is a right click.
+        let long = UILongPressGestureRecognizer(target: coordinator, action: #selector(Coordinator.hold(_:)))
+        long.minimumPressDuration = 0.4
+        long.allowableMovement = 12
+        long.delegate = coordinator
         scroll.addGestureRecognizer(long)
-        // Like a trackpad: one finger drags (windows, text), two fingers scroll, pinch zooms.
-        let drag = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.drag(_:)))
-        drag.maximumNumberOfTouches = 1
-        drag.delegate = coordinator
-        scroll.addGestureRecognizer(drag)
-        coordinator.dragGesture = drag
+        // One sliding finger: the cursor follows it, no button pressed.
+        let move = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.move(_:)))
+        move.maximumNumberOfTouches = 1
+        move.delegate = coordinator
+        scroll.addGestureRecognizer(move)
+        coordinator.moveGesture = move
+        // Three fingers move the zoomed view while it is locked for the cursor.
+        let three = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.moveView(_:)))
+        three.minimumNumberOfTouches = 3
+        three.maximumNumberOfTouches = 3
+        three.delegate = coordinator
+        scroll.addGestureRecognizer(three)
+        coordinator.viewGesture = three
         let twoFingers = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.pan(_:)))
         twoFingers.minimumNumberOfTouches = 2
         twoFingers.maximumNumberOfTouches = 2
         twoFingers.delegate = coordinator
         scroll.addGestureRecognizer(twoFingers)
         coordinator.scrollGesture = twoFingers
-        // With the photo zoomed in, one finger moves it: two fingers stay for scrolling the Mac.
+        // Without control, with the photo zoomed in, one finger moves it.
         scroll.panGestureRecognizer.maximumNumberOfTouches = 1
         return scroll
     }
@@ -662,6 +695,8 @@ private struct ZoomableImage: UIViewRepresentable {
         // Only the first image (or a size change) passes here: `sink` puts in the others.
         if coordinator.view.image == nil || coordinator.view.image?.size != image.size { coordinator.view.image = image }
         coordinator.controlling = controlling
+        // With control the view is locked: one finger is the cursor, not a pan of the image.
+        scroll.isScrollEnabled = !controlling
         coordinator.onPointer = onPointer
     }
 
@@ -674,11 +709,14 @@ private struct ZoomableImage: UIViewRepresentable {
         var onPointer: ((String, Double, Double, Int?) -> Void)?
         private var lastScroll = Date.distantPast
         private var pending: CGFloat = 0
-        weak var dragGesture: UIGestureRecognizer?
+        weak var moveGesture: UIGestureRecognizer?
         weak var scrollGesture: UIGestureRecognizer?
-        private var dragStart: (x: Double, y: Double)?
+        weak var viewGesture: UIGestureRecognizer?
+        private var holdStart: (x: Double, y: Double)?
+        private var holdPoint: CGPoint = .zero
         private var dragging = false
         private var lastDrag = Date.distantPast
+        private var lastMove = Date.distantPast
         private var zoomAtScrollStart: CGFloat = 1
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { view }
@@ -722,16 +760,8 @@ private struct ZoomableImage: UIViewRepresentable {
             }
         }
 
-        @objc func longPress(_ gesture: UILongPressGestureRecognizer) {
-            guard controlling, gesture.state == .began, let at = position(of: gesture) else { return }
-            onPointer?("right", at.x, at.y, nil)
-        }
-
         func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
-            guard controlling else { return false }
-            // With the photo zoomed in, one finger moves the photo, not the window on the Mac.
-            if gesture === dragGesture { return (scroll?.zoomScale ?? 1) <= 1.01 }
-            return true
+            controlling
         }
 
         /// Two fingers: they scroll and meanwhile the pinch can zoom.
@@ -739,30 +769,62 @@ private struct ZoomableImage: UIViewRepresentable {
             gesture === scrollGesture && other === scroll?.pinchGestureRecognizer
         }
 
-        /// One finger: press, drag, release. This is how windows are moved by their title bar.
-        @objc func drag(_ gesture: UIPanGestureRecognizer) {
+        /// One sliding finger: only the cursor moves, under the finger. Nothing is pressed, so nothing is selected.
+        @objc func move(_ gesture: UIPanGestureRecognizer) {
+            guard gesture.state == .began || gesture.state == .changed || gesture.state == .ended,
+                  gesture.state != .changed || Date().timeIntervalSince(lastMove) > 0.033,
+                  let at = position(of: gesture, clamped: true) else { return }
+            lastMove = Date()
+            onPointer?("move", at.x, at.y, nil)
+        }
+
+        /// Press and hold (0.4 s, a short buzz): sliding then drags, from the point pressed, like holding the
+        /// trackpad down; lifting without sliding is a right click.
+        @objc func hold(_ gesture: UILongPressGestureRecognizer) {
             switch gesture.state {
             case .began:
-                // The point where the finger landed, not where it has already got to.
                 guard let at = position(of: gesture) else { return }
-                let move = gesture.translation(in: view)
-                let box = view.bounds.size
-                let start = (x: at.x - Double(move.x / max(box.width, 1)), y: at.y - Double(move.y / max(box.height, 1)))
-                dragStart = (min(max(start.x, 0), 1), min(max(start.y, 0), 1))
-                dragging = true
-                onPointer?("down", dragStart!.x, dragStart!.y, nil)
-                if let at = position(of: gesture, clamped: true) { onPointer?("drag", at.x, at.y, nil) }
+                holdStart = at
+                holdPoint = gesture.location(in: view)
+                dragging = false
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onPointer?("move", at.x, at.y, nil)
             case .changed:
-                guard dragging, Date().timeIntervalSince(lastDrag) > 0.033, let at = position(of: gesture, clamped: true) else { return }
+                guard let start = holdStart else { return }
+                let here = gesture.location(in: view)
+                if !dragging {
+                    // A few points of trembling are not a drag.
+                    guard hypot(here.x - holdPoint.x, here.y - holdPoint.y) > 6 else { return }
+                    dragging = true
+                    onPointer?("down", start.x, start.y, nil)
+                }
+                guard Date().timeIntervalSince(lastDrag) > 0.033, let at = position(of: gesture, clamped: true) else { return }
                 lastDrag = Date()
                 onPointer?("drag", at.x, at.y, nil)
+            case .ended, .cancelled, .failed:
+                guard let start = holdStart else { return }
+                holdStart = nil
+                let at = position(of: gesture, clamped: true) ?? start
+                if dragging {
+                    dragging = false
+                    onPointer?("up", at.x, at.y, nil)
+                } else if gesture.state == .ended {
+                    onPointer?("right", start.x, start.y, nil)
+                }
             default:
-                guard dragging else { return }
-                dragging = false
-                let at = position(of: gesture, clamped: true) ?? dragStart ?? (0.5, 0.5)
-                onPointer?("up", at.x, at.y, nil)
-                dragStart = nil
+                return
             }
+        }
+
+        /// Three fingers: the zoomed view moves, the Mac receives nothing.
+        @objc func moveView(_ gesture: UIPanGestureRecognizer) {
+            guard let scroll, gesture.state == .changed else { return }
+            let move = gesture.translation(in: scroll)
+            gesture.setTranslation(.zero, in: scroll)
+            let maxX = max(0, scroll.contentSize.width - scroll.bounds.width)
+            let maxY = max(0, scroll.contentSize.height - scroll.bounds.height)
+            scroll.contentOffset = CGPoint(x: min(max(scroll.contentOffset.x - move.x, 0), maxX),
+                                           y: min(max(scroll.contentOffset.y - move.y, 0), maxY))
         }
 
         @objc func pan(_ gesture: UIPanGestureRecognizer) {

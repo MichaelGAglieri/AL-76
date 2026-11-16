@@ -17,7 +17,7 @@ paid API.
 
 > JARVIS speaks Italian as its main language (answers in English when you speak English), so many voice
 > commands and app labels are in Italian. Full manual: [`Manual_JARVIS.pdf`](Manual_JARVIS.pdf). Version
-> history: [`CHANGELOG.md`](CHANGELOG.md).
+> history: [`CHANGELOG.md`](CHANGELOG.md). Installation guide: [`INSTALL.md`](INSTALL.md).
 
 ## Requirements
 
@@ -31,6 +31,8 @@ paid API.
   disk in under a second; without it JARVIS asks Mail through AppleScript, which is slow with a large inbox.
 
 ## Installation
+
+The complete guide, from a clean Mac to the app on your phone, is in [`INSTALL.md`](INSTALL.md). In short:
 
 ```bash
 cp local.env.example local.env   # then edit it, see below
@@ -154,14 +156,17 @@ the app open, tap or hold the microphone, type, or use Siri ("Hey Siri, talk to 
 - **Fast voice**: JARVIS's voice reaches the phone in pieces of 0.3 s while it is being generated.
 - **Mac screen on the phone**: H.264 video at the Mac's resolution, up to 30 fps, Display P3 colour,
   hardware encoded; on a slow link the quality drops, not the smoothness.
-- **Manual control**: tap to click, double tap, long press for right click, drag with one finger (moves
-  windows, selects text), scroll with two fingers, pinch to zoom, and a keyboard.
+- **Manual control, like a trackpad**: with control on the screen stays still; one sliding finger only moves
+  the cursor; press and hold (a short tap is felt) then slide to drag (moves windows, selects text); hold
+  without moving for a right click; tap to click, double tap to double click; two fingers scroll, pinch zooms,
+  and three fingers or the hand button move the zoomed view; plus a keyboard.
 - **Not from the phone**: moving robots, uploading to Arduino, changing filament, publishing on ROS,
   confirming Touch ID actions, leaving privacy mode. A "yes" counts only on the side that asked.
 - One device at a time: the Mac follows the last one opened; the other pauses ("Use here" to switch).
 - Every connection, refusal and action goes to `audit.log` with source `iphone`.
 
-To install: connect the iPhone or iPad with a cable and double-click `Installa su iPhone e iPad.command`
+Step-by-step guide, with what you need and the 7-day expiry: [`INSTALL.md`](INSTALL.md).
+In short: connect the iPhone or iPad with a cable and double-click `Installa su iPhone e iPad.command`
 (it reads the team and bundle identifier from `local.env`), or open `iPhone/JARVISPhone.xcodeproj` in Xcode,
 pick your team in Signing & Capabilities and press Run. With a free Apple account the app must be
 reinstalled every 7 days (it warns two days before); pairing and settings are kept.

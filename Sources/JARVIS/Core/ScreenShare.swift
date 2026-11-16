@@ -375,6 +375,12 @@ enum RemoteInput {
         pressed = false
     }
 
+    /// The pointer alone, no button (16 November: the phone's sliding finger). While a drag holds the
+    /// button, moving is dragging.
+    static func move(to point: CGPoint) {
+        post(pressed ? .leftMouseDragged : .mouseMoved, at: point)
+    }
+
     static func rightClick(at point: CGPoint) {
         post(.mouseMoved, at: point)
         usleep(100_000)

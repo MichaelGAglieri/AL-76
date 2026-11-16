@@ -3,6 +3,13 @@
 Every version was built, installed and tested on the Mac (and on the iPhone and iPad app when it was
 involved) before moving to the next one. All dates are in 2026.
 
+## 1.30.61 — 16 November
+
+- **Controlling the Mac from iPhone and iPad like a trackpad.** With control on, the screen stays still and one sliding finger only moves the cursor, with no button pressed: no more text selected by mistake or screen moving. To drag (select text, move windows) press and hold for a moment, feel a short tap, then slide; holding without moving is a right click. A tap clicks, two taps double click, two fingers scroll the Mac and pinch to zoom.
+- **Moving the view.** A new hand button next to the control button makes one finger move the zoomed view instead of the cursor; three fingers also move the view. Tested on the simulator against the real screen: the cursor follows the finger with no click and the zoomed view stays put; dragging, right click and three fingers were not tried there.
+- **Safety.** A gesture the Mac does not know is ignored; it used to become a click.
+- **Installation guide.** [`INSTALL.md`](INSTALL.md): what you need, your Apple account and Team ID in Xcode, `local.env`, the setup, permissions, your own settings, installing on iPhone and iPad (Developer Mode, trusting the developer), pairing, and the 7-day expiry of the free account.
+
 ## 1.30.60 — 16 November
 
 - **The sphere has the satellite's menu.** With the sphere open, a right click (two-finger tap on the trackpad) opens the same menu as the SATELLITE: Parla, Scrivi (the bar opens under the sphere), Nuova conversazione, Riduci a satellite, Esci da JARVIS. A double click still reduces it to the satellite.
