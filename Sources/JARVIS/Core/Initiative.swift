@@ -82,6 +82,13 @@ final class Initiative {
         briefingPending = true
     }
 
+    /// "Basta" while the briefing waited for its turn: not today (it can still be asked for).
+    func skipBriefing() {
+        guard briefingPending else { return }
+        Diagnostics.log("iniziativa: briefing del mattino annullato da un basta")
+        briefingDone()
+    }
+
     /// The briefing was given (also on request): it is not repeated today.
     func briefingDone() {
         briefingPending = false

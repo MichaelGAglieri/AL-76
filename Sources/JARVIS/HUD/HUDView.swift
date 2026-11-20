@@ -62,9 +62,11 @@ struct HUDView: View {
         // open, a two-finger tap and "Scrivi" opens the bar under it.
         .contextMenu {
             Button("Parla (⌃⌥Spazio)") { assistant.pushToTalk() }
-            Button("Scrivi (⌃⌥T)") { NotificationCenter.default.post(name: .jarvisTypeBar, object: nil) }
+            Button(NucleusMenu.typeBarTitle) { TypeBar.main?.flip() }
             Button("Nuova conversazione") { assistant.resetConversation() }
             Button("Riduci a satellite") { onCompact() }
+            Divider()
+            Button(NucleusMenu.dialogueOpen ? "Nascondi dialogo" : "Mostra dialogo") { PanelWindows.main?.flip(.transcript) }
             Divider()
             Button("Esci da AL-76") { NSApp.terminate(nil) }
         }
@@ -179,10 +181,13 @@ struct HUDDrawerContent: View {
                 }
                 HUDReadout(label: "ATTIVAZIONE", value: "\"EHI AL\" · ⌃⌥SPAZIO")
                 Text("CERVELLO").font(HUD.font(9)).tracking(2).foregroundStyle(HUD.cyan.opacity(0.6))
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     brainButton(.local, title: "LOCALE")
                     brainButton(.claude, title: "CLAUDE")
+                    brainButton(.chatgpt, title: "GPT")
+                    brainButton(.gemini, title: "GEMINI")
                 }
+                if assistant.brain == .claude {
                 Text("MODELLO CLAUDE").font(HUD.font(9)).tracking(2).foregroundStyle(HUD.cyan.opacity(0.6))
                 HStack(spacing: 6) {
                     ForEach(Assistant.claudeModels, id: \.self) { model in
@@ -199,7 +204,13 @@ struct HUDDrawerContent: View {
                         .buttonStyle(.plain)
                     }
                 }
-                HUDReadout(label: "CLAUDE", value: assistant.online ? assistant.claudeStatus : "OFFLINE · RISPONDE GEMMA")
+                }
+                if assistant.brain == .chatgpt || assistant.brain == .gemini {
+                    HUDReadout(label: assistant.brain.title.uppercased(),
+                               value: assistant.online ? (assistant.cloudStatus[assistant.brain] ?? "—") : "OFFLINE · RISPONDE GEMMA")
+                } else {
+                    HUDReadout(label: "CLAUDE", value: assistant.online ? assistant.claudeStatus : "OFFLINE · RISPONDE GEMMA")
+                }
             }
         }
     }
@@ -211,7 +222,8 @@ struct HUDDrawerContent: View {
         let standIn = assistant.answering == brain && assistant.brain != brain
         return Button { assistant.setBrain(brain) } label: {
             Text(standIn ? "● " + title : title)
-                .font(HUD.font(12, .bold)).tracking(2)
+                .font(HUD.font(11, .bold)).tracking(1.5)
+                .lineLimit(1).minimumScaleFactor(0.7)
                 .frame(maxWidth: .infinity).padding(.vertical, 6)
                 .foregroundStyle(active ? HUD.background : HUD.cyan)
                 .background(active ? HUD.cyan : HUD.cyan.opacity(0.08))

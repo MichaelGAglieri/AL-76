@@ -1,0 +1,12 @@
+<Project>
+  <!-- Shared by every project of AL-76 for Windows. -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Product>AL-76</Product>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Lets the Windows projects build on the Mac too (the app only runs on Windows). -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+</Project>

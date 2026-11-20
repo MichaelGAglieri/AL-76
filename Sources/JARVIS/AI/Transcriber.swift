@@ -59,9 +59,12 @@ actor Transcriber {
         // First with the "Ehi Al" hint: from afar or in a hurry Whisper otherwise
         // writes "Eyal", "E al" or nothing. Then without it, for short phrases (a looser check);
         // in English only if nothing came out: the room may be noisy.
+        // When the first pass already understood a clear phrase of three or more words that is not
+        // the call (people talking in the room), the looser pass would only write it again: 0.9 s
+        // of Neural Engine for nothing (19 November, energy check).
         var first: String?
         for (language, hinted) in [("it", true), ("it", false), ("en", false)] {
-            if language == "it" && !hinted && audio.count > 3 * 16_000 { continue }
+            if language == "it" && !hinted && (audio.count > 3 * 16_000 || Self.isClearPhrase(first)) { continue }
             if language == "en" && !(first?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) { break }
             var options = DecodingOptions(language: language, temperatureFallbackCount: 0, usePrefillPrompt: true,
                                           detectLanguage: false, skipSpecialTokens: true, withoutTimestamps: true)
@@ -83,6 +86,13 @@ actor Transcriber {
             }
         }
         return first
+    }
+
+    /// Three or more words made of letters: Whisper understood a whole phrase.
+    static func isClearPhrase(_ text: String?) -> Bool {
+        guard let text else { return false }
+        let words = text.split(whereSeparator: { !$0.isLetter && $0 != "'" && $0 != "’" })
+        return words.filter { $0.count >= 2 }.count >= 3
     }
 
     /// While JARVIS speaks: transcription in Italian to hear "basta". Uses the
@@ -217,6 +227,9 @@ enum WakeVerifier {
         }
         let w = normalize(words[i])
         if fused.contains(w) { return 1 }
+        // "Al." or "Al," opening the phrase: Whisper lost the "Ehi" (17 November, four calls in a row
+        // written "Al.", "Al. Apri il pdf…"). Only with the punctuation: "Al secondo passo" is not a call.
+        if i == 0, w == "al", let mark = words[i].last, ".,!?".contains(mark) { return 1 }
         guard i + 1 < words.count else { return nil }
         let next = normalize(words[i + 1])
         if callWords.contains(w), nameWords.contains(next) { return 2 }
@@ -242,7 +255,7 @@ enum WakeVerifier {
     /// The text without the call at its start ("Ehi Al, apri Safari" → "apri Safari"). Not "e al": with
     /// no call, in a conversation, "e al mare che tempo fa?" is a real question.
     static func strippingCall(_ text: String) -> String {
-        let pattern = #"^\s*(?:(?:ehi|hey|hei|ei|eh|ey|ehy)[\s,.!]+(?:al|all|hal|hall)(?:[\s-]?76)?|eyal|eial|ehial|heyal)(?=[\s,.!?;:]|$)[\s,.!?;:]*"#
+        let pattern = #"^\s*(?:(?:ehi|hey|hei|ei|eh|ey|ehy)[\s,.!]+(?:al|all|hal|hall)(?:[\s-]?76)?|eyal|eial|ehial|heyal|al(?=[,.!?]))(?=[\s,.!?;:]|$)[\s,.!?;:]*"#
         guard let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return text }
         return String(text[range.upperBound...])
     }

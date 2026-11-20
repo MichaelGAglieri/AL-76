@@ -3,6 +3,97 @@
 Every version was built, installed and tested on the Mac (and on the iPhone and iPad app when it was
 involved) before moving to the next one. All dates are in 2026.
 
+## 1.30.77 — 19 November
+
+- **ROBOTTINO locked in the corner** (user request): it stays still in the bottom right corner, no more strolls, and dragging does not move it (a click is still a pat, a double click the HUD). If it is elsewhere it flies there on its jets, without walking. Three ways to turn it on and off: its right-click menu ("Blocca nell'angolo in basso a destra", with a tick), by voice without the model ("Al, stai fermo", "resta nell'angolo", "smetti di camminare" / "Al, puoi camminare", "sblocca il robottino", which also sets it strolling again) and Settings › Appearance › Robottino. The phrases do not overlap the robot arm's emergency stop ("fermati", "ferma il robot"). Tested in the app: from x 941 it flew to 1345 (the corner) and stayed there for two minutes; unlocked, it went back to strolling.
+
+## 1.30.76 — 19 November
+
+Less energy while AL-76 waits for "Ehi Al" (energy check: in the week of 12-19 November AL-76 used about 29.5 Wh, more than half on the Neural Engine, that is Whisper listening).
+
+- **Voice filter before Whisper.** In three days of logs 1983 of 2042 wake checks were not "Ehi Al", and more than half came out of Whisper as "Grazie.", empty or "[Musica]": there was no voice at all. Now macOS's built-in sound classifier (SoundAnalysis, nothing to download) looks at each phrase first: silence, hum, keys, music and system sounds (voice 0.01-0.05) skip Whisper; below 0.08 a phrase is not a voice. It costs about 45 ms of CPU instead of 0.9 s of Neural Engine. If the classifier fails, everything goes to Whisper as before; it does not filter while the voiceprint is being enrolled. "Basta" and the robot's "stop" do not go through it.
+- **One Whisper pass less.** Short phrases always got a second transcription without the "Ehi Al" hint. It is now skipped when the first pass already understood a clear phrase of three or more words that is not the call.
+- diagnostica.log writes "non è voce" with the score for every skipped phrase, and "voce 0.xx" in the "wake OK" and "wake NO" lines, to tune the threshold with real use.
+
+## 1.30.75 — 18 November
+
+- **Thinking robot**: the blue gear above the head and the blue dots leading to it are gone (user request). The rest of the animation is unchanged: head and eyes drifting slowly side to side, the tapping hand.
+
+## 1.30.74 — 17 November
+
+A **Permissions** page in Settings (user request: see everything AL-76 can do and decide what it may do, like professional apps).
+
+- **macOS permissions** with their state refreshed every second: microphone, accessibility, calendar, reminders, contacts, screen recording, camera (also new in the first-run setup), full disk access, automation. Switching one on asks macOS or opens the right System Settings page; switching it off opens System Settings, the only place it can be taken back.
+- **AL-76's own abilities**: 17 switches in 6 groups, each with a one-line explanation. A switched-off ability refuses its tools for every brain, voice, the writing bar and the iPhone, and the refusal goes to the security log. The briefing skips mail or calendar when they are off, Claude loses web search and file reading, ChatGPT web search. Stopping the robot, printer status and timers are never blocked.
+- Switching on an ability that needs a macOS permission not yet given (e.g. «look at the screen») asks for it at once; if still missing, a warning with «Allow» stays under it.
+
+## 1.30.73 — 17 November
+
+Listening, from a day of logs (the user: «sometimes it does not hear me», and two activations by itself).
+
+- **False «Ehi Al» while people talk.** Out of unclear talk Whisper writes its own hint, «Ehi Al.», and the voiceprint let it through at 0.41 and 0.45 (15:41 and 16:35; the TV on the 16th at 0.46-0.49). A lone «Ehi Al» now needs 0.50 when a phrase without the call was heard in the last 30 s, or when it is quieter than -22 dB. The user's own calls in a quiet room score 0.55-0.72.
+- **«Al.» without «Ehi».** Four calls were lost because Whisper wrote only «Al.» or «Al. Apri il pdf…». «Al» followed by a punctuation mark at the start of a phrase now counts as the call («Al secondo passo» does not). The audio kept before a phrase grows from 0.5 to 0.8 s, so a soft «Ehi» is not cut.
+- **The TV filter skipped loud voices.** Its bar could reach -10 dB, and the user's calls arrive at -4…-19 dB. Now a phrase louder than -20 dB always goes to Whisper. The log says how loud the loudest skipped phrase was.
+- **Empty command after the beep.** Five times Whisper understood nothing of what followed «Ehi Al», and AL-76 went back to waiting in silence. Now it tries again with a looser check, and if it is the user's voice it asks «Non ho capito. Puoi ripetere?» once.
+- **Crash at 15:15.** Two microphone rebuilds 8 s apart while a Bluetooth device switched to 8 kHz: on the same engine macOS aborted the app. A second rebuild within 15 s now uses a new engine.
+- Privacy mode on and off is written in diagnostica.log too: six minutes without a line (15:41-15:47) looked like a deaf AL-76, and it was privacy mode.
+
+## 1.30.72 — 17 November
+
+- **Right-click menu of the ROBOTTINO, SATELLITE and HUD.** «Mostra barra di scrittura» / «Nascondi barra di scrittura» opens and closes the typing bar without ⌃⌥T. «Mostra dialogo» opens and closes the Frasi panel with the conversation.
+- **Speech bubble (ROBOTTINO).** «Mostra nuvoletta» says the last answer again, spoken ones included. «Nascondi nuvoletta» closes it, and that answer does not come back. «Nuvoletta anche per le risposte a voce» (a tick, remembered) puts spoken answers in the bubble too, not only typed ones.
+
+## 1.30.71 — 17 November
+
+- **AL-76 «no longer heard».** Whisper writes «Grazie.» over sound it cannot make out. After three in 45 s AL-76 skipped, for a minute and without Whisper, every phrase not louder than the loudest of them. At 08:36 the three were at -6, -18 and -12 dB: voices, not steady noise. With the bar at -6 dB (so up to -2) nine calls in a row were thrown away. Now the three must be within 10 dB of each other, as a fan or rain is, and a phrase louder than -20 dB always goes to Whisper.
+- Checked live before the fix: once the filter was off, «Ehi Al, che ore sono» was understood and answered.
+
+## 1.30.70 — 17 November
+
+Fixes from the logs of 16 and 17 November: AL-76 answered the TV on its own, and one morning its voice was slow.
+
+- **Continuous talk is not a command.** After «Ehi Al» a capture stops at 30 s. Three times (20:00 and 21:59 on 16 November, 01:02 on 17 November with Prime Video on) the TV or people in the room filled all 30 s. With the look-back half second the capture went over the 30 s the voiceprint service accepts, it answered «durata non valida», and on an error AL-76 let the phrase through: Claude answered a film line and then kept talking with the film. Now a command or answer of 29 s or more is ignored as continuous talk, and the voiceprint never gets more than 30 s.
+- **Answers after a doubtful call.** Whisper, given the hint « Ehi Al.», sometimes writes just «Ehi Al.» over unclear sound. At 01:02 one of these passed the voiceprint by little (0.419 with threshold 0.40), and then a line from the film passed as an answer (0.385 with the answer threshold 0.33). When the call scored below 0.45 in the last three minutes, answers now need 0.40.
+- **«Basta» skips the morning briefing.** On 17 November «Ehi Al… basta» on the first call of the morning stopped nothing, and the briefing, waiting for AL-76 to be idle, started at once. A «basta» now cancels today's briefing; it can still be asked for.
+- **The local model waits for the voice.** Just after the Mac woke, Wi-Fi took 65 s to reconnect. Thinking it was offline, AL-76 loaded the local model as a fallback (64 s) while it spoke, and the first piece of voice took 8.2 s instead of about 0.4. With a cloud brain the fallback now waits until AL-76 has finished speaking and, after a wake, up to 90 s for the network; it loads only if still offline.
+- Installed and started; not yet tested live with the TV or on a wake from sleep.
+
+## 1.30.69 — 16 November
+
+- **Gemini goes through Antigravity CLI.** With the Gemini CLI the Google sign-in worked, but every request was refused: «This client is no longer supported for Gemini Code Assist for individuals». Since 18 June 2026 Google no longer serves it to personal accounts, free or AI Pro, and points to Antigravity CLI (`agy`) instead. AL-76 now uses it in headless mode (`agy -p --output-format stream-json`), with the conversation resumed for 30 minutes (`--conversation`). It works in its own folder, Application Support/JARVIS/antigravity, with AL-76's MCP server in `.agents/mcp_config.json` and the instructions in `AGENTS.md`.
+- **Safety.** In testing, on its own, Antigravity ran "safe" commands (`ls ~`) and wrote files in its working folder. Rules can only go in its global settings, so the user chose to add to `~/.gemini/antigravity-cli/settings.json` the allow rule `mcp(jarvis/*)` and the deny rules `command(*)`, `write_file(*)`, `read_url(*)` and `execute_url(*)`. Test repeated: command and file blocked («Matches user-configured deny rule»), AL-76's tools allowed. Without these rules AL-76 does not use Gemini and answers with the local core. In Settings › Brain the button «Prepara Antigravity per AL-76» adds them and leaves the rest of the file as it is.
+- **Tools.** Antigravity calls MCP tools through one generic tool (`call_mcp_tool`): AL-76 reads the real name inside it, for the audit log, the «thought» panel and the rule that stays quiet during actions. App control works with it too. The audit log says «gemini».
+- **Tested live.** From the writing bar, Gemini 3.8 Flash read the calendar and saved a memory with AL-76's tools (32.7 s the first time). On the next question it remembered the conversation (13.9 s). The test memory was removed afterwards. It is slower than Claude and ChatGPT.
+
+## 1.30.68 — 16 November
+
+- **ChatGPT and Gemini as brains, besides Claude.** Anyone with a ChatGPT subscription or a Google account uses them like Claude, with no paid API, through their CLIs: OpenAI's Codex (`codex exec`) and Google's Gemini CLI (`gemini -p`). They get the same instructions and the same AL-76 tools, from the same local MCP server. The server's token travels in an environment variable and is never written to disk or put on the command line.
+  - **Same safety as Claude:** no terminal and no file edits. Codex runs with the shell off and a read-only sandbox, and approves automatically only AL-76's tools. Gemini has only reading and web search among its own tools, and AL-76's server as trusted. The two CLIs' personal settings are ignored. App control, before only for Claude, works with all three cloud brains, never with the local model. The audit log says which brain acted.
+  - **Conversation memory:** as with Claude, the session goes on for 30 minutes (`codex exec resume`, `gemini --resume`).
+  - **You choose** in Settings › Brain and in the first-run setup: for each one you see whether it is installed and signed in and, if not, what to type in Terminal. Also from AL-76's menu, from the four HUD buttons (LOCALE, CLAUDE, GPT, GEMINI) and by voice: «usa ChatGPT», «passa a Gemini», «torna al nucleo locale». Whisper's spellings "chat GPT", "ciat gpt" and "Gemelli" count; "Gemma" stays the local model.
+  - **If the chosen brain is not signed in or does not answer,** AL-76 says so («Gemini non è collegato, signore») and answers with the local core, as it already did with Claude.
+  - **Tested on the Mac:** ChatGPT, from the writing bar, searched the web and read the calendar with AL-76's tools (8.2 s), and on the next question remembered what it had been told. Gemini is installed but not yet signed in with Google: without a sign-in AL-76 warns and switches to local in 1.4 s.
+
+## 1.30.67 — 16 November
+
+- **First-run setup.** Whoever downloads AL-76 finds a HUD-style window that guides them in eight steps, instead of settings scattered between the app and INSTALL.md:
+  - **Welcome:** who AL-76 is, where the name comes from, what stays on the Mac.
+  - **About you:** first name, full name, how to be addressed (no title, signore, signora or your own), one line about yourself and your interests. They go into the model's instructions; the name also goes into the words Whisper must spell right.
+  - **Study:** subjects with exam date and weekly hours (they go into the study plan), notes folders chosen in the Finder, university.
+  - **Brain:** whether Ollama and the local model are there, whether Claude Code is installed, and which one to use. ChatGPT and Gemini are already listed as "coming".
+  - **Permissions:** microphone, Accessibility, calendar, reminders, contacts and screen recording, one per row with its purpose and a button. The tick appears as soon as the permission is given; after a "no" the button opens the right System Settings pane.
+  - **Voice:** progress of the Whisper preparation, a test of «Ehi Al» with a «Ti ho sentito!» confirmation, and voiceprint enrolment.
+  - **The rest:** look (reactor, satellite, robottino), iPhone link, morning briefing, greeting, launch at login.
+  - **Ready:** a summary and phrases to try. At the end AL-76 introduces itself out loud.
+
+  Each step is saved on the way forward, so closing halfway loses nothing. «Salta, configuro dopo» closes at once. On first launch AL-76 waits for the microphone to be granted from the setup, instead of showing the macOS request straight away with no explanation, and does not greet until the setup is finished. Anyone who already had a config.json does not see it by itself; it reopens from the menu with «Configurazione guidata…».
+- **Settings in the same style.** Dark HUD background and cyan accent, with no grey title bar. On the left, a column of eleven pages (Profile, Activation, Voice, Brain, Study, App control, Initiative, Look, iPhone, Printer, System), each with a title and a line on what it holds. At the bottom, Save and, when there are changes, «Modifiche non salvate» and Cancel. New: the Profile page, with title, line about you, interests and words for Whisper, which before could only be changed in config.json.
+
+## 1.30.66 — 16 November
+
+- **WhatsApp sends messages asked from the writing bar again.** The bar (⌃⌥T) takes the keyboard without making AL-76 the active app: while it is the key window, the keys AL-76 posts land there even with WhatsApp in front. So "Buonasera" and Return reached the bar instead of the chat, while by voice it worked (in the morning, by voice, the message had gone). Now, before typing, pressing keys or clicking in another app, AL-76 makes its own windows give up the keyboard, and types only if the right app really has it. The bar stays open with the answer. Tested with a panel like the bar and TextEdit: before, the text went into the panel; now it goes into the document.
+- **No more small hole next to the bubble's tail.** Bubble and tail were one path: with the tail pointing the other way the two directions cancelled out and left a small transparent triangle near the corner. Now they are filled separately in one layer with the same transparency, with no holes or seams, at every tail position (each one checked).
+
 ## 1.30.65 — 16 November
 
 - **The ROBOTTINO's speech bubble always stays on screen, and its tail follows the mouth.** The bubble's side used to be chosen once per sentence, so when Al then moved it went past the edge. Now it changes side only when it no longer fits, and its position is always corrected to stay inside the screen. The tail leaves the side of the bubble and reaches the mouth's height wherever the robot is: from the lower corner when the bubble is above the mouth (the usual case), from the upper corner or the side when the screen pushes it lower.

@@ -10,11 +10,18 @@ struct JarvisConfig: Codable, Equatable {
     /// Empty, they are not mentioned.
     var userFullName = ""
     var userAbout = ""
+    /// Interests, in the user's own words (first-run setup): they go into the instructions after `userAbout`.
+    var userInterests = ""
+    /// The first-run setup was completed (or skipped). A new install starts with false; a config.json
+    /// written before the setup existed counts as done, so the existing user is not asked again.
+    var onboardingDone = false
     /// After how many misunderstood requests in a row JARVIS asks Claude Opus for help.
     var learnAfterFailures = 2
     /// Initiative (phase 3): alerts JARVIS gives by itself.
     /// App control (Accessibility permission): only with Claude.
     var appControl = true
+    /// Impostazioni › Permessi (v1.30.74): the abilities the user switched off (Ability raw values).
+    var blockedAbilities: [String] = []
     /// Touch ID (or the Mac password) after the "yes" for delicate actions.
     var ownerCheck = true
     /// Voiceprint on "Jarvis": "off", "observe" (measures and does not block) or "on".
@@ -55,6 +62,9 @@ struct JarvisConfig: Codable, Equatable {
     var robotFlames = "fuoco"
     /// ROBOTTINO: while JARVIS waits it lands on the bottom edge of the display and walks there, engines off.
     var robotWalks = false
+    /// ROBOTTINO: locked in the bottom right corner (19 November, user request): it never walks or strolls,
+    /// dragging does not move it. Turned on from its right-click menu, Settings or "Al, stai fermo".
+    var robotPinned = false
     /// How JARVIS addresses the user in Italian ("signore" by default); set in config.json.
     var honorific = "signore"
     var whisperModel = "openai_whisper-large-v3-v20240930_turbo_632MB"
@@ -157,6 +167,7 @@ struct JarvisConfig: Codable, Equatable {
         robotLarge = try c.decodeIfPresent(Bool.self, forKey: .robotLarge) ?? d.robotLarge
         robotFlames = try c.decodeIfPresent(String.self, forKey: .robotFlames) ?? d.robotFlames
         robotWalks = try c.decodeIfPresent(Bool.self, forKey: .robotWalks) ?? d.robotWalks
+        robotPinned = try c.decodeIfPresent(Bool.self, forKey: .robotPinned) ?? d.robotPinned
         honorific = try c.decodeIfPresent(String.self, forKey: .honorific) ?? d.honorific
         whisperModel = try c.decodeIfPresent(String.self, forKey: .whisperModel) ?? d.whisperModel
         localModel = try c.decodeIfPresent(String.self, forKey: .localModel) ?? d.localModel
@@ -177,8 +188,11 @@ struct JarvisConfig: Codable, Equatable {
         vocabulary = try c.decodeIfPresent(String.self, forKey: .vocabulary) ?? d.vocabulary
         userFullName = try c.decodeIfPresent(String.self, forKey: .userFullName) ?? d.userFullName
         userAbout = try c.decodeIfPresent(String.self, forKey: .userAbout) ?? d.userAbout
+        userInterests = try c.decodeIfPresent(String.self, forKey: .userInterests) ?? d.userInterests
+        onboardingDone = try c.decodeIfPresent(Bool.self, forKey: .onboardingDone) ?? true
         learnAfterFailures = try c.decodeIfPresent(Int.self, forKey: .learnAfterFailures) ?? d.learnAfterFailures
         appControl = try c.decodeIfPresent(Bool.self, forKey: .appControl) ?? d.appControl
+        blockedAbilities = try c.decodeIfPresent([String].self, forKey: .blockedAbilities) ?? d.blockedAbilities
         ownerCheck = try c.decodeIfPresent(Bool.self, forKey: .ownerCheck) ?? d.ownerCheck
         voiceCheck = try c.decodeIfPresent(String.self, forKey: .voiceCheck) ?? d.voiceCheck
         voiceThreshold = try c.decodeIfPresent(Float.self, forKey: .voiceThreshold) ?? d.voiceThreshold

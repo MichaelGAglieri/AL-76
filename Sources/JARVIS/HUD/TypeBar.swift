@@ -22,6 +22,8 @@ final class TypeBar: NSObject {
     }
 
     static let width: CGFloat = 320
+    /// The app's bar, for the right-click menus.
+    private(set) static weak var main: TypeBar?
     private let assistant: Assistant
     private let model = TypeBarModel()
     private var panel: TypeBarPanel?
@@ -57,6 +59,7 @@ final class TypeBar: NSObject {
     init(assistant: Assistant) {
         self.assistant = assistant
         super.init()
+        Self.main = self
         hotKey = HotKey(keyCode: kVK_ANSI_T) { [weak self] in
             Task { @MainActor in self?.toggle() }
         }
@@ -85,6 +88,11 @@ final class TypeBar: NSObject {
 
     func toggle() {
         if let panel, panel.isVisible, panel.isKeyWindow { hide() } else { show() }
+    }
+
+    /// From the right-click menu: the bar is not the key window there, so visible means close it.
+    func flip() {
+        if isVisible { hide() } else { show() }
     }
 
     func show() {

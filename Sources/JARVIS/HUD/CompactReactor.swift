@@ -325,8 +325,10 @@ final class ReactorHostingView: NSHostingView<CompactReactorView> {
         menu.autoenablesItems = false
         menu.addItem(withTitle: "Apri HUD", action: #selector(openHUD), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Parla (⌃⌥Spazio)", action: #selector(talk), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Scrivi (⌃⌥T)", action: #selector(write), keyEquivalent: "").target = self
+        menu.addItem(NucleusMenu.typeBarItem())
         menu.addItem(withTitle: "Nuova conversazione", action: #selector(reset), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        menu.addItem(NucleusMenu.dialogueItem())
         menu.addItem(.separator())
         menu.addItem(withTitle: "Esci da AL-76", action: #selector(quit), keyEquivalent: "").target = self
         NSMenu.popUpContextMenu(menu, with: event, for: self)
@@ -334,7 +336,6 @@ final class ReactorHostingView: NSHostingView<CompactReactorView> {
 
     @objc private func openHUD() { onClick?() }
     @MainActor @objc private func talk() { assistant?.pushToTalk() }
-    @objc private func write() { NotificationCenter.default.post(name: .jarvisTypeBar, object: nil) }
     @MainActor @objc private func reset() { assistant?.resetConversation() }
     @objc private func quit() { NSApp.terminate(nil) }
 

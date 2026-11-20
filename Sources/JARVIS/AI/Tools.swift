@@ -68,6 +68,8 @@ final class ToolBox {
     /// App control: only Claude uses it, never in privacy mode.
     let appControl = AppControl()
     var appControlEnabled = true
+    /// Impostazioni › Permessi: tools of these abilities are refused (see Ability).
+    var blockedAbilities: Set<Ability> = []
     /// Removes Gemma from RAM ("scarica Gemma dalla memoria").
     var onUnloadModel: (() async -> String)?
 
@@ -341,6 +343,10 @@ final class ToolBox {
 
     /// Runs a tool and records it in the security log.
     func run(_ call: ToolCall) async -> ToolOutcome {
+        if let ability = Ability.of(tool: call.name), blockedAbilities.contains(ability) {
+            Security.audit("rifiutato dai permessi", tool: call.name, arguments: call.arguments, source: currentSource, detail: ability.rawValue)
+            return .result(ability.refusal)
+        }
         if fromPhone, Self.notFromPhone.contains(call.name) || Self.movesLab(call) {
             let text = "Dall'iPhone non muovo robot e schede e non cambio il filamento, che va tirato a mano: va chiesto stando al Mac. Le stampe invece si possono mandare."
             Security.audit("rifiutato dall'iPhone", tool: call.name, arguments: call.arguments, source: currentSource, detail: text)
@@ -685,7 +691,10 @@ final class ToolBox {
         case let name where name.hasPrefix("app_"):
             guard appControlEnabled else { return .result("Il controllo delle app è spento nelle impostazioni.") }
             guard !privacyMode else { return .result("Modalità privacy attiva: il controllo delle app è spento.") }
-            guard currentSource.hasPrefix("claude") else { return .result("Il controllo delle app funziona solo con Claude.") }
+            // Only the big cloud brains: the local model is too easy to fool with text read from a screen.
+            guard ["claude", "chatgpt", "gemini"].contains(where: { currentSource.hasPrefix($0) }) else {
+                return .result("Il controllo delle app funziona solo con Claude, ChatGPT o Gemini.")
+            }
             switch name {
             case "app_read": return .result(await appControl.read(a))
             case "app_press": return await appControl.press(a)
@@ -761,10 +770,13 @@ final class ToolBox {
     /// Mail takes about ten seconds to answer: gathered in advance it gets more time, otherwise at most `mailWait`.
     private func briefing(mailWait: Double) async -> String {
         async let weather = WebActions.weather([:])
-        async let events = calendar.listEvents([:])
-        async let reminders = calendar.listReminders([:])
+        // Switched off in Impostazioni › Permessi: not even read for the briefing.
+        let calendarOff = blockedAbilities.contains(.calendar), mailOff = blockedAbilities.contains(.mailRead)
+        let off = "spento dall'utente nei permessi, non parlarne"
+        async let events = calendarOff ? off : calendar.listEvents([:])
+        async let reminders = calendarOff ? off : calendar.listReminders([:])
         // If Mail is slow the briefing does not wait for it.
-        async let mail = MailActions.listUnread(["limit": 5, "timeout": mailWait])
+        async let mail = mailOff ? off : MailActions.listUnread(["limit": 5, "timeout": mailWait])
         async let projects = ProjectInsights.recentActivity(["days": 3])
         async let news = NewsFeed.latest(limit: 6)
         let study = activity.report(period: "yesterday", category: "study")

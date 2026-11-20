@@ -175,9 +175,24 @@ final class AudioInput {
             Diagnostics.log("audio     \(reason): microfono ancora attivo, nessun riaggancio")
             return
         }
-        recentRebuilds.append(CFAbsoluteTimeGetCurrent())
-        Diagnostics.log("audio     microfono da riagganciare: \(reason)")
+        let now = CFAbsoluteTimeGetCurrent()
+        // A second rebuild a few seconds after the first, while the device is still changing: on the same
+        // engine macOS kept delivering sound in the old format while the tap was being set up again, and
+        // aborted the whole app (17 November at 15:15, Bluetooth switching to 8 kHz). A new engine instead.
+        let settling = recentRebuilds.contains { now - $0 < 15 }
+        recentRebuilds.append(now)
+        Diagnostics.log("audio     microfono da riagganciare: \(reason)\(settling ? " (secondo in pochi secondi: motore nuovo)" : "")")
         engine.inputNode.removeTap(onBus: 0)
+        if settling {
+            AudioHub.replaceEngine()
+            observeEngine()
+            do {
+                try startWithFallback()
+            } catch {
+                Diagnostics.log("audio     microfono non riavviato: \(error.localizedDescription)")
+            }
+            return
+        }
         // First on the same engine: a new engine closes the microphone for a moment, and with AirPods
         // that close/reopen switches the headset's profile again, which caused the next change (11 November).
         do {

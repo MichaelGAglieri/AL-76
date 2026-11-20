@@ -1,0 +1,21 @@
+PackageIdentifier: AL76.Assistant
+PackageVersion: 0.1.0
+InstallerType: inno
+Scope: user
+InstallModes: [interactive, silent]
+UpgradeBehavior: install
+Dependencies:
+  PackageDependencies:
+    - PackageIdentifier: Microsoft.VCRedist.2015+.x64
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://example.invalid/AL-76-Setup-0.1.0-x64.exe      # TODO: the release's address
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000   # TODO
+  - Architecture: arm64
+    InstallerUrl: https://example.invalid/AL-76-Setup-0.1.0-arm64.exe    # TODO
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000   # TODO
+    Dependencies:
+      PackageDependencies:
+        - PackageIdentifier: Microsoft.VCRedist.2015+.arm64
+ManifestType: installer
+ManifestVersion: 1.9.0

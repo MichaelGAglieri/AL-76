@@ -20,7 +20,13 @@ final class PanelWindows: NSObject, ObservableObject, NSWindowDelegate {
     init(assistant: Assistant) {
         self.assistant = assistant
         super.init()
+        Self.main = self
     }
+
+    /// The app's panels, for the right-click menus.
+    private(set) static weak var main: PanelWindows?
+
+    func flip(_ drawer: HUDDrawer) { set(drawer, open: !isOpen(drawer)) }
 
     func isOpen(_ drawer: HUDDrawer) -> Bool { open.contains(drawer) }
 

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anteprima nucleo</title>
+<style>
+  :root { --back: #030a14; --panel: #0c1622; --line: #22344a; --accent: #4fdbff; --text: #dde7ee; --dim: #7d8d99; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--back); color: var(--text); font: 14px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
+  header { padding: 16px 20px 6px; }
+  h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header p { margin: 4px 0 0; color: var(--dim); font-size: 13px; max-width: 760px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 20px; align-items: center; }
+  button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #03121c; font-weight: 600; }
+  label { color: var(--dim); display: flex; gap: 6px; align-items: center; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 20px 20px; align-items: flex-start; }
+  figure { margin: 0; }
+  figcaption { color: var(--dim); font-size: 12px; padding: 6px 2px 0; }
+  figcaption b { color: var(--accent); font-weight: 600; }
+  /* Two desktops: a dark one and a light one, to judge the transparent window on both. */
+  .desk { position: relative; width: 300px; height: 180px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line);
+          display: flex; align-items: center; justify-content: center; }
+  .desk.dark { background: radial-gradient(circle at 30% 30%, #3b2a6b, #0b0f24 60%), #0b0f24; }
+  .desk.light { background: linear-gradient(135deg, #dfe8f3, #b9cde4); }
+  .desk canvas { width: 221px; height: 130px; display: block; }
+  .desk canvas.reactor { width: 170px; height: 170px; }
+  .desk.tall { height: 300px; width: 220px; align-items: flex-end; }
+  .desk canvas.robot { width: 160px; height: 264px; }
+  .bigrobot { width: 340px; height: 560px; border-radius: 12px; border: 1px solid var(--line);
+              background: radial-gradient(circle at 50% 45%, #0c1a2e, var(--back) 75%); display: flex; align-items: center; justify-content: center; }
+  .bigrobot canvas { width: 320px; height: 528px; display: block; }
+  .note { color: var(--dim); font-size: 13px; padding: 0 20px; max-width: 760px; }
+  .bigr { width: 340px; height: 340px; border-radius: 12px; border: 1px solid var(--line);
+          background: radial-gradient(circle at 50% 50%, #0c1a2e, var(--back) 75%); display: flex; align-items: center; justify-content: center; }
+  .bigr canvas { width: 340px; height: 340px; display: block; }
+  h2 { font-size: 15px; font-weight: 600; margin: 14px 20px 0; color: var(--accent); }
+  .big { width: min(663px, calc(100vw - 40px)); aspect-ratio: 221 / 130; border-radius: 12px; border: 1px solid var(--line);
+         background: radial-gradient(circle at 50% 50%, #0c1a2e, var(--back) 75%); }
+  .big canvas { width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nucleo di AL-76 per Windows: satellite, reattore e robottino</h1>
+  <p>I due stili del nucleo del Mac, rifatti identici: il <b>satellite</b> 3D di <i>Satellite.swift</i> (stessi pezzi, materiali, texture e movimenti) e il <b>reattore</b> classico di <i>Reactor.swift</i>. e il <b>robottino</b> 3D di <i>RobotKit.swift</i>. Confrontati con immagini disegnate dal codice del Mac stesso: colori medi entro il 3% (satellite), il 2% (reattore) e l'1% (robottino, in tutti gli stati). Sul Mac il nucleo vive in una finestrella trasparente in alto a destra: clic per aprire la sfera, trascina per spostarlo, tasto destro per il menu.</p>
+</header>
+<div class="controls" id="states"></div>
+<h2>Satellite</h2>
+<div class="row">
+  <figure><div class="desk dark"><canvas id="small-dark"></canvas></div><figcaption><b>Grandezza reale</b> · sfondo scuro</figcaption></figure>
+  <figure><div class="desk light"><canvas id="small-light"></canvas></div><figcaption><b>Grandezza reale</b> · sfondo chiaro</figcaption></figure>
+</div>
+<div class="row">
+  <figure><div class="big"><canvas id="big"></canvas></div><figcaption><b>Ingrandito ×3</b> per vedere i dettagli · <span id="info"></span></figcaption></figure>
+</div>
+<h2>Reattore</h2>
+<div class="row">
+  <figure><div class="desk dark"><canvas class="reactor" id="r-dark"></canvas></div><figcaption><b>Grandezza reale</b> · sfondo scuro</figcaption></figure>
+  <figure><div class="desk light"><canvas class="reactor" id="r-light"></canvas></div><figcaption><b>Grandezza reale</b> · sfondo chiaro</figcaption></figure>
+  <figure><div class="bigr"><canvas id="r-big"></canvas></div><figcaption><b>Ingrandito ×2</b></figcaption></figure>
+</div>
+<h2>Robottino</h2>
+<p class="note" id="robot-note">Il modello non fa parte di AL-76: come sul Mac, si usa solo se è nella cartella dati dell'utente (qui lo legge da quella del Mac, senza copiarlo). Senza modello AL-76 mostra il satellite.</p>
+<div class="controls" id="robot-controls"></div>
+<div class="row">
+  <figure><div class="desk dark tall"><canvas class="robot" id="b-dark"></canvas></div><figcaption><b>Grandezza reale</b> · sfondo scuro</figcaption></figure>
+  <figure><div class="desk light tall"><canvas class="robot" id="b-light"></canvas></div><figcaption><b>Grandezza reale</b> · sfondo chiaro</figcaption></figure>
+  <figure><div class="bigrobot"><canvas id="b-big"></canvas></div><figcaption><b>Ingrandito ×2</b> · clic sul robottino: una carezza · <span id="robot-info"></span></figcaption></figure>
+</div>
+<script type="module">
+  const { createSatellite } = await import(`./satellite.js?v=${Date.now()}`);
+  const { createReactor } = await import(`./reactor.js?v=${Date.now()}`);
+  const sats = ['small-dark', 'small-light', 'big'].map(id => createSatellite(document.getElementById(id)));
+  const all = [...sats, ...['r-dark', 'r-light', 'r-big'].map(id => createReactor(document.getElementById(id)))];
+  // The robot: the model from the user's data folder (here the Mac's, served locally), never from the repository.
+  const { createRobot } = await import(`./robot.js?v=${Date.now()}`);
+  const model = new URLSearchParams(location.search).get('modello') ?? 'http://127.0.0.1:8792/';
+  const robots = [];
+  try {
+    for (const id of ['b-dark', 'b-light', 'b-big']) robots.push(await createRobot(document.getElementById(id), { model }));
+    all.push(...robots);
+  } catch (e) {
+    document.getElementById('robot-note').textContent = `Modello del robottino non trovato (${e.message}): AL-76 mostrerebbe il satellite.`;
+  }
+  const big = document.getElementById('b-big');
+  big.addEventListener('click', (e) => {
+    const r = big.getBoundingClientRect();
+    if (robots[2]?.hit(e.clientX - r.left, e.clientY - r.top)) robots.forEach(x => x.poke());
+  });
+  big.addEventListener('mousemove', (e) => {
+    const r = big.getBoundingClientRect();
+    big.style.cursor = robots[2]?.hit(e.clientX - r.left, e.clientY - r.top) ? 'pointer' : 'default';
+  });
+  // Walking on the bottom edge (in the app the window moves; here it walks on the spot) and the two flames.
+  let walking = false, flames = 'fire';
+  const rbar = document.getElementById('robot-controls');
+  function robotControls() {
+    rbar.innerHTML = '';
+    for (const [label, on, act] of [['Cammina sul bordo', walking, () => { walking = !walking; }],
+                                    ['Fiamme di fuoco', flames === 'fire', () => { flames = 'fire'; }],
+                                    ['Fiamme ioniche', flames === 'ion', () => { flames = 'ion'; }]]) {
+      const b = document.createElement('button');
+      b.textContent = label; b.setAttribute('aria-pressed', String(on));
+      b.onclick = () => { act(); robotControls(); };
+      rbar.append(b);
+    }
+  }
+  robotControls();
+  setInterval(() => {
+    const t = performance.now() / 1000;
+    // In the app it walks only while waiting; a stroll goes left, then right, with stops to look around.
+    const walk = walking && current === 'idle' ? (t % 12 < 5 ? -1 : t % 12 > 6 && t % 12 < 11 ? 1 : 0) : 0;
+    for (const r of robots) r.set({ grounded: walking, walk, flames });
+    if (robots[2]) document.getElementById('robot-info').textContent = `${robots[2].fps.toFixed(0)} fps · ${robots[2].drawCalls} chiamate di disegno`;
+  }, 100);
+  const states = [['idle', 'Attesa'], ['listening', 'Ascolto'], ['thinking', 'Pensa'], ['acting', 'Agisce'], ['speaking', 'Parla'], ['error', 'Errore']];
+  const bar = document.getElementById('states');
+  let current = 'idle', privacy = false;
+  const apply = () => { for (const s of all) s.set({ state: current, privacy }); render(); };
+  function render() {
+    bar.innerHTML = '';
+    for (const [id, label] of states) {
+      const b = document.createElement('button');
+      b.textContent = label; b.setAttribute('aria-pressed', String(current === id));
+      b.onclick = () => { current = id; apply(); };
+      bar.append(b);
+    }
+    const l = document.createElement('label');
+    const c = document.createElement('input'); c.type = 'checkbox'; c.checked = privacy;
+    c.onchange = () => { privacy = c.checked; apply(); };
+    l.append(c, 'Privacy'); bar.append(l);
+  }
+  apply();
+  // A voice that rises and falls like speech, for "Parla".
+  setInterval(() => {
+    const t = performance.now() / 1000;
+    const speech = Math.max(0, Math.sin(t * 7.3) * 0.5 + Math.sin(t * 2.1) * 0.35 + 0.15) * (Math.sin(t * 0.9) > -0.6 ? 1 : 0.1);
+    for (const s of all) s.set({ voice: current === 'speaking' ? speech * 0.5 : 0, mic: current === 'listening' ? speech * 0.4 : 0.02 });
+    document.getElementById('info').textContent = `${sats[2].fps.toFixed(0)} fps · ${sats[2].drawCalls} chiamate di disegno`;
+  }, 50);
+</script>
+</body>
+</html>

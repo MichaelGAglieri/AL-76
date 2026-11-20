@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>AL-76</title>
+<style>
+  /* The Mac HUD (HUDView): a 440×472 window tight around the sphere, drawn 490 across with its centre
+     220 from the top; a dark halo behind it; a label only for errors (and privacy). Transparent elsewhere. */
+  html, body { margin: 0; width: 440px; height: 472px; overflow: hidden; background: transparent;
+               user-select: none; -webkit-user-select: none; cursor: default; }
+  #halo { position: absolute; inset: 0;
+          background: radial-gradient(circle 225px at 220px 220px, rgba(3, 10, 20, 0.62) 0%, rgba(3, 10, 20, 0.5) 72%, rgba(3, 10, 20, 0) 100%); }
+  canvas { position: absolute; width: 490px; height: 490px; left: -25px; top: -25px; }
+  #label { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+           font: 700 13px "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif; letter-spacing: 5px; opacity: 0; transition: opacity 0.25s; }
+  #label.shown { opacity: 1; }
+  #label b { padding: 3px 12px; border-radius: 99px; background: rgba(3, 10, 20, 0.55); color: rgb(255, 158, 51);
+             text-shadow: 0 0 6px rgb(79, 219, 255); font-weight: 700; }
+  #label span { font-size: 10px; letter-spacing: 0; color: rgba(255, 158, 51, 0.9); max-width: 420px; text-align: center;
+                font-weight: 400; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="halo"></div>
+<canvas id="sphere"></canvas>
+<div id="label"><b id="title"></b><span id="detail"></span></div>
+<script type="module">
+  import { createSphere } from './sphere.js';
+  const host = window.chrome?.webview;
+  const post = (message) => host?.postMessage(message);
+  let sphere;
+  try { sphere = createSphere(document.getElementById('sphere'), { detail: 'full' }); }
+  catch (e) { post({ type: 'error', text: String(e?.message ?? e) }); }
+  const gl = sphere?.renderer.getContext();
+  const info = gl?.getExtension('WEBGL_debug_renderer_info');
+  post({ type: 'ready', webgl: !!gl, renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : '' });
+
+  // From the app: { state, voice, mic, deepIdle, privacy, label, detail }.
+  host?.addEventListener('message', (e) => {
+    const m = e.data;
+    sphere?.set(m);
+    const label = document.getElementById('label');
+    label.classList.toggle('shown', !!m.label);
+    if (m.label !== undefined) document.getElementById('title').textContent = m.label;
+    if (m.detail !== undefined) document.getElementById('detail').textContent = m.detail;
+  });
+  // Frames per second, for the app's log (once every 10 s).
+  setInterval(() => sphere && post({ type: 'fps', fps: Math.round(sphere.fps * 10) / 10 }), 10000);
+
+  // Mouse as on the Mac: dragging the sphere moves the window (after 3 px), a double click reduces it to the
+  // satellite, the right button opens the menu, Esc hides it.
+  let down = null;
+  addEventListener('mousedown', (e) => { if (e.button === 0) down = { x: e.screenX, y: e.screenY }; });
+  addEventListener('mouseup', () => { down = null; });
+  addEventListener('mousemove', (e) => {
+    if (!down || !(e.buttons & 1)) return;
+    if (Math.hypot(e.screenX - down.x, e.screenY - down.y) < 3) return;
+    down = null;
+    post({ type: 'drag' });
+  });
+  addEventListener('dblclick', () => post({ type: 'compact' }));
+  addEventListener('contextmenu', (e) => { e.preventDefault(); post({ type: 'menu' }); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') post({ type: 'hide' }); });
+</script>
+</body>
+</html>

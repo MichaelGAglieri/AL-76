@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Development tool, runs on the Mac: passes WAV files through the voice loop (Whisper + call + instant commands). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/AL76.Core/AL76.Core.csproj" />
+    <ProjectReference Include="../../src/AL76.Speech/AL76.Speech.csproj" />
+  </ItemGroup>
+</Project>

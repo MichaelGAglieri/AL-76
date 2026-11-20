@@ -25,6 +25,19 @@ paid API.
 > commands and app labels are in Italian. Full manual: [`Manual_AL-76.pdf`](Manual_AL-76.pdf). Version
 > history: [`CHANGELOG.md`](CHANGELOG.md). Installation guide: [`INSTALL.md`](INSTALL.md).
 
+## Windows version (preview)
+
+AL-76 also exists for **Windows 10 and 11**, rewritten from scratch in C# (.NET 10, WPF) and made for everyone,
+not only for the author: any school, job or city, with the robotics, phone and university features as optional
+modules. It has the same features as the Mac version except those that belong to the Apple ecosystem (Shortcuts,
+AirPods, Keychain/iCloud) and the Mac-only private channel of Robot Console.
+
+- **Download:** the installer for ordinary PCs (x64) is on the [Releases page](../../releases), in the latest
+  `windows-v…` release.
+- **Guide, features, privacy and building:** [`windows/README.md`](windows/README.md).
+- **Status:** preview. It is covered by automated tests and has run in a Windows virtual machine, but has not
+  been tried on a real PC yet.
+
 ## From JARVIS to AL-76
 
 Until version **1.30.61** this project was published as **JARVIS**, after the AI of Iron Man, and it woke up to

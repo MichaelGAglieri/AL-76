@@ -11,48 +11,177 @@ struct SettingsView: View {
     private var italianVoices: [String] { Self.voiceNames("it-IT") }
     private var englishVoices: [String] { Self.voiceNames("en-GB") }
 
+    /// The pages of the window, in the style of the first-run setup (v1.30.67, user request).
+    enum Page: String, CaseIterable, Identifiable {
+        case profile, activation, voice, brain, study, permissions, apps, initiative, look, phone, printer, system
+
+        var id: Self { self }
+
+        var title: String {
+            switch self {
+            case .profile: return "Profilo"
+            case .activation: return "Attivazione"
+            case .voice: return "Voce"
+            case .brain: return "Cervello"
+            case .study: return "Studio"
+            case .permissions: return "Permessi"
+            case .apps: return "Controllo delle app"
+            case .initiative: return "Iniziativa"
+            case .look: return "Aspetto"
+            case .phone: return "iPhone"
+            case .printer: return "Stampante"
+            case .system: return "Sistema"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .profile: return "person.crop.circle"
+            case .activation: return "waveform"
+            case .voice: return "speaker.wave.2"
+            case .brain: return "brain"
+            case .study: return "book"
+            case .permissions: return "lock.shield"
+            case .apps: return "hand.tap"
+            case .initiative: return "bell"
+            case .look: return "sparkles"
+            case .phone: return "iphone"
+            case .printer: return "printer"
+            case .system: return "gearshape"
+            }
+        }
+
+        var intro: String {
+            switch self {
+            case .profile: return "Chi sei e come ti chiamo. Entra nelle mie istruzioni, così le risposte sono su misura per te."
+            case .activation: return "Come mi chiami e come mi interrompi."
+            case .voice: return "La tua impronta vocale e la voce con cui ti rispondo."
+            case .brain: return "Chi risponde alle domande vere: il modello locale, oppure Claude, ChatGPT o Gemini con un abbonamento che hai già."
+            case .study: return "Le cartelle in cui cerco gli appunti e l'app della tua università."
+            case .permissions: return "Tutto ciò che posso fare, uno per uno: i permessi di macOS e quelli miei. Spegni quello che non vuoi che faccia."
+            case .apps: return "Pulsanti e campi delle altre app, e il Touch ID per le azioni delicate."
+            case .initiative: return "Quando parlo per primo, e quando sto zitto."
+            case .look: return "Come mi vedi sullo schermo."
+            case .phone: return "Il collegamento con l'app per iPhone e iPad."
+            case .printer: return "Lo stato della stampante Bambu sulla rete di casa."
+            case .system: return "Avvio e saluto."
+            }
+        }
+    }
+
+    @State private var page = Page.profile
+
     var body: some View {
-        Form {
-            Section("Attivazione") {
-                Toggle("Ascolta sempre \"Ehi Al\" (Whisper, gratuito)", isOn: $draft.whisperWake)
-                Text("Se lo spegni AL-76 si attiva solo con ⌃⌥Spazio, e consuma ancora meno.")
-                    .font(.caption).foregroundStyle(.secondary)
-                SecureField("Picovoice AccessKey (facoltativa)", text: $draft.picovoiceAccessKey)
-                Text("Con una chiave Picovoice valida si usa Porcupine al posto di Whisper. Porcupine conosce ancora solo la parola «Jarvis»: per «Ehi Al» va addestrata una parola nuova su Picovoice.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Slider(value: $draft.wakeSensitivity, in: 0.3...0.9, step: 0.05) {
-                    Text("Sensibilità Porcupine \(draft.wakeSensitivity, format: .number.precision(.fractionLength(2)))")
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                sidebar
+                Divider().opacity(0.4)
+                VStack(spacing: 0) {
+                    StepIntro(title: page.title, text: page.intro)
+                    Form { content }
+                        .formStyle(.grouped)
+                        .scrollContentBackground(.hidden)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+            footer
+        }
+        .frame(width: 800, height: 620)
+        .background(HUD.background.ignoresSafeArea())
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .toolbar(removing: .title)
+        .tint(HUD.cyan)
+        .preferredColorScheme(.dark)
+        .background(HUDWindowStyle())
+        .onAppear { draft = assistant.config }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Page.allCases) { item in
+                Button { page = item } label: {
+                    Label(item.title, systemImage: item.icon)
+                        .font(.system(size: 13, weight: item == page ? .semibold : .regular))
+                        .foregroundStyle(item == page ? HUD.cyan : .primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(item == page ? HUD.cyan.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 14)
+        .frame(width: 200)
+        .background(Color.white.opacity(0.03))
+    }
+
+    private var footer: some View {
+        HStack {
+            if draft != assistant.config {
+                Text("Modifiche non salvate").font(.caption).foregroundStyle(HUD.amber)
+                Button("Annulla") { draft = assistant.config }
+            }
+            Spacer()
+            Button("Salva") { assistant.apply(draft) }
+                .keyboardShortcut(.defaultAction)
+                .disabled(draft == assistant.config)
+        }
+        .controlSize(.large)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(Color.white.opacity(0.03))
+    }
+
+    @ViewBuilder private var content: some View {
+        switch page {
+        case .profile:
+            Section("Come ti chiami") {
+                TextField("Nome", text: $draft.userName)
+                TextField("Nome e cognome", text: $draft.userFullName)
+            }
+            Section("Come ti chiamo") {
+                Picker("Titolo", selection: $draft.honorific) {
+                    Text("Nessun titolo").tag("")
+                    Text("signore").tag("signore")
+                    Text("signora").tag("signora")
+                    if !["", "signore", "signora"].contains(draft.honorific) { Text(draft.honorific).tag(draft.honorific) }
+                }
+                TextField("Oppure scrivine uno tuo (es. capo, prof)", text: $draft.honorific)
+            }
+            Section("Di te") {
+                TextField("Una riga su di te", text: $draft.userAbout, axis: .vertical).lineLimit(2...5)
+                TextField("Interessi", text: $draft.userInterests, axis: .vertical).lineLimit(1...3)
+                TextField("Parole che Whisper deve scrivere giuste", text: $draft.vocabulary, axis: .vertical).lineLimit(2...5)
+                Caption("Nomi, sigle e termini tecnici, separati da virgole: li suggerisco a Whisper prima di ogni trascrizione.")
+            }
+        case .activation:
+            Section("Chiamata") {
+                Toggle("Ascolta sempre \"Ehi Al\" (Whisper, gratuito)", isOn: $draft.whisperWake)
+                Caption("Se lo spegni AL-76 si attiva solo con ⌃⌥Spazio, e consuma ancora meno.")
                 Toggle("Continua la conversazione senza ripetere \"Ehi Al\"", isOn: $draft.followUpConversation)
                 Toggle("Interrompilo a voce (\"basta\")", isOn: $draft.bargeIn)
                 Toggle("Cancellazione dell'eco (serve con gli altoparlanti)", isOn: $draft.echoCancellation)
-                Text("La cancellazione dell'eco vale dal riavvio di AL-76.").font(.caption).foregroundStyle(.secondary)
+                Caption("La cancellazione dell'eco vale dal riavvio di AL-76.")
             }
+            Section("Porcupine (facoltativo)") {
+                SecureField("Picovoice AccessKey", text: $draft.picovoiceAccessKey)
+                Slider(value: $draft.wakeSensitivity, in: 0.3...0.9, step: 0.05) {
+                    Text("Sensibilità \(draft.wakeSensitivity, format: .number.precision(.fractionLength(2)))")
+                }
+                Caption("Con una chiave Picovoice valida si usa Porcupine al posto di Whisper. Porcupine conosce ancora solo la parola «Jarvis»: per «Ehi Al» va addestrata una parola nuova su Picovoice.")
+            }
+        case .voice:
             VoicePrintSection(assistant: assistant, voicePrint: assistant.voicePrint, draft: $draft)
-            PhoneSection(bridge: assistant.phoneBridge, draft: $draft)
-            UniversitySection(assistant: assistant, draft: $draft)
-            Section("Stampante Bambu") {
-                TextField("Indirizzo IP", text: $draft.bambuHost)
-                TextField("Numero di serie", text: $draft.bambuSerial)
-                SecureField("Codice di accesso", text: $draft.bambuCode)
-                Text("Si trovano sul display della stampante, in Rete e Impostazioni. AL-76 legge lo stato: a che punto è, se finisce o si blocca. Caricare, scaricare il filamento e stampare passano dai pulsanti di Bambu Studio, e per stampare chiede prima conferma.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Appunti") {
-                TextField("Cartelle, una per riga", text: Binding(
-                    get: { draft.notesFolders.joined(separator: "\n") },
-                    set: { draft.notesFolders = $0.components(separatedBy: "\n") }
-                ), axis: .vertical)
-                Text("AL-76 cerca dentro PDF, Word, PowerPoint e testi di queste cartelle, tutto sul Mac. Le altre cartelle, come i documenti personali, restano fuori. Le nuove cartelle entrano alla prossima lettura, entro 6 ore o al riavvio.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Voce") {
+            Section("Voce di AL-76") {
                 Toggle("Voce neurale (Qwen3 in italiano, Lewis in inglese)", isOn: $draft.neuralVoice)
                 if draft.neuralVoice {
                     Slider(value: $draft.kokoroSpeed, in: 0.8...1.2) { Text("Velocità voce inglese") }
                 }
-                Text("Le voci Apple qui sotto si usano se la voce neurale è spenta o non disponibile.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Caption("Le voci Apple qui sotto si usano se la voce neurale è spenta o non disponibile.")
                 Picker("Voce italiana", selection: $draft.italianVoice) {
                     ForEach(italianVoices, id: \.self) { Text($0).tag($0) }
                 }
@@ -60,23 +189,37 @@ struct SettingsView: View {
                     ForEach(englishVoices, id: \.self) { Text($0).tag($0) }
                 }
                 Slider(value: $draft.speechRate, in: 0.4...0.62) { Text("Velocità") }
-                Text("Altre voci: Impostazioni di Sistema › Accessibilità › Contenuti letti ad alta voce › Gestisci voci.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Caption("Altre voci: Impostazioni di Sistema › Accessibilità › Contenuti letti ad alta voce › Gestisci voci.")
             }
-            Section("Cervello") {
+        case .brain:
+            Section("Cervello in uso") {
+                BrainPicker(selection: Binding(get: { assistant.brain.rawValue },
+                                               set: { assistant.setBrain(Assistant.Brain(rawValue: $0) ?? .local) }))
+            }
+            Section("Cervello locale") {
                 TextField("Modello locale (Ollama)", text: $draft.localModel)
                 TextField("Indirizzo Ollama", text: $draft.ollamaURL)
-                TextField("Il tuo nome", text: $draft.userName)
             }
+        case .study:
+            Section("Appunti") {
+                TextField("Cartelle, una per riga", text: Binding(
+                    get: { draft.notesFolders.joined(separator: "\n") },
+                    set: { draft.notesFolders = $0.components(separatedBy: "\n") }
+                ), axis: .vertical)
+                Caption("AL-76 cerca dentro PDF, Word, PowerPoint e testi di queste cartelle, tutto sul Mac. Le altre cartelle, come i documenti personali, restano fuori. Le nuove cartelle entrano alla prossima lettura, entro 6 ore o al riavvio.")
+            }
+            UniversitySection(assistant: assistant, draft: $draft)
+        case .permissions:
+            PermissionsPage(draft: $draft)
+        case .apps:
             Section("Controllo delle app") {
                 Toggle("Lascia che AL-76 usi pulsanti e campi delle app", isOn: $draft.appControl)
                 Toggle("Touch ID per le azioni molto delicate", isOn: $draft.ownerCheck)
-                Text("Script e programmi, comandi rapidi, cancellazione dei ricordi: dopo il \"sì\" serve il dito (o la password del Mac).")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("Solo con Claude e fuori dalla modalità privacy. Mai password, banca, Impostazioni di Sistema, terminali e editor. Serve il permesso Accessibilità.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Caption("Script e programmi, comandi rapidi, cancellazione dei ricordi: dopo il \"sì\" serve il dito (o la password del Mac).")
+                Caption("Solo con Claude, ChatGPT o Gemini e fuori dalla modalità privacy. Mai password, banca, Impostazioni di Sistema, terminali e editor. Serve il permesso Accessibilità.")
             }
-            Section("Iniziativa (AL-76 parla per primo)") {
+        case .initiative:
+            Section("AL-76 parla per primo") {
                 Toggle("Appuntamenti: avviso 10 minuti prima", isOn: $draft.alertCalendar)
                 Toggle("Promemoria: annuncio alla scadenza", isOn: $draft.alertReminders)
                 Toggle("Studio: pausa ogni 2 ore", isOn: $draft.alertStudy)
@@ -84,53 +227,59 @@ struct SettingsView: View {
                         value: $draft.studySummaryHour, in: 0...22)
                 Toggle("Batteria sotto il 20%", isOn: $draft.alertBattery)
                 Toggle("Briefing alla prima attivazione del mattino", isOn: $draft.morningBriefing)
-                Stepper("Silenzio dalle \(draft.quietFrom):00", value: $draft.quietFrom, in: 0...23)
-                Stepper("fino alle \(draft.quietTo):00", value: $draft.quietTo, in: 0...23)
-                Text("In privacy, durante una conversazione o con una conferma in sospeso gli avvisi aspettano.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Silenzio") {
+                Stepper("Dalle \(draft.quietFrom):00", value: $draft.quietFrom, in: 0...23)
+                Stepper("fino alle \(draft.quietTo):00", value: $draft.quietTo, in: 0...23)
+                Caption("In privacy, durante una conversazione o con una conferma in sospeso gli avvisi aspettano.")
+            }
+        case .look:
             Section("SATELLITE") {
-                Picker("Aspetto del SATELLITE", selection: $draft.nucleusStyle) {
+                Picker("Aspetto", selection: $draft.nucleusStyle) {
                     Text("Reattore").tag("reattore")
                     Text("Satellite").tag("satellite")
                     Text("Robottino").tag("robottino")
                 }
-                if draft.nucleusStyle == "robottino" {
+                .pickerStyle(.segmented)
+                Toggle("Disco scuro dietro al SATELLITE", isOn: $draft.nucleusBackdrop)
+                Caption("Spento si fonde con lo sfondo; acceso resta leggibile su sfondi chiari o sopra le finestre.")
+            }
+            if draft.nucleusStyle == "robottino" {
+                Section("Robottino") {
                     if RobotNucleusView.modelAvailable {
                         Toggle("Robottino grande", isOn: $draft.robotLarge)
                         Picker("Fiamme dei propulsori", selection: $draft.robotFlames) {
                             Text("Fuoco").tag("fuoco")
                             Text("Ioniche").tag("ioniche")
                         }
+                        Toggle("Bloccato nell'angolo in basso a destra", isOn: $draft.robotPinned)
                         Toggle("Passeggia sul bordo inferiore quando aspetta", isOn: $draft.robotWalks)
-                        Text("Clic: una carezza · doppio clic: l'HUD · trascina per spostarlo. Le risposte scritte (⌃⌥T) escono dalla sua bocca.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .disabled(draft.robotPinned)
+                        Caption("Bloccato non cammina e non si trascina; si blocca e sblocca anche dal suo menu (clic destro) o a voce: «Al, stai fermo» · «Al, puoi camminare». Clic: una carezza · doppio clic: l'HUD · trascina per spostarlo. Le risposte scritte (⌃⌥T) escono dalla sua bocca.")
                     } else {
-                        Text("Manca il modello 3D: metti scene.gltf (con scene.bin e textures) in Application Support/JARVIS/Companion. Intanto si vede il satellite.")
-                            .font(.caption).foregroundStyle(.secondary)
+                        Caption("Manca il modello 3D: metti scene.gltf (con scene.bin e textures) in Application Support/JARVIS/Companion. Intanto si vede il satellite.")
                     }
                 }
-                Toggle("Disco scuro dietro al SATELLITE", isOn: $draft.nucleusBackdrop)
-                Text("Spento si fonde con lo sfondo; acceso resta leggibile su sfondi chiari o sopra le finestre.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
+        case .phone:
+            PhoneSection(bridge: assistant.phoneBridge, draft: $draft)
+        case .printer:
+            Section("Stampante Bambu") {
+                TextField("Indirizzo IP", text: $draft.bambuHost)
+                TextField("Numero di serie", text: $draft.bambuSerial)
+                SecureField("Codice di accesso", text: $draft.bambuCode)
+                Caption("Si trovano sul display della stampante, in Rete e Impostazioni. AL-76 legge lo stato: a che punto è, se finisce o si blocca. Caricare, scaricare il filamento e stampare passano dai pulsanti di Bambu Studio, e per stampare chiede prima conferma.")
+            }
+        case .system:
             Section("Sistema") {
                 Toggle("Saluta all'avvio", isOn: $draft.greetOnLaunch)
                 Toggle("Avvia AL-76 al login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in
                         try? enabled ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                     }
-            }
-            HStack {
-                Spacer()
-                Button("Salva") { assistant.apply(draft) }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(draft == assistant.config)
+                Caption("La configurazione guidata si riapre dal menu di AL-76: «Configurazione guidata…».")
             }
         }
-        .formStyle(.grouped)
-        .frame(width: 520, height: 620)
-        .onAppear { draft = assistant.config }
     }
 
     static func voiceNames(_ language: String) -> [String] {
@@ -143,7 +292,7 @@ struct SettingsView: View {
 
 /// The university: name and server go in config.json with the other settings; username and
 /// password go straight to the Keychain, saved by their own button.
-private struct UniversitySection: View {
+struct UniversitySection: View {
     let assistant: Assistant
     @Binding var draft: JarvisConfig
     @State private var username = UniversityClient.savedUsername ?? ""
@@ -298,7 +447,7 @@ private struct VoicePrintSection: View {
     }
 }
 
-private struct VoiceEnrollmentView: View {
+struct VoiceEnrollmentView: View {
     @ObservedObject var enrollment: VoiceEnrollment
     @Environment(\.dismiss) private var dismiss
 
@@ -321,5 +470,30 @@ private struct VoiceEnrollmentView: View {
         .padding(24)
         .frame(width: 420)
         .onDisappear { enrollment.stop() }
+    }
+}
+
+/// The Settings window in the HUD's colours, like the first-run setup: dark, with the content under a
+/// transparent title bar.
+struct HUDWindowStyle: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { Self.style(view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { Self.style(nsView.window) }
+    }
+
+    private static func style(_ window: NSWindow?) {
+            guard let window else { return }
+            window.styleMask.insert(.fullSizeContentView)
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isMovableByWindowBackground = true
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.backgroundColor = NSColor(HUD.background)
+            window.toolbar?.showsBaselineSeparator = false
     }
 }

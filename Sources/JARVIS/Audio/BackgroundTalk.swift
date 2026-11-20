@@ -15,12 +15,17 @@ struct BackgroundTalk {
     static let marginDB: Float = 4
     /// Talk louder than this leaves no room for a voice: nothing is skipped.
     static let loudestDB: Float = -14
+    /// The bar never goes above this: a phrase louder than -20 dB always goes to Whisper. Until 1.30.72 it
+    /// could reach -10 dB, and the user's calls arrive at -4…-19 dB (17 November).
+    static let highestBar: Float = -20
 
     private var misses: [Date] = []
     private var peaks: [(db: Float, at: Date)] = []
     private var lastPhrase = Date.distantPast
     private(set) var active = false
     private(set) var skipped = 0
+    /// The loudest phrase skipped, for the log: it tells whether the user's voice was among them.
+    private(set) var loudestSkipped: Float = -100
 
     /// The bar a phrase must pass, or nil when everything goes to Whisper.
     func bar() -> Float? {
@@ -29,7 +34,7 @@ struct BackgroundTalk {
         // The loud lines of the talk, not the single shout: 80th percentile.
         let level = sorted[min(sorted.count - 1, Int(Float(sorted.count) * 0.8))]
         guard level <= Self.loudestDB else { return nil }
-        return level + Self.marginDB
+        return min(level + Self.marginDB, Self.highestBar)
     }
 
     /// Every phrase heard while waiting, before Whisper: true if it is skipped.
@@ -41,6 +46,7 @@ struct BackgroundTalk {
             // Skipped lines still tell how loud the talk is.
             remember(peakDB, now)
             skipped += 1
+            loudestSkipped = max(loudestSkipped, peakDB)
             return true
         }
         return false
@@ -61,6 +67,7 @@ struct BackgroundTalk {
         misses.removeAll()
         peaks.removeAll()
         skipped = 0
+        loudestSkipped = -100
     }
 
     private mutating func remember(_ db: Float, _ now: Date) {

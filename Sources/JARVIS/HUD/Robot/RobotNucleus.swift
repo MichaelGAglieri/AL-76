@@ -27,6 +27,8 @@ final class RobotNucleusView: NSView {
     private var voice: CGFloat = 0
     /// The answer to show in the bubble: the exchange of the last typed question.
     private var typedID: UUID?
+    /// The exchange already finished when spoken answers were turned on: it does not pop up.
+    private var voiceSkip: UUID?
 
     // Walking on the bottom edge.
     private var target: CGFloat?       // end of the current stroll (window x); nil: going home or at home
@@ -137,12 +139,29 @@ final class RobotNucleusView: NSView {
 
         // On the bottom edge (if the user wants it): it lives in the bottom right corner and now and then
         // takes a stroll along the edge and comes back, only while JARVIS waits (16 November).
-        if assistant.config.robotWalks, !dragging, let screen = panel.ownScreen?.visibleFrame {
+        // Locked (19 November, user request): it lives in the corner and never walks.
+        let pinned = assistant.config.robotPinned
+        if assistant.config.robotWalks || pinned, !dragging, let screen = panel.ownScreen?.visibleFrame {
             var f = panel.frame
             if let e = exact, abs(e.x - f.origin.x) < 2, abs(e.y - f.origin.y) < 2 { f.origin = e }   // else it was moved
             let ground = screen.minY - feetFraction * f.height + 1
             let home = screen.maxX - f.width * 0.78
-            if abs(f.origin.y - ground) > 1.5 {
+            if pinned, abs(f.origin.x - home) > 1.5 || abs(f.origin.y - ground) > 1.5 {
+                // Locked away from the corner: it flies straight there, engines on, instead of walking.
+                robot.grounded = false
+                robot.walk = 0
+                target = nil
+                let k = min(1, dt * 3), most = 900 * dt
+                f.origin.x += max(-most, min(most, (home - f.origin.x) * k))
+                f.origin.y += max(-most, min(most, (ground - f.origin.y) * k))
+                if abs(f.origin.x - home) < 1.5 { f.origin.x = home }
+                if abs(f.origin.y - ground) < 1.5 { f.origin.y = ground }
+            } else if pinned {
+                robot.grounded = true
+                robot.walk = 0
+                target = nil
+                f.origin = NSPoint(x: home, y: ground)
+            } else if abs(f.origin.y - ground) > 1.5 {
                 // Flying down to the edge, engines on.
                 robot.grounded = false
                 robot.walk = 0
@@ -188,7 +207,7 @@ final class RobotNucleusView: NSView {
             exact = f.origin
             if f.origin != panel.frame.origin { panel.setFrameOrigin(f.origin) }
             wasWalking = true
-        } else if wasWalking, !assistant.config.robotWalks {
+        } else if wasWalking, !assistant.config.robotWalks, !pinned {
             // Walking turned off: engines on, and up a little from the edge.
             wasWalking = false
             robot.grounded = false
@@ -204,9 +223,10 @@ final class RobotNucleusView: NSView {
         robot.lean = robot.grounded ? 0 : max(-0.4, min(0.4, dx * 0.04))
         robot.update(t: t, mood: mood, level: level)
 
-        // The answer to a typed question comes out of its mouth.
-        if let id = typedID, let exchange = assistant.conversation.last, exchange.id == id, !exchange.reply.isEmpty {
-            bubble.show(exchange.reply, id: id, at: t)
+        // The answer to a typed question comes out of its mouth; spoken answers too, if the user wants it.
+        if let exchange = assistant.conversation.last, !exchange.reply.isEmpty,
+           exchange.id == typedID || (assistant.voiceBubble && exchange.id != voiceSkip) {
+            bubble.show(exchange.reply, id: exchange.id, at: t)
         }
         if bubble.panel.isVisible, let screen = panel.ownScreen?.visibleFrame {
             let m = scnView.projectPoint(robot.mouthMark.presentation.worldPosition)
@@ -256,7 +276,8 @@ final class RobotNucleusView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let press, let panel else { return }
+        // Locked in the corner: dragging does not move it (a click is still a pat).
+        guard let press, let panel, assistant?.config.robotPinned != true else { return }
         let mouse = NSEvent.mouseLocation
         let dx = mouse.x - press.mouse.x, dy = mouse.y - press.mouse.y
         guard dragging || abs(dx) > 3 || abs(dy) > 3 else { return }
@@ -298,8 +319,31 @@ final class RobotNucleusView: NSView {
         menu.autoenablesItems = false
         menu.addItem(withTitle: "Apri HUD", action: #selector(openHUD), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Parla (⌃⌥Spazio)", action: #selector(talk), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Scrivi (⌃⌥T)", action: #selector(write), keyEquivalent: "").target = self
+        menu.addItem(NucleusMenu.typeBarItem())
         menu.addItem(withTitle: "Nuova conversazione", action: #selector(reset), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        // Locked in the bottom right corner (19 November, user request): a tick, also by voice ("Al, stai fermo").
+        let pinned = assistant?.config.robotPinned == true
+        menu.addItem(BlockMenuItem("Blocca nell'angolo in basso a destra", checked: pinned) { [weak self] in
+            self?.assistant?.setRobotPinned(!pinned)
+        })
+        menu.addItem(.separator())
+        // The speech bubble (17 November, user request): shown again or closed by hand, and optionally
+        // for spoken answers as well as typed ones.
+        if bubble.isShown {
+            menu.addItem(BlockMenuItem("Nascondi nuvoletta") { [weak self] in self?.bubble.dismiss() })
+        } else {
+            menu.addItem(BlockMenuItem("Mostra nuvoletta", enabled: !bubble.lastText.isEmpty || lastReply != nil) { [weak self] in
+                self?.showBubble()
+            })
+        }
+        let voice = assistant?.voiceBubble == true
+        menu.addItem(BlockMenuItem("Nuvoletta anche per le risposte a voce", checked: voice) { [weak self] in
+            guard let self, let assistant = self.assistant else { return }
+            self.voiceSkip = assistant.conversation.last?.id
+            assistant.voiceBubble = !voice
+        })
+        menu.addItem(NucleusMenu.dialogueItem())
         menu.addItem(.separator())
         menu.addItem(withTitle: "Esci da AL-76", action: #selector(quit), keyEquivalent: "").target = self
         NSMenu.popUpContextMenu(menu, with: event, for: self)
@@ -307,7 +351,17 @@ final class RobotNucleusView: NSView {
 
     @objc private func openHUD() { onOpen?() }
     @objc private func talk() { assistant?.pushToTalk() }
-    @objc private func write() { NotificationCenter.default.post(name: .jarvisTypeBar, object: nil) }
+    /// The last answer in the conversation, typed or spoken.
+    private var lastReply: Assistant.Exchange? {
+        assistant?.conversation.last(where: { !$0.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+    }
+
+    private func showBubble() {
+        let t = CGFloat(Date().timeIntervalSince(start))
+        // The last answer of the conversation, spoken ones included; else the last one the bubble said.
+        if let exchange = lastReply { bubble.replay(exchange.reply, id: exchange.id, at: t) } else { bubble.replay(at: t) }
+    }
+
     @objc private func reset() { assistant?.resetConversation() }
     @objc private func quit() { NSApp.terminate(nil) }
 }

@@ -199,7 +199,9 @@ final class VoicePipeline {
             if segmentSpeech >= 0.12 {
                 inSegment = true
                 segmentSilence = 0
-                segment = Array(preroll.suffix(8_000))   // half a second earlier, so the start is not lost
+                // 0.8 s earlier, so the start is not lost: with half a second a soft "Ehi" before a loud "Al"
+                // was cut, and Whisper wrote only "Al." (17 November).
+                segment = Array(preroll.suffix(12_800))
             }
             return
         }

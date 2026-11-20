@@ -104,6 +104,9 @@ struct ClaudeActivity {
 /// subscription: no paid API. It keeps the session from one question
 /// to the next, so Claude remembers the conversation.
 final class ClaudeBridge {
+    /// Impostazioni › Permessi: Claude Code's own web search and file reading follow the switches.
+    var allowWeb = true
+    var allowFiles = true
     private(set) var sessionID: String?
     private var lastUse = Date.distantPast
     var model = "sonnet"
@@ -123,6 +126,8 @@ final class ClaudeBridge {
     /// True if the next question will open a new session (after a 30-minute pause).
     var startsNewSession: Bool { sessionID == nil || Date().timeIntervalSince(lastUse) > 1800 }
 
+    private var nativeTools: [String] { (allowWeb ? ["WebSearch"] : []) + (allowFiles ? ["Read", "Glob", "Grep"] : []) }
+
     func ask(_ prompt: String, systemPrompt: String, mcpConfig: String) -> AsyncThrowingStream<ClaudeEvent, Error> {
         AsyncThrowingStream { continuation in
             guard let binary = Self.findBinary() else {
@@ -139,8 +144,9 @@ final class ClaudeBridge {
                 // Claude Code tools: web search and file reading, no terminal,
                 // no edits and no free reading of web pages (WebFetch could send data out
                 // to an address suggested by malicious content).
-                "--tools", "WebSearch,Read,Glob,Grep",
-                "--allowedTools", "mcp__jarvis", "WebSearch", "Read", "Glob", "Grep",
+                // Impostazioni › Permessi can switch web search and file reading off ("" = no Claude Code tool).
+                "--tools", nativeTools.joined(separator: ","),
+            ] + ["--allowedTools", "mcp__jarvis"] + nativeTools + [
                 "--setting-sources", "",
             ]
             if let effort { arguments += ["--effort", effort] }

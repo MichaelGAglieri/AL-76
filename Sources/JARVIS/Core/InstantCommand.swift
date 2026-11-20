@@ -20,13 +20,15 @@ enum InstantCommand: Equatable {
     case minimize(String)
     /// "Minimizza la finestra Chimica Organica": a Finder window by its name.
     case minimizeWindow(String)
+    /// "Al, stai fermo" / "Al, puoi camminare": the ROBOTTINO locked in the bottom right corner, or free to walk.
+    case robotPin(Bool)
 
     enum MusicAction: String { case pause, play, next, previous, status }
 
     static func parse(_ raw: String) -> InstantCommand? {
         let text = clean(raw)
         guard !text.isEmpty else { return nil }
-        if let found = time(text) ?? music(text) ?? television(text) ?? filament(text) ?? printer(text) { return found }
+        if let found = robotPin(text) ?? time(text) ?? music(text) ?? television(text) ?? filament(text) ?? printer(text) { return found }
         return volume(text) ?? timer(text) ?? closeAllCommand(text) ?? minimizeCommand(text) ?? app(text)
     }
 
@@ -57,6 +59,24 @@ enum InstantCommand: Equatable {
 
     private static func music(_ text: String) -> InstantCommand? {
         musicPhrases.first { $0.value.contains(text) }.map { .music($0.key) }
+    }
+
+    // MARK: Robottino
+
+    /// Whole sentences only, and none of the robot arm's emergency words ("fermati", "ferma il robot").
+    private static func robotPin(_ text: String) -> InstantCommand? {
+        let text = text.replacingOccurrences(of: "nell angolo", with: "nell'angolo")
+        let lock = ["stai fermo", "resta fermo", "rimani fermo", "stai fermo nell'angolo", "resta fermo nell'angolo",
+                    "resta nell'angolo", "stai nell'angolo", "rimani nell'angolo", "torna nell'angolo", "vai nell'angolo",
+                    "blocca il robottino", "blocca robottino", "robottino stai fermo", "robottino fermo",
+                    "non camminare", "non camminare più", "smetti di camminare", "smettila di camminare",
+                    "stay still", "stay in the corner", "stop walking"]
+        let free = ["sblocca il robottino", "sblocca robottino", "puoi camminare", "puoi muoverti", "puoi passeggiare",
+                    "torna a camminare", "torna a passeggiare", "vai a passeggiare", "cammina", "robottino cammina",
+                    "you can walk", "start walking"]
+        if lock.contains(text) { return .robotPin(true) }
+        if free.contains(text) { return .robotPin(false) }
+        return nil
     }
 
     // MARK: TV

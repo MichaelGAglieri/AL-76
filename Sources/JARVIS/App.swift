@@ -32,13 +32,17 @@ struct JarvisApp: App {
             Button(delegate.assistant.privacyMode ? "Esci dalla modalità privacy (⌃⌥P)" : "Modalità privacy (⌃⌥P)") {
                 delegate.assistant.togglePrivacy()
             }
-            Button(delegate.assistant.brain == .claude ? "Torna al nucleo locale" : "Usa Claude") {
-                delegate.assistant.setBrain(delegate.assistant.brain == .claude ? .local : .claude)
+            Picker("Cervello", selection: Binding(get: { delegate.assistant.brain }, set: { delegate.assistant.setBrain($0) })) {
+                Text("Nucleo locale").tag(Assistant.Brain.local)
+                Text("Claude").tag(Assistant.Brain.claude)
+                Text("ChatGPT").tag(Assistant.Brain.chatgpt)
+                Text("Gemini").tag(Assistant.Brain.gemini)
             }
             Divider()
             Section("Schede") { PanelMenuItems(panels: delegate.panels) }
             Divider()
             SettingsLink { Text("Impostazioni…") }
+            Button("Configurazione guidata…") { delegate.onboarding.show() }
             Divider()
             Button("Esci da AL-76") { NSApp.terminate(nil) }
         } label: {
@@ -63,6 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: HUDWindow?
     /// The bar to type to JARVIS, hung under the SATELLITE or next to the sphere's window.
     lazy var typeBar = TypeBar(assistant: assistant)
+    /// The first-run setup: by itself on a new install, then from the menu.
+    lazy var onboarding = OnboardingWindow(assistant: assistant)
     /// One NUCLEUS for every connected display.
     private var reactors: [CGDirectDisplayID: ReactorPanel] = [:]
     /// The NUCLEUS hidden under the open HUD: the HUD grew out of it.
@@ -122,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SystemWatch.shared.start()
         assistant.boot()
         enableLaunchAtLoginOnce()
+        if !assistant.config.onboardingDone || CommandLine.arguments.contains("--onboarding") { onboarding.show() }
         awake = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep],
                                                       reason: "AL-76 ascolta «Ehi Al»")
 

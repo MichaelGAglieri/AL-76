@@ -99,6 +99,8 @@ final class Assistant: ObservableObject {
     @Published private(set) var voiceStatus = "—"
     @Published private(set) var brain: Brain = .local
     @Published private(set) var claudeStatus = "—"
+    /// "COLLEGATO", "LOGIN NECESSARIO" or "NON INSTALLATO" for ChatGPT and Gemini (v1.30.68).
+    @Published private(set) var cloudStatus: [Brain: String] = [:]
     @Published private(set) var log: [String] = []
     /// The thought panel: how each request is handled, step by step (route, tools, sources, results).
     struct ActivityLine: Identifiable {
@@ -125,6 +127,7 @@ final class Assistant: ObservableObject {
 
     private let pipeline = VoicePipeline()
     private let transcriber = Transcriber()
+    private let voiceGate = VoiceGate()
     private let speech = SpeechEngine()
     let voicePrint = VoicePrint()
     let voiceEnrollment = VoiceEnrollment()
@@ -142,6 +145,18 @@ final class Assistant: ObservableObject {
     let activity = ActivityTracker()
     private lazy var tools = ToolBox(memory: memory, activity: activity)
     private let claude = ClaudeBridge()
+    private let chatgpt = CodexBridge()
+    private let gemini = GeminiBridge()
+
+    /// The bridge of a cloud brain; nil for the local one.
+    private func bridge(_ target: Brain) -> CloudBridge? {
+        switch target {
+        case .local: return nil
+        case .claude: return claude
+        case .chatgpt: return chatgpt
+        case .gemini: return gemini
+        }
+    }
     private let mcp = MCPServer()
     /// Action waiting for a spoken "yes" (e.g. sending an email).
     private var pending: PendingAction? {
@@ -240,6 +255,12 @@ final class Assistant: ObservableObject {
     private func bootSequence() async {
         // The neural voice starts in parallel with the rest (a few seconds).
         let neuralVoice = Task { await startNeuralVoice() }
+        // First launch: the microphone is asked from the setup window, with the reason in front of it,
+        // not by a bare macOS dialog as soon as the app opens.
+        while !config.onboardingDone, AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            state = .booting("Configurazione iniziale")
+            try? await Task.sleep(for: .milliseconds(500))
+        }
         state = .booting("Microfono")
         guard await AVCaptureDevice.requestAccess(for: .audio) else {
             state = .error("Accesso al microfono negato: abilitalo in Impostazioni > Privacy > Microfono")
@@ -278,7 +299,8 @@ final class Assistant: ObservableObject {
         state = .idle
         note("Sistemi operativi")
         // After an update made at night the app reopens without speaking.
-        if config.greetOnLaunch, !CommandLine.arguments.contains("--no-greeting") { greet() }
+        // During the first-run setup it does not talk over it: it introduces itself when the setup ends.
+        if config.greetOnLaunch, config.onboardingDone, !CommandLine.arguments.contains("--no-greeting") { greet() }
     }
 
     /// Runs a start-up step, retrying up to 6 times, every 10 seconds.
@@ -418,6 +440,8 @@ final class Assistant: ObservableObject {
         // Claude remembers refusals: without this note it would not try again.
         notesForClaude.append(on ? "Privacy mode is now on." : "Privacy mode is now off: tools blocked by it work again.")
         Security.audit(on ? "privacy attivata" : "privacy disattivata", tool: "privacy", source: "tastiera o voce")
+        // In diagnostica.log too: on 17 November six minutes without a line looked like a deaf AL-76.
+        Diagnostics.log(on ? "privacy   accesa: microfono spento" : "privacy   spenta: microfono riacceso")
         if on {
             interrupt()
             pipeline.stop()          // microphone really off (the macOS indicator disappears)
@@ -479,6 +503,9 @@ final class Assistant: ObservableObject {
     private var noiseUntil = Date.distantPast
     private var noisePeak: Float = 0
     private var noiseSkipped = 0
+    private var noiseSkippedLoudest: Float = -100
+    /// When a phrase without "Ehi Al" was last heard: people are talking in the room.
+    private var lastRoomTalk = Date.distantPast
 
     private static func isWhisperNoise(_ text: String) -> Bool {
         let t = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
@@ -489,16 +516,23 @@ final class Assistant: ObservableObject {
     /// True when the phrase is the steady noise of the last minute: skipped without Whisper.
     private func skipAsNoise(_ samples: [Float]) -> Bool {
         guard Date() < noiseUntil else {
-            if noiseSkipped > 0 { Diagnostics.log("wake --   rumore finito: \(noiseSkipped) frasi saltate senza Whisper"); noiseSkipped = 0 }
+            if noiseSkipped > 0 {
+                Diagnostics.log(String(format: "wake --   rumore finito: %d frasi saltate senza Whisper (la più forte a %.0f dB)", noiseSkipped, noiseSkippedLoudest))
+                noiseSkipped = 0
+                noiseSkippedLoudest = -100
+            }
             return false
         }
         let peak = samples.reduce(Float(0)) { max($0, abs($1)) }
         guard peak <= noisePeak * 1.585 else { return false }   // +4 dB
         noiseSkipped += 1
+        noiseSkippedLoudest = max(noiseSkippedLoudest, 20 * log10(max(peak, 1e-7)))
         return true
     }
 
     private var backgroundTalk = BackgroundTalk()
+    /// Above this peak (-20 dB) a phrase is never skipped as noise: a voice near the Mac.
+    private static let noiseCeiling: Float = 0.1
 
     private static func decibels(_ samples: [Float]) -> Float {
         20 * log10(max(samples.reduce(Float(0)) { max($0, abs($1)) }, 1e-7))
@@ -506,10 +540,11 @@ final class Assistant: ObservableObject {
 
     /// A film or the TV talking: its lines are skipped without Whisper, louder voices go through.
     private func skipAsBackgroundTalk(_ samples: [Float]) -> Bool {
-        let wasActive = backgroundTalk.active, skippedBefore = backgroundTalk.skipped
+        let wasActive = backgroundTalk.active, skippedBefore = backgroundTalk.skipped, loudest = backgroundTalk.loudestSkipped
         let skip = backgroundTalk.shouldSkip(peakDB: Self.decibels(samples))
         if wasActive, !backgroundTalk.active {
-            Diagnostics.log("wake --   sottofondo finito: \(skippedBefore) frasi saltate senza Whisper")
+            Diagnostics.log("wake --   sottofondo finito: \(skippedBefore) frasi saltate senza Whisper"
+                            + (skippedBefore > 0 ? String(format: " (la più forte a %.0f dB)", loudest) : ""))
         }
         return skip
     }
@@ -528,7 +563,14 @@ final class Assistant: ObservableObject {
         let now = Date()
         noiseStreak = noiseStreak.filter { now.timeIntervalSince($0.at) < 45 } + [(peak, now)]
         guard noiseStreak.count >= 3 else { return }
-        noisePeak = noiseStreak.map(\.peak).max() ?? peak
+        // Steady noise (a fan, rain) comes back at about the same level. "Grazie." at -6, -18 and -12 dB
+        // is voices, perhaps the user's: on 17 November at 08:36 that bar (-6 dB, so up to -2) skipped
+        // nine of his calls without Whisper and AL-76 "no longer heard him". Now the streak must be
+        // within 10 dB, and phrases louder than -20 dB always go to Whisper.
+        let peaks = noiseStreak.map(\.peak)
+        let loudest = peaks.max() ?? peak, quietest = peaks.min() ?? peak
+        guard loudest <= quietest * 3.162 else { return }   // 10 dB
+        noisePeak = min(loudest, Self.noiseCeiling / 1.585)   // the +4 dB in skipAsNoise stops at -20 dB
         if now >= noiseUntil {
             Diagnostics.log("wake --   rumore continuo (\"\(text)\" ×\(noiseStreak.count), picco \(String(format: "%.0f", 20 * log10(max(noisePeak, 1e-7)))) dB): per un minuto salto le frasi non più forti")
         }
@@ -603,6 +645,18 @@ final class Assistant: ObservableObject {
                 }
             }
             let seconds = String(format: "%.1f s", Double(samples.count) / 16_000)
+            // No voice at all (silence, hum, keys, music): Whisper is not woken. While the voice is
+            // being enrolled every phrase goes on; if the classifier fails, the phrase goes to Whisper.
+            var voiceNote = ""
+            if !voiceEnrollment.isActive, let score = await voiceGate.score(samples) {
+                voiceNote = String(format: ", voce %.2f", score.voice)
+                guard score.isVoice else {
+                    let peak = samples.reduce(Float(0)) { max($0, abs($1)) }
+                    Diagnostics.log(String(format: "wake --   non è voce [%@, voce %.2f, musica %.2f, picco %.0f dB]: saltata senza Whisper",
+                                           seconds, score.voice, score.music, 20 * log10(max(peak, 1e-7))))
+                    return
+                }
+            }
             guard var text = await transcriber.wakeTranscript(samples) else { return }
             if voiceEnrollment.isActive {
                 await enroll(samples, heard: text)
@@ -628,11 +682,12 @@ final class Assistant: ObservableObject {
             if state == .idle, WakeVerifier.command(from: text) == nil {
                 // The level tells a muted microphone from Whisper not understanding.
                 let peak = samples.reduce(Float(0)) { max($0, abs($1)) }
-                Diagnostics.log("wake NO   [\(seconds), \(Diagnostics.since(start)), picco \(String(format: "%.0f", 20 * log10(max(peak, 1e-7)))) dB] \"\(text)\"")
+                Diagnostics.log("wake NO   [\(seconds), \(Diagnostics.since(start)), picco \(String(format: "%.0f", 20 * log10(max(peak, 1e-7)))) dB\(voiceNote)] \"\(text)\"")
                 noteWakeResult(text, peak: peak)
                 noteBackgroundTalk(samples, hadJarvis: false)
                 // Noise transcribed as "Grazie." is not joined to the next phrase: one Whisper run less.
                 if Self.isWhisperNoise(text) { rejectedSegment = nil; return }
+                if !text.trimmingCharacters(in: .whitespaces).isEmpty { lastRoomTalk = Date() }
                 guard let joined = joinedWithRejected(samples, peak: peak, end: end),
                       let joinedText = await transcriber.wakeTranscript(joined),
                       WakeVerifier.command(from: joinedText) != nil else { return }
@@ -645,7 +700,7 @@ final class Assistant: ObservableObject {
             noiseStreak.removeAll()
             noiseUntil = .distantPast
             noteBackgroundTalk(samples, hadJarvis: true)
-            Diagnostics.log("wake OK   [\(seconds), \(Diagnostics.since(start)), picco \(String(format: "%.0f", Self.decibels(samples))) dB\(backgroundTalk.bar().map { String(format: ", soglia sottofondo %.0f dB", $0) } ?? "")] \"\(text)\"")
+            Diagnostics.log("wake OK   [\(seconds), \(Diagnostics.since(start)), picco \(String(format: "%.0f", Self.decibels(samples))) dB\(voiceNote)\(backgroundTalk.bar().map { String(format: ", soglia sottofondo %.0f dB", $0) } ?? "")] \"\(text)\"")
             guard await voiceAccepted(samples, heard: text), state == .idle else {
                 Diagnostics.log("wake --   voce non riconosciuta, ignorata")
                 return
@@ -755,8 +810,17 @@ final class Assistant: ObservableObject {
     /// `strict`: only similarity counts, even when the check is observe-only.
     private func voiceAccepted(_ samples: [Float], heard: String, isCommand: Bool = false, isAnswer: Bool = false, strict: Bool = false) async -> Bool {
         guard config.voiceCheck != "off", voicePrint.isEnrolled else { return true }
+        // A capture that reached its 30 s limit: someone spoke for half a minute without a pause.
+        // It is the TV or people talking (16 and 17 November, three times). The voiceprint service
+        // also refuses more than 30 s, and until 1.30.70 that error let the phrase through to Claude.
+        if isCommand || isAnswer, samples.count >= Self.continuousSpeech {
+            Diagnostics.log(String(format: "comando   %.1f s di parlato senza pause: TV o altre persone, ignorato", Double(samples.count) / 16_000))
+            Diagnostics.logVoice(String(format: "- no %@ [%.1f s] parlato continuo, non è il comando di qualcuno al Mac ", config.voiceCheck,
+                                        Double(samples.count) / 16_000) + (isAnswer ? "risposta " : "comando ") + "\"\(heard.prefix(80))\"")
+            return false
+        }
         do {
-            var score = voicePrint.score(try await speech.kokoro.embedding(samples))
+            var score = voicePrint.score(try await speech.kokoro.embedding(Array(samples.prefix(Self.longestEmbedded))))
             let whole = score
             // With TV or music the window is mostly them: look for the second most similar
             // to the user's voice. Not in silence: a whole phrase is already a better check.
@@ -775,6 +839,12 @@ final class Assistant: ObservableObject {
             // Measured on voce.log (12 November): half of the 50 rejections were the user himself, at 0.36–0.45,
             // on short phrases; TV and video voices never went above 0.33. Four cases where a little less is enough.
             var rule = ""
+            // The conversation began with an "Ehi Al" accepted only just (17 November at 01:02: 0.419 with
+            // Prime Video on): its answers do not get the low threshold, the TV scored 0.385 on one of them.
+            if isAnswer, let wake = lastWakeVoice, Date().timeIntervalSince(wake.at) <= 180, wake.score < Self.doubtfulWake {
+                threshold = max(threshold, Self.noisyLongThreshold)
+                Diagnostics.log(String(format: "voce      risposta con soglia %.2f: l'Ehi Al era passato a %.2f", threshold, wake.score))
+            }
             let said = WakeVerifier.command(from: heard)
             if isAnswer || isCommand, DirectCommand.isNo(heard) {
                 // "No" can only cancel: it is always taken, whoever says it.
@@ -795,6 +865,17 @@ final class Assistant: ObservableObject {
                     threshold = min(threshold, Self.relaxedThreshold); rule = "comando noto"
                 }
             }
+            // "Ehi Al" alone while people talk in the room, or from afar: Whisper copies its hint " Ehi Al." out of
+            // unclear talk, and the voiceprint passed at 0.41-0.49 (17 November at 15:41 and 16:35, the TV on the
+            // 16th). The user's own calls in a quiet room score 0.55-0.72: with others talking 0.50 is needed.
+            if !isCommand, !isAnswer, let said, said.isEmpty {
+                let talk = Date().timeIntervalSince(lastRoomTalk) < 30 || backgroundTalk.active
+                let quiet = Self.decibels(samples) < Self.farCallDB
+                if talk || quiet {
+                    threshold = max(threshold, Self.loneCallInTalk)
+                    rule = talk ? "Ehi Al da solo mentre si parla" : "Ehi Al da solo e lontano"
+                }
+            }
             if noisy, samples.count > Self.window {
                 for start in stride(from: 0, through: samples.count - Self.window, by: Self.window / 3) where score < threshold {
                     let piece = Array(samples[start..<start + Self.window])
@@ -803,6 +884,9 @@ final class Assistant: ObservableObject {
             }
             let passed = score >= threshold
             if passed, !isCommand, !isAnswer { lastWakeVoice = (score, Date()) }
+            if !passed, rule.hasPrefix("Ehi Al da solo "), score >= config.voiceThreshold - 0.1 {
+                Diagnostics.log(String(format: "voce      rifiutata a %.2f con soglia %.2f: ", score, threshold) + rule)
+            }
             if passed, !rule.isEmpty, score < config.voiceThreshold { Diagnostics.log(String(format: "voce      accettata a %.2f con soglia %.2f: ", score, threshold) + rule) }
             Diagnostics.logVoice(String(format: "%.3f %@ %@ [%.1f s] intera %.3f rumore %.0f dB soglia %.2f ",
                                         score, passed ? "sì" : "no", config.voiceCheck, Double(samples.count) / 16_000,
@@ -821,6 +905,15 @@ final class Assistant: ObservableObject {
     private static let answerThreshold: Float = 0.33
     /// For the user's short phrases in a quiet room: above every TV or video voice measured (0.33 at most).
     private static let relaxedThreshold: Float = 0.36
+    /// An "Ehi Al" accepted below this is doubtful: the answers that follow need the normal threshold.
+    private static let doubtfulWake: Float = 0.45
+    /// A lone "Ehi Al" with people talking or quieter than this needs `loneCallInTalk`.
+    private static let farCallDB: Float = -22
+    private static let loneCallInTalk: Float = 0.50
+    /// Commands and answers this long hit the capture limit (30 s plus the look-back): continuous talk.
+    private static let continuousSpeech = 29 * 16_000
+    /// The voiceprint service accepts at most 30 s.
+    private static let longestEmbedded = 30 * 16_000
     /// The last "Jarvis" accepted and its score: the command that follows is judged with it.
     private var lastWakeVoice: (score: Float, at: Date)?
     /// Window of the check in noise: about the length of "Jarvis" plus a margin (0.9 s).
@@ -1044,6 +1137,7 @@ final class Assistant: ObservableObject {
         endTypedRequest()
         commandNeedsVoice = checkVoice
         commandIsAnswer = isAnswer
+        commandAfterCall = !followUp && !isAnswer
         state = .listening
         if !followUp {
             initiative.activated()
@@ -1062,6 +1156,10 @@ final class Assistant: ObservableObject {
     private lazy var printerControl = BambuStudioControl(printer: printer, appControl: tools.appControl)
     private var commandNeedsVoice = false
     private var commandIsAnswer = false
+    /// The phrase being captured follows a call ("Ehi Al", push-to-talk): someone is speaking to AL-76.
+    private var commandAfterCall = false
+    /// It already asked to repeat a command lost after the beep: it does not insist.
+    private var callRepeatAsked = false
 
     /// "Scarica Gemma dalla memoria": the model stays on disk and reloads when needed.
     private func unloadLocalModel() async -> String {
@@ -1193,6 +1291,7 @@ final class Assistant: ObservableObject {
         }
         tools.onUnloadModel = { [weak self] in await self?.unloadLocalModel() ?? "Non disponibile." }
         tools.appControlEnabled = config.appControl
+        applyAbilities(config)
         initiative.start()
         notesIndex.start()
         setUpPhoneBridge()
@@ -1291,6 +1390,24 @@ final class Assistant: ObservableObject {
         guard brain == .local || !online, !preloading else { return }
         preloading = true
         Task {
+            // Only a fallback for a cloud brain: it must not take the GPU from the voice. 17 November, just
+            // after the Mac woke, Wi-Fi was still reconnecting: the model loaded for 64 s while AL-76
+            // spoke and the first piece of voice took 8.2 s instead of 0.4. It waits for the voice to
+            // finish and for the network to come back after a wake, then only loads if still offline.
+            if brain != .local {
+                let waitStart = Date()
+                while !online, Date().timeIntervalSince(waitStart) < 90,
+                      speech.isSpeaking || state == .speaking || Self.justWoke {
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+                guard !online || brain == .local else {
+                    if Date().timeIntervalSince(waitStart) > 1 {
+                        Diagnostics.log("modello   rete tornata dopo \(Diagnostics.since(waitStart)): il modello locale non serve")
+                    }
+                    preloading = false
+                    return
+                }
+            }
             if !(await ollama.isLoaded()) {
                 guard !memoryTooLowForModel else {
                     preloading = false
@@ -1305,6 +1422,11 @@ final class Assistant: ObservableObject {
         }
     }
 
+    /// The Mac woke less than 90 s ago: Wi-Fi may still be reconnecting.
+    private static var justWoke: Bool {
+        SystemWatch.lastWake.map { Date().timeIntervalSince($0) < 90 } ?? false
+    }
+
     private func nothingHeard() {
         if state == .listening { state = .idle }
     }
@@ -1317,6 +1439,8 @@ final class Assistant: ObservableObject {
         if pendingFromPhone { dropPendingFromOtherSide() }
         let checkVoice = commandNeedsVoice
         let isAnswer = commandIsAnswer
+        let afterCall = commandAfterCall && !needsWakeCheck
+        commandAfterCall = false
         commandNeedsVoice = false
         commandIsAnswer = false
         tools.currentSource = testInjection ? "test" : "voce"
@@ -1341,7 +1465,7 @@ final class Assistant: ObservableObject {
                 }
                 // "Jarvis" already heard, but the large Whisper dropped every piece as uncertain (13 November:
                 // three long requests lost this way, with echo cancellation on): once more, less strict.
-                if text.isEmpty, needsWakeCheck, wakeConfirmed, !isAnswer, !Task.isCancelled {
+                if text.isEmpty, (needsWakeCheck && wakeConfirmed) || afterCall, !isAnswer, samples.count > 16_000, !Task.isCancelled {
                     (text, lang) = try await transcriber.transcribe(samples, lenient: true)
                     Diagnostics.log("frase     vuota, riprovata più tollerante: \"\(text)\"")
                 }
@@ -1406,7 +1530,17 @@ final class Assistant: ObservableObject {
                     say(language == .italian ? "Non ho capito bene, signore. Può ripetere?" : "I didn't catch that, sir. Could you repeat?", language: language)
                     return
                 }
-                if !command.isEmpty { answerRepeatAsked = false }
+                // After the beep the user spoke, but Whisper understood nothing (17 November: five commands
+                // lost this way, AL-76 went back to waiting without a word). If it is the user's voice it asks
+                // once to repeat; the answer is taken as the command.
+                if command.isEmpty, afterCall, !callRepeatAsked, samples.count > 20_000,
+                   await voiceAccepted(samples, heard: "", isCommand: true, strict: true), !Task.isCancelled {
+                    callRepeatAsked = true
+                    Diagnostics.log("comando   vuoto dopo il beep: chiede di ripetere")
+                    say(language == .italian ? "Non ho capito. Puoi ripetere?" : "I didn't catch that. Could you repeat?", language: language)
+                    return
+                }
+                if !command.isEmpty { answerRepeatAsked = false; callRepeatAsked = false }
                 guard !command.isEmpty else {
                     if needsWakeCheck {
                         // Just "Jarvis": beep and keep listening.
@@ -1453,6 +1587,9 @@ final class Assistant: ObservableObject {
         // STOP: also stops connected robots at once, without going through the model.
         if Self.isStopCommand(command) || Self.isRobotStop(command) {
             pending = nil
+            // "Ehi Al… basta" on the first call of the morning: the briefing waiting for the idle state
+            // is not wanted either (17 November it started right after the "basta").
+            initiative.skipBriefing()
             let stopped = await emergencyStop()
             if stopped.isEmpty {
                 state = .idle
@@ -1557,12 +1694,12 @@ final class Assistant: ObservableObject {
                 + "not to you, reply with exactly \(Self.silentReply) and nothing else. If he is speaking to you, answer normally.]\n" + command
             silenceAllowed = true
         } else {
-            acknowledge(command, language: lang, forClaude: brain == .claude && online)
+            acknowledge(command, language: lang, forClaude: brain.isCloud && online)
         }
         defer { silenceAllowed = false; namedMidPhrase = nil }
         let brief = Acknowledgment.kind(of: command) == .action
-        if brain == .claude && online {
-            await respondWithClaude(asked, language: lang, brief: brief)
+        if brain.isCloud && online {
+            await respondWithCloud(asked, language: lang, brief: brief)
             return
         }
         // Memory almost full and model not loaded: Claude answers, if connected.
@@ -1824,7 +1961,7 @@ final class Assistant: ObservableObject {
             result = outcome.ok ? (all ? "Chiuse le finestre del Finder." : "Chiusa la finestra del Finder.") : "Non riesco a chiudere la finestra del Finder."
         case .briefing:
             // With Claude the briefing stays his: he tells it better, with the news.
-            guard !(brain == .claude && online) else { return false }
+            guard !(brain.isCloud && online) else { return false }
             result = await directBriefing()
         case .startDictation:
             result = startDictation()
@@ -1879,7 +2016,7 @@ final class Assistant: ObservableObject {
     private func runProtocol(_ command: String, language lang: Language) async -> Bool {
         guard let (item, rest) = Protocols.match(command) else { return false }
         // "Buongiorno" with no Claude: the briefing made here, at once, instead of waiting for Gemma.
-        if item.name == "buongiorno", !(brain == .claude && online) {
+        if item.name == "buongiorno", !(brain.isCloud && online) {
             Diagnostics.log("protocollo buongiorno senza modello")
             tools.currentLanguage = lang
             let text = await directBriefing()
@@ -1906,8 +2043,8 @@ final class Assistant: ObservableObject {
         // In "chiedi" {resto} is the rest of the phrase as said: "esegui la sequenza allineamento" → "allineamento".
         if let ask = item.ask?.replacingOccurrences(of: "{resto}", with: rest) {
             // A sequence of actions: "Procedo, signore" at once, then silence until the end.
-            if item.brief { acknowledge(command, language: lang, forClaude: brain == .claude && online) }
-            if brain == .claude && online { await respondWithClaude(ask, language: lang, brief: item.brief) } else { await respondLocally(ask, language: lang, brief: item.brief) }
+            if item.brief { acknowledge(command, language: lang, forClaude: brain.isCloud && online) }
+            if brain.isCloud && online { await respondWithCloud(ask, language: lang, brief: item.brief) } else { await respondLocally(ask, language: lang, brief: item.brief) }
         } else {
             say((item.reply ?? "Fatto, signore.").replacingOccurrences(of: "{esito}", with: results.first ?? "Fatto, signore."), language: lang)
         }
@@ -2080,6 +2217,12 @@ final class Assistant: ObservableObject {
             Security.audit("eseguito", tool: "finder_minimize", arguments: ["name": name], source: tools.currentSource, detail: outcome.ok ? "finestra ridotta" : outcome.err)
             guard outcome.ok else { return false }
             text = italian ? "Finestra ridotta, \(sir)." : "Window minimised, \(sir)."
+        case .robotPin(let pinned):
+            // Only with the ROBOTTINO on screen; with the satellite or the reactor the model hears the sentence.
+            guard config.nucleusStyle == "robottino", RobotNucleusView.modelAvailable else { return false }
+            setRobotPinned(pinned, walks: pinned ? nil : true)
+            text = pinned ? (italian ? "Resto fermo nell'angolo, \(sir)." : "Staying in the corner, \(sir).")
+                          : (italian ? "Torno a passeggiare, \(sir)." : "Back to my strolls, \(sir).")
         case .tv(let on):
             guard case .result(let result) = await run("tv", ["action": on ? "on" : "off"]) else { return false }
             text = result
@@ -2242,7 +2385,27 @@ final class Assistant: ObservableObject {
 
     // MARK: Claude
 
-    enum Brain: String { case local, claude }
+    enum Brain: String, CaseIterable {
+        case local, claude, chatgpt, gemini
+
+        var isCloud: Bool { self != .local }
+        /// How it is said and shown.
+        var title: String {
+            switch self {
+            case .local: return "nucleo locale"
+            case .claude: return "Claude"
+            case .chatgpt: return "ChatGPT"
+            case .gemini: return "Gemini"
+            }
+        }
+    }
+
+    /// Checks whether ChatGPT and Gemini are installed and signed in, for the HUD and the menu.
+    func refreshCloudStatus() async {
+        for target in [Brain.chatgpt, .gemini] {
+            if let bridge = bridge(target) { cloudStatus[target] = await bridge.status() }
+        }
+    }
 
     private func setUpClaude() {
         brain = Brain(rawValue: config.brain) ?? .local
@@ -2256,7 +2419,10 @@ final class Assistant: ObservableObject {
             await self?.runToolForClaude(name, arguments) ?? [["type": "text", "text": "AL-76 non disponibile"]]
         }
         do { try mcp.start() } catch { note("Server strumenti per Claude: \(error.localizedDescription)") }
-        Task { await refreshClaudeStatus() }
+        Task {
+            await refreshClaudeStatus()
+            await refreshCloudStatus()
+        }
     }
 
     private func refreshClaudeStatus() async {
@@ -2272,7 +2438,9 @@ final class Assistant: ObservableObject {
     /// A tool result in the MCP content format (text or image).
     private func runToolForClaude(_ name: String, _ arguments: [String: Any]) async -> [[String: Any]] {
         let previous = tools.currentSource
-        tools.currentSource = "claude (\(previous))"
+        // The brain that is acting, in the audit log and for the app-control rule: claude, chatgpt or gemini.
+        let actor = (answering ?? brain).isCloud ? (answering ?? brain).rawValue : "claude"
+        tools.currentSource = "\(actor) (\(previous))"
         defer { tools.currentSource = previous }
         switch await tools.run(ToolCall(name: name, arguments: arguments)) {
         case .result(let result):
@@ -2420,15 +2588,15 @@ final class Assistant: ObservableObject {
         brain = target
         config.brain = target.rawValue
         config.save()
-        note(target == .claude ? "Cervello: Claude" : "Cervello: locale")
-        if target == .claude { await refreshClaudeStatus() }
+        note(target.isCloud ? "Cervello: \(target.title)" : "Cervello: locale")
+        if target == .claude { await refreshClaudeStatus() } else if target.isCloud { await refreshCloudStatus() }
         guard announce else { return }
         let text: String
         switch (target, lang) {
-        case (.claude, .italian): text = "Collegato a Claude, signore."
-        case (.claude, .english): text = "Connected to Claude, sir."
         case (.local, .italian): text = "Torno al nucleo locale, signore."
         case (.local, .english): text = "Back to the local core, sir."
+        case (_, .italian): text = "Collegato a \(target.title), signore."
+        case (_, .english): text = "Connected to \(target.title), sir."
         }
         say(text, language: lang)
     }
@@ -2443,6 +2611,10 @@ final class Assistant: ObservableObject {
         "list_memories", "activity_report", "project_info", "recent_project_activity", "daily_briefing", "ros_graph", "ros_echo", "lab_status",
         "robot_status", "look_at_screen", "look_at_camera", "arduino_boards", "serial_read", "printer_status", "search_notes", "list_timers",
         "WebSearch", "Read", "Grep", "Glob", "LS", "app_read", "app_look", "app_scroll",
+        // Gemini CLI's own reading tools.
+        "google_web_search", "read_file", "read_many_files", "glob", "grep_search", "list_directory",
+        // Antigravity CLI's own reading tools (it reads the MCP tool schemas before calling them).
+        "list_dir", "find_by_name", "search_web", "read_url_content", "view_file",
     ]
 
     private static func acts(_ tool: String) -> Bool {
@@ -2451,10 +2623,21 @@ final class Assistant: ObservableObject {
 
     /// Brief: an action. The sentences said between one step and the next are dropped (they would describe
     /// something already done); only the last one is said, usually "Fatto, signore.".
+    /// The chosen cloud brain answers (ChatGPT, Gemini or Claude); Claude when the brain is local
+    /// and Claude is asked by name or stands in.
+    private func respondWithCloud(_ command: String, language lang: Language, brief: Bool = false) async {
+        guard brain.isCloud, brain != .claude, let cloud = bridge(brain) else {
+            return await respondWithClaude(command, language: lang, brief: brief)
+        }
+        await respondWithClaude(command, language: lang, brief: brief, using: cloud, as: brain)
+    }
+
     private func respondWithClaude(_ command: String, language lang: Language, model: String? = nil,
-                                   effort: String? = nil, learning: Bool = false, brief: Bool = false) async {
-        answering = .claude
-        think("→ Claude \((model ?? claude.model).capitalized)\(claude.startsNewSession ? " · nuova sessione" : "")")
+                                   effort: String? = nil, learning: Bool = false, brief: Bool = false,
+                                   using cloudBridge: CloudBridge? = nil, as asked: Brain = .claude) async {
+        let cloud: CloudBridge = cloudBridge ?? claude
+        answering = asked
+        think("→ \(cloud.name)\(asked == .claude ? " " + (model ?? claude.model).capitalized : "")\(cloud.startsNewSession ? " · nuova sessione" : "")")
         if let model {
             claude.model = model
             note("Domanda a Claude \(model.capitalized)")
@@ -2477,7 +2660,7 @@ final class Assistant: ObservableObject {
             prompt = "[Since your last reply: " + notesForClaude.joined(separator: " ") + "]\n" + prompt
             notesForClaude = []
         }
-        if claude.startsNewSession, let recap = recentConversation() {
+        if cloud.startsNewSession, let recap = recentConversation() {
             prompt = "Recent conversation with the local assistant, for context only:\n\(recap)\n\n" + prompt
         }
         var splitter = SentenceSplitter()
@@ -2488,7 +2671,7 @@ final class Assistant: ObservableObject {
             if acting { held.append(sentence) } else { speakSentence(sentence, lang) }
         }
         do {
-            for try await event in claude.ask(prompt, systemPrompt: Persona.claudePrompt(config: config, memory: memory.promptBlock), mcpConfig: mcp.claudeConfig) {
+            for try await event in cloud.ask(prompt, systemPrompt: Persona.claudePrompt(config: config, memory: memory.promptBlock), mcp: mcp) {
                 if Task.isCancelled { return }
                 switch event {
                 case .text(let chunk):
@@ -2522,14 +2705,16 @@ final class Assistant: ObservableObject {
             if Task.isCancelled { return }
             note(error.localizedDescription)
             think("✕ \(error.localizedDescription)")
-            if case ClaudeError.notLoggedIn = error { claudeStatus = "LOGIN NECESSARIO" }
+            let login = CloudError.isLogin(error)
+            if login { if asked == .claude { claudeStatus = "LOGIN NECESSARIO" } else { cloudStatus[asked] = "LOGIN NECESSARIO" } }
+            if case CloudError.notInstalled = error { cloudStatus[asked] = "NON INSTALLATO" }
             let notice: String
-            if case ClaudeError.notLoggedIn = error {
-                notice = lang == .italian ? "Claude non è collegato, signore. Rispondo con il nucleo locale."
-                                          : "Claude isn't signed in, sir. Answering with the local core."
+            if login {
+                notice = lang == .italian ? "\(cloud.name) non è collegato, signore. Rispondo con il nucleo locale."
+                                          : "\(cloud.name) isn't signed in, sir. Answering with the local core."
             } else {
-                notice = lang == .italian ? "Claude non risponde, signore. Rispondo con il nucleo locale."
-                                          : "Claude isn't responding, sir. Answering with the local core."
+                notice = lang == .italian ? "\(cloud.name) non risponde, signore. Rispondo con il nucleo locale."
+                                          : "\(cloud.name) isn't responding, sir. Answering with the local core."
             }
             speakSentence(notice, lang)
             generating = false
@@ -2598,7 +2783,7 @@ final class Assistant: ObservableObject {
         guard firstSentencePending else { return }
         firstSentencePending = false
         if let start = Diagnostics.requestStart {
-            Diagnostics.log("risposta  [\(Diagnostics.since(start)) dalla fine della frase] cervello: \(brain == .local ? "locale" : "Claude")")
+            Diagnostics.log("risposta  [\(Diagnostics.since(start)) dalla fine della frase] cervello: \(brain == .local ? "locale" : brain.title)")
         }
     }
 
@@ -2654,6 +2839,10 @@ final class Assistant: ObservableObject {
     private var answeringTyped = false
     /// The exchange of the last typed question: the ROBOTTINO says its answer in a speech bubble.
     @Published private(set) var typedExchange: UUID?
+    /// The ROBOTTINO also says spoken answers in its speech bubble (right-click menu, 17 November).
+    @Published var voiceBubble = UserDefaults.standard.bool(forKey: "voiceBubble") {
+        didSet { UserDefaults.standard.set(voiceBubble, forKey: "voiceBubble") }
+    }
     /// Typed requests are answered in writing only, unless the speaker on the bar is on.
     @Published var typedVoice = UserDefaults.standard.bool(forKey: "typedVoice") {
         didSet { UserDefaults.standard.set(typedVoice, forKey: "typedVoice") }
@@ -3097,10 +3286,73 @@ final class Assistant: ObservableObject {
         updated.save()
     }
 
+    // MARK: First-run setup
+
+    var studySubjects: [StudyPlan.Subject] { tools.studyPlan.subjects }
+
+    @discardableResult
+    func setStudySubject(_ name: String, exam: Date?, weeklyHours: Double?) -> String {
+        tools.studyPlan.set(name, exam: exam, weeklyHours: weeklyHours)
+    }
+
+    @discardableResult
+    func removeStudySubject(_ name: String) -> String { tools.studyPlan.remove(name) }
+
+    /// Saves what the setup asks, step by step, without restarting voices and wake word like `apply`.
+    /// `finished`: the last step; AL-76 then introduces itself, if it is ready to speak.
+    func applySetup(_ draft: JarvisConfig, finished: Bool = false) {
+        var updated = config
+        updated.userName = draft.userName
+        updated.userFullName = draft.userFullName
+        updated.userAbout = draft.userAbout
+        updated.userInterests = draft.userInterests
+        updated.honorific = draft.honorific
+        updated.vocabulary = draft.vocabulary
+        updated.notesFolders = draft.notesFolders
+        updated.universityName = draft.universityName
+        updated.universityServer = draft.universityServer
+        updated.universityAgent = draft.universityAgent
+        updated.nucleusStyle = draft.nucleusStyle
+        updated.phoneBridge = draft.phoneBridge
+        updated.morningBriefing = draft.morningBriefing
+        updated.greetOnLaunch = draft.greetOnLaunch
+        if finished { updated.onboardingDone = true }
+        let phoneChanged = updated.phoneBridge != config.phoneBridge
+        config = updated
+        updated.save()
+        Honorific.italian = updated.honorific
+        if phoneChanged { updatePhoneBridge() }
+        if let target = Brain(rawValue: draft.brain), target != brain {
+            Task { await switchBrain(to: target, language: language, announce: false) }
+        }
+        guard finished else { return }
+        Diagnostics.log("setup     configurazione iniziale completata")
+        guard state == .idle else { return }
+        let name = updated.userName.trimmingCharacters(in: .whitespaces)
+        let hello = name.isEmpty || name == "Utente" ? "Piacere." : "Piacere, \(name)."
+        say(hello + " Sono AL-76, ma puoi chiamarmi Al. Quando ti servo, di' «Ehi Al».", language: .italian)
+    }
+
     /// The ROBOTTINO walks on the bottom edge or floats free: changed by a gesture, so only this setting is saved.
     func setRobotWalks(_ walks: Bool) {
         config.robotWalks = walks
         config.save()
+    }
+
+    /// The ROBOTTINO locked in the bottom right corner, or free again (`walks`: also back to strolling on the edge).
+    func setRobotPinned(_ pinned: Bool, walks: Bool? = nil) {
+        config.robotPinned = pinned
+        if let walks { config.robotWalks = walks }
+        config.save()
+        Diagnostics.log("robottino \(pinned ? "bloccato nell'angolo" : "sbloccato")")
+    }
+
+    /// Impostazioni › Permessi: the tools refuse, and the cloud brains lose their own web and file tools.
+    private func applyAbilities(_ config: JarvisConfig) {
+        tools.blockedAbilities = config.blocked
+        claude.allowWeb = config.allows(.web)
+        claude.allowFiles = config.allows(.filesRead)
+        chatgpt.allowWeb = config.allows(.web)
     }
 
     func apply(_ newConfig: JarvisConfig) {
@@ -3108,6 +3360,7 @@ final class Assistant: ObservableObject {
         config = newConfig
         newConfig.save()
         tools.appControlEnabled = newConfig.appControl
+        applyAbilities(newConfig)
         if old.phoneBridge != newConfig.phoneBridge { updatePhoneBridge() }
         speech.rate = newConfig.speechRate
         speech.englishVoiceName = newConfig.englishVoice
@@ -3141,6 +3394,8 @@ final class Assistant: ObservableObject {
     func resetConversation() {
         turns.removeAll()
         claude.resetSession()
+        chatgpt.resetSession()
+        gemini.resetSession()
         pending = nil
         heard = ""
         reply = ""
@@ -3206,10 +3461,13 @@ final class Assistant: ObservableObject {
     private static func brainSwitch(_ text: String) -> Brain? {
         let t = text.lowercased().folding(options: .diacriticInsensitive, locale: nil)
         guard t.split(separator: " ").count <= 7 else { return nil }
-        if t.range(of: #"\b(usa|passa a|attiva|collegati a|modalita|use|switch to|connect to)\s+(il\s+)?"# + claudeName + #"\b"#, options: .regularExpression) != nil {
-            return .claude
+        let verb = #"\b(usa|passa a|attiva|collegati a|modalita|use|switch to|connect to)\s+(il\s+|the\s+)?"#
+        for (name, target) in [(claudeName, Brain.claude), (chatgptName, .chatgpt), (geminiName, .gemini)]
+        where t.range(of: verb + name + #"\b"#, options: .regularExpression) != nil {
+            return target
         }
-        if t.range(of: #"\b(torna|passa|usa|modalita|use|switch|go|back)\b.*\b(local[ei]?|offline)\b|\bdisattiva "# + claudeName + #"\b"#, options: .regularExpression) != nil {
+        let any = "(?:" + [claudeName, chatgptName, geminiName].joined(separator: "|") + ")"
+        if t.range(of: #"\b(torna|passa|usa|modalita|use|switch|go|back)\b.*\b(local[ei]?|offline)\b|\bdisattiva "# + any + #"\b"#, options: .regularExpression) != nil {
             return .local
         }
         return nil
@@ -3228,6 +3486,9 @@ final class Assistant: ObservableObject {
     /// "chiedi a Claude …" / "ask Claude …": a single question to Claude, without changing mode.
     /// How Whisper sometimes writes "Claude": Cloud, Claud, Clod, Clode…
     private static let claudeName = #"(?:claude|claud|cloud|clod|clode|cloude|clowd|klaud)"#
+    /// ChatGPT and Gemini as Whisper writes them ("chat GPT", "ciat gpt", "Gemelli"). Never "Gemma": that is the local model.
+    private static let chatgptName = #"(?:chat\s*-?\s*g\s*\.?p\s*\.?t|ciat\s*-?\s*g\s*p\s*t|ciatgipiti|gpt|openai|open ai|codex)"#
+    private static let geminiName = #"(?:gemini|jemini|gemigni|gemelli)"#
 
     /// "chiedi a Claude …", "usa Cloud per …", "usa Sonnet per …", "ask Opus …"
     /// → (question, model or nil for the chosen one).

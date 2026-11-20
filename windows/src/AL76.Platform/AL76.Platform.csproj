@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything that touches Windows: hardware, paths, later audio, UI Automation, credentials. -->
+  <PropertyGroup>
+    <!-- The Windows SDK version gives the WinRT voices (Windows.Media.SpeechSynthesis); runs on Windows 10 1809 and later. -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AL76.Platform</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- UI Automation (System.Windows.Automation) for app control. -->
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- With WPF the implicit usings leave out System.IO. -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AL76.Core/AL76.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="3.3.0" />
+    <!-- SoundPlayer, to play the voice. -->
+    <PackageReference Include="System.Windows.Extensions" Version="10.0.0" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The WPF app: windows, tray icon, later HUD, satellite, writing bar, settings, first-run setup. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <!-- Only for the tray icon (NotifyIcon); WPF has none of its own. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>AL-76</AssemblyName>
+    <RootNamespace>AL76.App</RootNamespace>
+    <!-- Made by packaging/make_icons.py, like the MSIX logos. -->
+    <ApplicationIcon>AL-76.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The HUD sphere: three.js in WebView2 (the runtime ships with Windows 11). -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <PackageReference Include="QRCoder" Version="1.8.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The HUD pages next to the exe, in web/hud (the previews stay on the developer's machine). -->
+    <Content Include="../../web/hud/**" Exclude="../../web/hud/anteprima-*.html" LinkBase="web/hud" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AL76.Core/AL76.Core.csproj" />
+    <ProjectReference Include="../AL76.Platform/AL76.Platform.csproj" />
+    <ProjectReference Include="../AL76.Speech/AL76.Speech.csproj" />
+  </ItemGroup>
+</Project>

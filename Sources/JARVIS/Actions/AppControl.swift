@@ -473,6 +473,13 @@ final class AppControl {
 
     /// Keys go only to the frontmost app: if they cannot reach it, the action is not done.
     private func bringToFront(_ app: NSRunningApplication) async -> Bool {
+        // The writing bar takes the keyboard without making AL-76 the active app: while it is key,
+        // keys land in it even with the other app in front (a WhatsApp message asked from the bar
+        // ended up in the bar). It gives the keyboard back and stays open with the answer.
+        if let own = NSApp.keyWindow {
+            own.resignKey()
+            app.activate()
+        }
         if !app.isActive {
             if let url = app.bundleURL {
                 let configuration = NSWorkspace.OpenConfiguration()
@@ -484,7 +491,7 @@ final class AppControl {
         for _ in 0..<10 where NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier {
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier && NSApp.keyWindow == nil
     }
 
     private static func focusIsSecure() -> Bool {

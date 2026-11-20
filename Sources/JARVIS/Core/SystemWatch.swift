@@ -24,6 +24,9 @@ final class SystemWatch {
     private var sampleDay = ""
     private var lid: Bool?
     private var onBattery: Bool?
+    /// When the Mac last woke from sleep: for a minute or so Wi-Fi is still reconnecting
+    /// (17 November: 65 s) and "offline" does not mean the network is really gone.
+    private(set) static var lastWake: Date?
 
     func start() {
         let center = NSWorkspace.shared.notificationCenter
@@ -36,7 +39,10 @@ final class SystemWatch {
             (NSWorkspace.sessionDidBecomeActiveNotification, "sessione di nuovo attiva"),
         ]
         for (name, text) in events {
-            center.addObserver(forName: name, object: nil, queue: nil) { _ in Diagnostics.logSystem(text) }
+            center.addObserver(forName: name, object: nil, queue: nil) { _ in
+                if name == NSWorkspace.didWakeNotification { Self.lastWake = Date() }
+                Diagnostics.logSystem(text)
+            }
         }
         Diagnostics.logSystem("AL-76 avviato, \(Self.describe(lid: Self.lidClosed(), battery: Self.isOnBattery()))")
         let timer = DispatchSource.makeTimerSource(queue: queue)

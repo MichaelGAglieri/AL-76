@@ -1,0 +1,10 @@
+PackageIdentifier: AL76.Assistant
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: AL-76            # TODO: the publisher's name
+PackageName: AL-76
+License: See the repository's LICENSE
+ShortDescription: Voice assistant for study, work and the PC, with local and cloud models.
+Tags: [assistant, voice, whisper, study, productivity]
+ManifestType: defaultLocale
+ManifestVersion: 1.9.0

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anteprima sfera</title>
+<style>
+  :root { --back: #030a14; --panel: #0c1622; --line: #22344a; --accent: #4fdbff; --text: #dde7ee; --dim: #7d8d99; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--back); color: var(--text); font: 14px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
+  header { padding: 16px 20px 6px; }
+  h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header p { margin: 4px 0 0; color: var(--dim); font-size: 13px; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 20px; }
+  figure { margin: 0; background: radial-gradient(circle at 50% 46%, #06182a 0%, var(--back) 70%); border: 1px solid var(--line);
+           border-radius: 14px; padding: 8px; flex: 1 1 360px; max-width: 520px; }
+  canvas { width: 100%; aspect-ratio: 1; display: block; }
+  figcaption { color: var(--dim); font-size: 12px; padding: 6px 4px 2px; display: flex; justify-content: space-between; gap: 8px; }
+  figcaption b { color: var(--accent); font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 20px 20px; align-items: center; }
+  button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #03121c; font-weight: 600; }
+  label { color: var(--dim); display: flex; gap: 6px; align-items: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sfera di AL-76 per Windows</h1>
+  <p>Rifatta in three.js dalla sfera «rete neurale» del Mac, con lo stesso seme: neuroni, assoni e fasce sono negli stessi punti.</p>
+</header>
+<div class="row">
+  <figure><canvas id="full"></canvas><figcaption><span><b>A · Completa</b> — come sul Mac (PC Medio e Alto)</span><span id="full-info"></span></figcaption></figure>
+  <figure><canvas id="light"></canvas><figcaption><span><b>B · Leggera</b> — la geometria ridotta del Mac (PC Base)</span><span id="light-info"></span></figcaption></figure>
+</div>
+<div class="controls" id="states"></div>
+<script type="module">
+  // Always the latest sphere.js while previews are being tuned (no stale cache).
+  const { createSphere } = await import(`./sphere.js?v=${Date.now()}`);
+  const spheres = { full: createSphere(document.getElementById('full'), { detail: 'full' }),
+                    light: createSphere(document.getElementById('light'), { detail: 'light' }) };
+  const states = [['idle', 'Attesa'], ['listening', 'Ascolto'], ['thinking', 'Pensa'], ['acting', 'Agisce'], ['speaking', 'Parla'], ['error', 'Errore']];
+  const bar = document.getElementById('states');
+  let current = 'idle', privacy = false, deepIdle = false;
+  const apply = () => { for (const s of Object.values(spheres)) s.set({ state: current, privacy, deepIdle }); render(); };
+  function render() {
+    bar.innerHTML = '';
+    for (const [id, label] of states) {
+      const b = document.createElement('button');
+      b.textContent = label; b.setAttribute('aria-pressed', String(current === id));
+      b.onclick = () => { current = id; apply(); };
+      bar.append(b);
+    }
+    for (const [name, label, get, set] of [['deep', 'Attesa lunga (6 fps)', () => deepIdle, v => deepIdle = v], ['privacy', 'Privacy', () => privacy, v => privacy = v]]) {
+      const l = document.createElement('label');
+      const c = document.createElement('input'); c.type = 'checkbox'; c.checked = get();
+      c.onchange = () => { set(c.checked); apply(); };
+      l.append(c, label); bar.append(l);
+    }
+  }
+  apply();
+  // A voice and a microphone that rise and fall like speech, for "Parla" and "Ascolto".
+  setInterval(() => {
+    const t = performance.now() / 1000;
+    const speech = Math.max(0, Math.sin(t * 7.3) * 0.5 + Math.sin(t * 2.1) * 0.35 + 0.15) * (Math.sin(t * 0.9) > -0.6 ? 1 : 0.1);
+    for (const s of Object.values(spheres)) s.set({ voice: current === 'speaking' ? speech * 0.5 : 0, mic: current === 'listening' ? speech * 0.4 : 0.02 });
+    for (const [id, s] of Object.entries(spheres))
+      document.getElementById(id + '-info').textContent = `${s.fps.toFixed(0)} fps · ${s.counts.segments.toLocaleString('it')} filamenti`;
+  }, 50);
+</script>
+</body>
+</html>

@@ -26,7 +26,7 @@ the kind is in this repository, and nothing you enter is sent to it.
 | Xcode | yes | free on the Mac App Store; it brings the Swift toolchain and builds the iPhone app |
 | Homebrew | yes | [brew.sh](https://brew.sh); the setup uses it for Ollama and `uv` |
 | An Apple account | yes | your own Apple ID, signed in to Xcode. A free account is enough; see the [7-day expiry](#9-the-7-day-expiry) |
-| A Claude subscription and Claude Code | optional | for the "Claude" brain; without it AL-76 uses only the local model |
+| A Claude, ChatGPT or Google (Gemini) account | optional | for a cloud brain, through its CLI (Claude Code, Codex, Antigravity CLI); without one AL-76 uses only the local model |
 | iPhone or iPad | optional | iOS / iPadOS 18 or later, and a USB cable for installing |
 | Tailscale | optional | to use the phone app away from home, on both devices |
 | Picovoice AccessKey | optional | only for Porcupine instead of Whisper; Porcupine still knows only the word "Jarvis", not the call "Ehi Al" |
@@ -110,6 +110,24 @@ For the Claude brain (optional), install Claude Code and sign in with **your own
 brew install --cask claude-code
 claude auth login --claudeai
 ```
+
+For the ChatGPT brain (optional), install OpenAI's Codex CLI and sign in with **your own** ChatGPT account:
+
+```bash
+brew install --cask codex
+codex login
+```
+
+For the Gemini brain (optional), install Google's Antigravity CLI and run it once to sign in with your Google account. (The older Gemini CLI no longer serves personal accounts since June 2026.)
+
+```bash
+curl -fsSL https://antigravity.google/cli/install.sh | bash
+agy
+```
+
+Then, in AL-76's Settings › Brain, press "Prepara Antigravity per AL-76": it adds to `~/.gemini/antigravity-cli/settings.json` the rule `mcp(jarvis/*)` and four deny rules (`command(*)`, `write_file(*)`, `read_url(*)`, `execute_url(*)`), so Antigravity uses only AL-76's tools: no terminal, no edits, no web pages. The rules also apply if you use agy on your own.
+
+You pick the brain in Settings › Brain, from the menu, or by voice ("Ehi Al, usa ChatGPT", "passa a Gemini", "torna al nucleo locale"). All three get AL-76's tools from the same local MCP server, with no terminal and no file edits.
 
 ## 5. First launch and permissions
 

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MSIX manifest of AL-76 for Windows. make_msix.ps1 fills $VERSION$, $ARCH$, $PUBLISHER$ and $PUBLISHERNAME$:
+     for the Microsoft Store they come from Partner Center (Product identity), for a local test from the test certificate. -->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+         xmlns:desktop2="http://schemas.microsoft.com/appx/manifest/desktop/windows10/2"
+         IgnorableNamespaces="uap rescap desktop desktop2">
+  <Identity Name="AL76.Assistant" Publisher="$PUBLISHER$" Version="$VERSION$" ProcessorArchitecture="$ARCH$" />
+  <Properties>
+    <DisplayName>AL-76</DisplayName>
+    <PublisherDisplayName>$PUBLISHERNAME$</PublisherDisplayName>
+    <Logo>assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+    <!-- The Visual C++ runtime whisper.cpp needs: installed by the Store/winget together with the app. -->
+    <PackageDependency Name="Microsoft.VCLibs.140.00.UWPDesktop" MinVersion="14.0.33519.0"
+                       Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-US" />
+    <Resource Language="it-IT" />
+  </Resources>
+  <Applications>
+    <Application Id="AL76" Executable="AL-76.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="AL-76" Description="Voice assistant for study, work and the PC"
+                          BackgroundColor="transparent" Square150x150Logo="assets\Square150x150Logo.png"
+                          Square44x44Logo="assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <!-- "Start with Windows" in the settings switches this on and off (WindowsSetup.SetStartWithWindows). -->
+        <desktop:Extension Category="windows.startupTask" Executable="AL-76.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="AL76Startup" Enabled="false" DisplayName="AL-76" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Extensions>
+    <!-- The iPhone/iPad link (phone module): only on private networks, so Windows does not ask at the first start. -->
+    <desktop2:Extension Category="windows.firewallRules">
+      <desktop2:FirewallRules Executable="AL-76.exe">
+        <desktop2:Rule Direction="in" IPProtocol="TCP" LocalPortMin="47831" LocalPortMax="47831" Profile="private" />
+      </desktop2:FirewallRules>
+    </desktop2:Extension>
+  </Extensions>
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <Capability Name="privateNetworkClientServer" />
+    <rescap:Capability Name="runFullTrust" />
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+</Package>

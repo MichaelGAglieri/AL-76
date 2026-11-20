@@ -99,19 +99,6 @@ static func splitByX(_ holder: SCNNode) -> (SCNNode, SCNNode) {
     return (half(neg), half(pos))
 }
 
-static func gearPath(teeth: Int, outer: CGFloat, inner: CGFloat, hole: CGFloat) -> NSBezierPath {
-    let p = NSBezierPath()
-    for i in 0..<(teeth * 4) {
-        let a = CGFloat(i) / CGFloat(teeth * 4) * 2 * .pi
-        let r = (i % 4 == 1 || i % 4 == 2) ? outer : inner
-        let pt = NSPoint(x: cos(a) * r, y: sin(a) * r)
-        if i == 0 { p.move(to: pt) } else { p.line(to: pt) }
-    }
-    p.close()
-    p.append(NSBezierPath(ovalIn: NSRect(x: -hole, y: -hole, width: hole * 2, height: hole * 2)).reversed)
-    return p
-}
-
 // MARK: - Thrusters
 
 final class Thruster {
@@ -291,7 +278,7 @@ final class Robot {
     private let earNeg = SCNNode(), earPos = SCNNode()
     private let screen: SCNMaterial
     private var thrusters: [Thruster] = [], feet: [Thruster] = []
-    private let gear = SCNNode(), bubbles = SCNNode(), zs = SCNNode()
+    private let zs = SCNNode()
     private let sparkles = SCNParticleSystem(), smoke = SCNParticleSystem(), sparks = SCNParticleSystem()
     private let effects = SCNNode()
     var face = Face()
@@ -433,18 +420,8 @@ final class Robot {
         holo.transparency = 0.85
         holo.blendMode = .add
         holo.isDoubleSided = true
-        let gearShape = SCNShape(path: { let p = gearPath(teeth: 8, outer: 0.13, inner: 0.1, hole: 0.045); p.flatness = 0.002; return p }(), extrusionDepth: 0.025)
-        gearShape.materials = [holo]
-        gear.geometry = gearShape
-        gear.position = SCNVector3(0.32, 1.12, 0.05)
-        effects.addChildNode(gear)
-        for (i, r) in [0.025, 0.037, 0.05].enumerated() {
-            let b = SCNNode(geometry: SCNSphere(radius: CGFloat(r)))
-            b.geometry?.materials = [holo]
-            b.position = SCNVector3(0.17 + CGFloat(i) * 0.06, 0.72 + CGFloat(i) * 0.12, 0.08)
-            bubbles.addChildNode(b)
-        }
-        effects.addChildNode(bubbles)
+        // 1.30.75 (user request): no blue gear and no blue dots above the head while thinking;
+        // head, eyes and the tapping hand still move as before.
         for _ in 0..<3 {
             let text = SCNText(string: "Z", extrusionDepth: 0.2)
             text.font = NSFont.systemFont(ofSize: 10, weight: .heavy)
@@ -561,7 +538,7 @@ final class Robot {
         let waving = (idle && waveT > 10 && waveT < 12.4 && w < 0.1) || poked
         let spinT = t.truncatingRemainder(dividingBy: 26)
         let pirouette = idle && spinT > 20 && spinT < 21.4 && !grounded
-        // Thinking: the gear drifts from side to side above the head, and head and eyes follow it.
+        // Thinking: head and eyes drift slowly from side to side, as if following a thought.
         let gx = sin(t * 0.55)
         let glance = ease("glance", w > 0.5 && t.truncatingRemainder(dividingBy: 7) > 5.2 ? 1 : 0, 0.08)
         let happySpin = mood == .happy && t.truncatingRemainder(dividingBy: 4) < 1.1
@@ -629,16 +606,6 @@ final class Robot {
         screen.emission.intensity = sleep ? 0.6 : 1.3
 
         // Effects.
-        gear.opacity = ease("gear", think ? 1 : 0, 0.08)
-        gear.eulerAngles = SCNVector3(0, sin(t * 0.8) * 0.4, -t * 2)
-        gear.position = SCNVector3(gx * 0.3, 1.12, 0.05)
-        for (i, b) in bubbles.childNodes.enumerated() {
-            let on = think && (t * 1.6).truncatingRemainder(dividingBy: 3.2) > CGFloat(i) * 0.6
-            b.opacity = ease("bub\(i)", on ? 0.9 : 0, 0.2)
-            // A trail from the top of the head to the gear.
-            let f = 0.3 + CGFloat(i) * 0.2
-            b.position = SCNVector3(gx * 0.3 * f + 0.05, 0.86 + (1.02 - 0.86) * f, 0.08)
-        }
         for (i, z) in zs.childNodes.enumerated() {
             let p = (t * 0.35 + CGFloat(i) / 3).truncatingRemainder(dividingBy: 1)
             z.position = SCNVector3(0.18 + p * 0.25 + sin(p * 6) * 0.04, 0.75 + p * 0.55, 0.05)
@@ -763,24 +730,32 @@ final class BubbleView: NSView {
             a = NSPoint(x: x + inward * 24, y: r.maxY - 1)
             b = NSPoint(x: x + inward * 3, y: r.maxY - 14)
         } else {
-            a = NSPoint(x: x + inward * 3, y: tip.y + 9)
-            b = NSPoint(x: x + inward * 3, y: tip.y - 9)
+            // From the side: the base stays clear of the rounded corners, where the edge curves away
+            // and left a small notch (16 November).
+            a = NSPoint(x: x + inward * 6, y: min(tip.y + 9, r.maxY - 14))
+            b = NSPoint(x: x + inward * 6, y: max(tip.y - 9, r.minY + 14))
         }
         tail.move(to: a)
         tail.line(to: tip)
         tail.line(to: b)
         tail.close()
-        path.append(tail)
-        path.windingRule = .nonZero
-        // One white shape, no outline: a soft shadow gives the edge on any background.
+        // One white shape, no outline: a soft shadow gives the edge on any background. Bubble and tail are
+        // filled one by one inside a transparency layer, which then gets the shadow as a whole: appended into
+        // one path, the mirrored tail (bubble on the left) turned the other way and cancelled the overlap,
+        // leaving a transparent hole beside the tail (16 November).
         let shadow = NSShadow()
         shadow.shadowBlurRadius = 4
         shadow.shadowOffset = NSSize(width: 0, height: -1)
         shadow.shadowColor = NSColor(white: 0, alpha: 0.3)
         NSGraphicsContext.current?.saveGraphicsState()
         shadow.set()
-        NSColor(white: 1, alpha: 0.97).setFill()
+        let cg = NSGraphicsContext.current?.cgContext
+        cg?.setAlpha(0.97)   // once for the whole shape: where bubble and tail overlap it is not denser
+        cg?.beginTransparencyLayer(auxiliaryInfo: nil)
+        NSColor.white.setFill()
         path.fill()
+        tail.fill()
+        cg?.endTransparencyLayer()
         NSGraphicsContext.current?.restoreGraphicsState()
     }
 }
@@ -810,6 +785,11 @@ final class Bubble {
     /// The answer that was already read and faded out: it must not come back (16 November: it reappeared a few
     /// seconds after fading, typed again from the start). Only new text for the same answer reopens it.
     private var doneID: UUID?, doneText = ""
+    /// Closed from the menu: that answer does not come back, not even if it goes on.
+    private var dismissedID: UUID?
+    private(set) var lastText = "", lastID: UUID?
+
+    var isShown: Bool { panel.isVisible }
 
     func say(_ text: String, at t: CGFloat) { show(text, id: UUID(), at: t) }
 
@@ -817,7 +797,9 @@ final class Bubble {
     /// a new id starts a new bubble.
     func show(_ text: String, id: UUID, at t: CGFloat) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { return }
+        guard !clean.isEmpty, id != dismissedID else { return }
+        lastText = clean
+        lastID = id
         if id == doneID {
             // Faded already: back only if the answer went on, and then from where it had arrived.
             guard clean.count > doneText.count, clean.hasPrefix(doneText) else { return }
@@ -848,6 +830,21 @@ final class Bubble {
     func hide() {
         panel.orderOut(nil)
         shownID = nil
+    }
+
+    /// "Nascondi nuvoletta" from the menu.
+    func dismiss() {
+        dismissedID = shownID ?? lastID
+        hide()
+    }
+
+    /// "Mostra nuvoletta" from the menu: that answer (the last one shown, if nil) again, from the start.
+    func replay(_ text: String? = nil, id: UUID? = nil, at t: CGFloat) {
+        guard let id = id ?? lastID, let text = text ?? (lastText.isEmpty ? nil : lastText) else { return }
+        dismissedID = nil
+        doneID = nil
+        shownID = nil
+        show(text, id: id, at: t)
     }
 
     /// Advances the typing and keeps the bubble beside the mouth (a point on screen). Returns true while typing.

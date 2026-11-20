@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>AL-76 nucleo</title>
+<style>
+  /* The Mac's NUCLEUS (ReactorPanel + CompactReactorView): the window is exactly as large as the style, with an
+     optional dark disc behind (flattened to an ellipse in the satellite's low window). Transparent elsewhere. */
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent;
+               user-select: none; -webkit-user-select: none; cursor: default; }
+  #disc { position: absolute; inset: 0; display: none;
+          background: radial-gradient(ellipse closest-side at center, rgba(3, 10, 20, 0.92) 0%, rgba(3, 10, 20, 0.75) 50%, rgba(3, 10, 20, 0) 100%); }
+  body.disc #disc { display: block; }
+  canvas { position: absolute; display: block; }
+  /* Reactor: 8 points of margin inside the 170 window, as on the Mac. */
+  body.reattore canvas { left: 8px; top: 8px; width: calc(100% - 16px); height: calc(100% - 16px); }
+  body.satellite canvas, body.robottino canvas { left: 0; top: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="disc"></div>
+<canvas id="nucleus"></canvas>
+<script type="module">
+  // The app opens this page as nucleus.html?style=reattore|satellite|robottino&disc=1&model=<folder URL>.
+  const host = window.chrome?.webview;
+  const post = (message) => host?.postMessage(message);
+  const params = new URLSearchParams(location.search);
+  let style = params.get('style') ?? 'reattore';
+  const canvas = document.getElementById('nucleus');
+  let nucleus, robot = null;
+
+  async function create() {
+    document.body.className = style + (params.get('disc') === '1' && style !== 'robottino' ? ' disc' : '');
+    if (style === 'robottino') {
+      try {
+        const { createRobot } = await import('./robot.js');
+        robot = nucleus = await createRobot(canvas, { model: params.get('model') });
+        return;
+      } catch (e) {
+        // Another model, or a broken one: the satellite, as on the Mac.
+        post({ type: 'error', text: `robottino: ${e?.message ?? e}` });
+        style = 'satellite';
+        document.body.className = 'satellite' + (params.get('disc') === '1' ? ' disc' : '');
+        const fresh = canvas.cloneNode();
+        canvas.replaceWith(fresh);
+        return createNamed(fresh);
+      }
+    }
+    return createNamed(canvas);
+  }
+  async function createNamed(target) {
+    if (style === 'satellite') nucleus = (await import('./satellite.js')).createSatellite(target);
+    else nucleus = (await import('./reactor.js')).createReactor(target);
+  }
+  try { await create(); }
+  catch (e) { post({ type: 'error', text: String(e?.message ?? e) }); }
+  post({ type: 'ready', style });
+
+  // From the app: { state, voice, mic, deepIdle, privacy, walk, grounded, lean, flames } 30 times a second, and
+  // { type: 'hit', x, y } to know whether the mouse is on the nucleus (elsewhere clicks go to the windows below).
+  host?.addEventListener('message', (e) => {
+    const m = e.data;
+    if (m.type === 'hit') { post({ type: 'hit', on: isOn(m.x, m.y) }); return; }
+    if (m.type === 'poke') { robot?.poke(); return; }
+    nucleus?.set(m);
+  });
+  /** On the nucleus: the robot's model itself, or the ellipse of the reactor and the satellite (Mac: contentShape). */
+  function isOn(x, y) {
+    if (robot) return robot.hit(x, y);
+    const w = innerWidth, h = innerHeight, dx = (x - w / 2) / (w / 2), dy = (y - h / 2) / (h / 2);
+    return dx * dx + dy * dy <= 1;
+  }
+  // The robot's measures for the window: mouth and head (speech bubble), feet (the edge it walks on), stride.
+  if (robot) setInterval(() => post({ type: 'metrics', ...robot.metrics() }), 1000 / 30);
+  setInterval(() => nucleus && post({ type: 'fps', fps: Math.round(nucleus.fps * 10) / 10 }), 10000);
+
+  // Mouse as on the Mac: drag moves it (after 3 points), a click opens the sphere (the robot: a pat, and a
+  // double click opens the sphere), the right button opens the menu. Positions on the screen, for the app.
+  // A press ends with its release; one lost (the window hid, a slow virtual machine) must never leave the nucleus
+  // stuck to the mouse or open the sphere later: without the button down there is no press, and a click is short.
+  let down = null, dragging = false, trail = [];
+  const cancel = () => { if (down && dragging) post({ type: 'release', vx: 0, vy: 0 }); else if (down) post({ type: 'cancel' }); down = null; dragging = false; };
+  addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    down = { x: e.screenX, y: e.screenY, t: e.timeStamp };
+    dragging = false; trail = [];
+    document.body.setPointerCapture(e.pointerId);
+    post({ type: 'press', x: e.screenX, y: e.screenY });
+  });
+  addEventListener('pointermove', (e) => {
+    if (!down) return;
+    if (!(e.buttons & 1)) { cancel(); return; }
+    if (!dragging && Math.hypot(e.screenX - down.x, e.screenY - down.y) <= 3) return;
+    dragging = true;
+    trail.push({ t: e.timeStamp, x: e.screenX, y: e.screenY });
+    if (trail.length > 8) trail.shift();
+    post({ type: 'move', x: e.screenX, y: e.screenY });
+  });
+  addEventListener('pointerup', (e) => {
+    if (!down || e.button !== 0) return;
+    let vx = 0, vy = 0;
+    const a = trail[0], b = trail[trail.length - 1];
+    if (a && b && b.t - a.t > 10) { vx = (b.x - a.x) / (b.t - a.t) * 1000; vy = (b.y - a.y) / (b.t - a.t) * 1000; }
+    const click = !dragging && e.timeStamp - down.t < 700;
+    if (dragging) post({ type: 'release', vx, vy });
+    else if (!click) post({ type: 'cancel' });
+    else if (robot) { robot.poke(); post({ type: 'cancel' }); }
+    else post({ type: 'open' });
+    down = null; dragging = false;
+  });
+  addEventListener('pointercancel', cancel);
+  addEventListener('lostpointercapture', () => { if (down) cancel(); });
+  addEventListener('dblclick', () => { if (robot) post({ type: 'open' }); });
+  addEventListener('contextmenu', (e) => { e.preventDefault(); post({ type: 'menu' }); });
+</script>
+</body>
+</html>
