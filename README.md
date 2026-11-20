@@ -34,7 +34,11 @@ AirPods, Keychain/iCloud) and the Mac-only private channel of Robot Console.
 
 - **Download:** the installer for ordinary PCs (x64) is on the [Releases page](../../releases), in the latest
   `windows-v…` release.
-- **Guide, features, privacy and building:** [`windows/README.md`](windows/README.md).
+- **Guide, features and privacy:** [`windows/README.md`](windows/README.md).
+- **Source and your own installer:** all the code is in [`windows/`](windows) (C#, MIT licence). On a Windows PC
+  with the .NET 10 SDK and Inno Setup, `windows\scripts\build.ps1` runs the tests, builds the app and makes the
+  installer; with `-AppName`, `-Publisher` and `-AppId` it makes your own version that installs next to the
+  official one. Step by step: [Build it yourself](windows/README.md#build-it-yourself).
 - **Status:** preview. It is covered by automated tests and has run in a Windows virtual machine, but has not
   been tried on a real PC yet.
 

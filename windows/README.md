@@ -70,27 +70,91 @@ models and the local model; models are downloaded at first need into `%LOCALAPPD
 - **Export diagnostics** (tray menu) writes a zip to the desktop without personal data: quoted phrases, e-mails,
   addresses, user folders and names are removed, and the action log is not included.
 
-## Building (on the Mac or on Windows)
+## Build it yourself
 
-```bash
-windows/scripts/build.sh x64      # tests + win-x64 into windows/out/win-x64 (ordinary PCs)
-windows/scripts/build.sh          # tests + win-arm64 into windows/out/win-arm64 (Arm64 PCs, the Mac's VM)
-windows/scripts/build.sh all      # both
+All the source of the Windows version is in this folder, under the repository's [MIT licence](../LICENSE): you can
+change it and make your own installer. Everything below happens on a Windows 10/11 PC.
+
+### 1. What you need
+
+```powershell
+winget install Microsoft.DotNet.SDK.10      # .NET 10 SDK (build and tests)
+winget install JRSoftware.InnoSetup         # Inno Setup 6 (the installer)
+winget install Git.Git                      # to download the code (or use "Download ZIP" on GitHub)
 ```
 
-The output is self-contained (no .NET needed on the PC). A `dev.flag` file next to the exe enables the
-development tools; the packaging scripts drop it.
+Visual Studio 2022/2026 or VS Code with the C# extension is handy for editing (`windows\AL76.sln`), but not required.
 
-## Packaging (on Windows)
+### 2. Get the code
 
-- **Microsoft Store / MSIX:** `windows/packaging/make_msix.ps1 -Rid win-x64` (needs the Windows SDK). The
-  manifest declares the Visual C++ runtime, the firewall rule for the phone link (private networks only) and
-  the start-up task. `-TestCertificate` signs it with a local certificate to try it.
-- **Classic installer** (the one on the Releases page): `iscc /DRid=win-x64 /DArch=x64 windows/packaging/AL-76.iss`
-  (Inno Setup 6), after `build.sh x64`; per user, no administrator rights. It writes
-  `windows/out/AL-76-Setup-<version>-x64.exe`.
+Copy the address from the green **Code** button at the top of this repository on GitHub, then:
+
+```powershell
+git clone <the address you copied>
+cd AL-76_ex-JARVIS
+```
+
+Without Git: **Code › Download ZIP**, extract it, and open PowerShell in the extracted folder.
+
+### 3. Build the app and the installer
+
+```powershell
+.\windows\scripts\build.ps1
+```
+
+It runs the tests, builds a self-contained app (no .NET needed on the PC that installs it) into
+`windows\out\win-x64` and the installer `windows\out\AL-76-Setup-0.1.0-x64.exe`. If PowerShell refuses to run
+scripts, start it once with `powershell -ExecutionPolicy Bypass -File .\windows\scripts\build.ps1`.
+
+| Option | What it does |
+|---|---|
+| `-Arch arm64` | for Arm64 PCs (Snapdragon) instead of x64 |
+| `-SkipTests` | skips the tests (faster while you try changes) |
+| `-NoInstaller` | only the app in `windows\out\<rid>`: start `AL-76.exe` from there |
+| `-AppName "My AL"` `-Publisher "Your name"` `-AppId <GUID>` | your own installer, see below |
+
+To try a change without installing: `dotnet run --project windows\src\AL76.App`, or `-NoInstaller` and start
+`windows\out\win-x64\AL-76.exe`.
+
+### 4. Your own installer
+
+With the defaults the installer is the official AL-76: installing it replaces AL-76 on that PC. For your own
+version give it another name and id, so it installs next to the official one and updates only itself:
+
+```powershell
+$id = [guid]::NewGuid()          # once: write it down and reuse it for every later version
+.\windows\scripts\build.ps1 -AppName "AL-76 Lab" -Publisher "Your name" -AppId $id
+```
+
+The result is `windows\out\AL-76-Lab-Setup-0.1.0-x64.exe`, installed in `%LOCALAPPDATA%\Programs\AL-76 Lab` with
+its own Start menu entry and uninstall entry. The version number is in `windows\Directory.Build.props` and
+`windows\packaging\AL-76.iss` (`AppVersion`). Both versions keep their settings in the same `%APPDATA%\AL-76`
+folder; the installer is not signed, so Windows SmartScreen warns as for the official one (sign it with your own
+certificate if you distribute it).
+
+### 5. Where to change what
+
+| To change | Look in |
+|---|---|
+| Voice commands answered without a model | `src/AL76.Core/Commands` (`DirectCommand.cs`, `InstantCommands.cs`) |
+| The tools the brains can use | `src/AL76.Core/Tools` (one `ToolDef` per tool; `ToolRegistry.cs` registers them) |
+| Settings pages and texts | `src/AL76.App/Pages.cs`, `src/AL76.Core/locales/it.json` and `en.json` |
+| What needs a "yes" | `src/AL76.Core/Safety/ConfirmationPolicy.cs` |
+| Modules (Maker, phone, university portal) | `src/AL76.Core/Modules`, `src/AL76.Core/Maker`, `src/AL76.Core/Portals` |
+| The sphere and the nucleus | `web/hud` (three.js), `src/AL76.App/NucleusWindow.cs` |
+
+Add a test in `tests/AL76.Core.Tests` for what you change: `dotnet test windows\tests\AL76.Core.Tests`.
+
+### Other ways to package
+
+- **On the Mac** (how the official builds are made): `windows/scripts/build.sh x64` builds the app with the .NET
+  SDK for macOS (`all` for x64 and Arm64); the installer step still needs Windows.
+- **Microsoft Store / MSIX:** `windows/packaging/make_msix.ps1 -Rid win-x64` (needs the Windows SDK). The manifest
+  declares the Visual C++ runtime, the firewall rule for the phone link (private networks only) and the start-up
+  task. `-TestCertificate` signs it with a local certificate to try it.
 - **winget:** drafts in `windows/packaging/winget`; fill in publisher, address and SHA256 of the release.
 - Icons and logos: `python3 -I windows/packaging/make_icons.py`.
+- A `dev.flag` file next to the exe enables the development tools; `build.ps1` and the installer leave it out.
 
 ## Layout
 
@@ -102,6 +166,8 @@ development tools; the packaging scripts drop it.
 | `src/AL76.App` | The WPF app: tray, HUD sphere (three.js in WebView2), nucleus, settings, setup, phone host. |
 | `tests/AL76.Core.Tests` | xUnit tests of the core (`dotnet test windows/tests/AL76.Core.Tests`). |
 | `packaging` | MSIX manifest, scripts, Inno Setup, winget drafts, logos. |
+| `scripts` | `build.ps1` (Windows: tests, app, installer), `build.sh` (the same on the Mac, without the installer). |
+| `web/hud` | The sphere and the nucleus drawn in WebView2 (three.js). |
 
 ## Licences of the parts
 
