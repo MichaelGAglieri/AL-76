@@ -32,6 +32,8 @@ final class ToolBox {
     private var trustedHosts: Set<String> = []
     /// Where the current request comes from (voice, claude, test): it goes to the log.
     var currentSource = "voce"
+    /// The tools run since the request began, for the request log (RequestLog).
+    var usedTools: [String] = []
     private var fromPhone: Bool { currentSource.contains("iphone") }
     /// Everything that moves or heats something real. STOP and reading the state stay allowed.
     private static let notFromPhone: Set<String> = ["robot_connect", "robot_plan", "robot_execute", "robot_enable", "robot_joint", "robot_sequence", "robot_home", "arduino_upload",
@@ -238,6 +240,8 @@ final class ToolBox {
               "start_time": str("It began at HH:MM"), "day": str("Day of start_time: today, yesterday or YYYY-MM-DD"),
               "minutes": ["type": "integer", "description": "Its real length in minutes (closes it if it would end in the past)"]]),
         tool("stop_activity", "End the session currently being tracked. NOT for a break: for \"pausa\" use pause_activity.", [:]),
+        tool("delete_activity", "Delete a session recorded by mistake or with the wrong name (\"elimina la sessione di fisica\", \"cancella l'ultima sessione\"): the most recent with that name, even the one in progress, otherwise the last one. Its report goes too if no other session has that name.",
+             ["name": str("Which session; default the last one")]),
         tool("pause_activity", "Pause the current study/work session for a break (\"pausa\", \"facciamo una pausa\"): the session stays open, breaks are counted, and after the given minutes AL-76 says the break is over and asks to resume.",
              ["minutes": ["type": "integer", "description": "Length of the break, default 10"]]),
         tool("resume_activity", "Resume the paused session (\"ricominciamo\", \"riprendiamo\").", [:]),
@@ -343,6 +347,7 @@ final class ToolBox {
 
     /// Runs a tool and records it in the security log.
     func run(_ call: ToolCall) async -> ToolOutcome {
+        usedTools.append(call.name)
         if let ability = Ability.of(tool: call.name), blockedAbilities.contains(ability) {
             Security.audit("rifiutato dai permessi", tool: call.name, arguments: call.arguments, source: currentSource, detail: ability.rawValue)
             return .result(ability.refusal)
@@ -475,6 +480,11 @@ final class ToolBox {
             return .result(activity.edit(name: a.string("name"), newName: a.string("new_name"),
                                          category: a.string("category").flatMap(ActivityTracker.Category.init(rawValue:)),
                                          start: start, minutes: a.number("minutes").map { Int($0) }))
+        case "delete_activity":
+            let wasOpen = activity.current != nil
+            let result = activity.delete(name: a.string("name"))
+            if wasOpen, activity.current == nil { onBreakTimer?(0) }   // the open one went: no break timer for it
+            return .result(result)
         case "stop_activity":
             onBreakTimer?(0)
             return .result(activity.stop())

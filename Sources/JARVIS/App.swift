@@ -23,38 +23,20 @@ struct JarvisApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        MenuBarExtra {
-            Button("Mostra HUD") { delegate.showHUD() }
-            Button("Riduci a SATELLITE") { delegate.showCompact() }
-            Button("Parla (⌃⌥Spazio)") { delegate.assistant.pushToTalk() }
-            Button("Scrivi (⌃⌥T)") { delegate.typeBar.show() }
-            Button("Nuova conversazione") { delegate.assistant.resetConversation() }
-            Button(delegate.assistant.privacyMode ? "Esci dalla modalità privacy (⌃⌥P)" : "Modalità privacy (⌃⌥P)") {
-                delegate.assistant.togglePrivacy()
-            }
-            Picker("Cervello", selection: Binding(get: { delegate.assistant.brain }, set: { delegate.assistant.setBrain($0) })) {
-                Text("Nucleo locale").tag(Assistant.Brain.local)
-                Text("Claude").tag(Assistant.Brain.claude)
-                Text("ChatGPT").tag(Assistant.Brain.chatgpt)
-                Text("Gemini").tag(Assistant.Brain.gemini)
-            }
-            Divider()
-            Section("Schede") { PanelMenuItems(panels: delegate.panels) }
-            Divider()
-            SettingsLink { Text("Impostazioni…") }
-            Button("Configurazione guidata…") { delegate.onboarding.show() }
-            Divider()
-            Button("Esci da AL-76") { NSApp.terminate(nil) }
-        } label: {
-            Image(systemName: "circle.circle")
-        }
-        // The same rows in the menu bar on the left, while JARVIS is the frontmost app.
-        .commands {
-            CommandMenu("Schede") { PanelMenuItems(panels: delegate.panels) }
-        }
-
+        // The menu-bar icon is an NSStatusItem made by the AppDelegate (1.30.81): the robot's head in colour,
+        // with the one quick menu. On the left, while AL-76 is in front, the "Plancia" menu.
         Settings {
             SettingsView(assistant: delegate.assistant)
+        }
+        .commands {
+            CommandMenu("Plancia") {
+                Button("Apri plancia (⌃⌥K)") { delegate.plancia.open() }
+                Divider()
+                ForEach(Array(PlanciaArea.allCases.enumerated()), id: \.offset) { index, area in
+                    Button(area.title) { delegate.plancia.open(area) }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                }
+            }
         }
     }
 }
@@ -62,8 +44,11 @@ struct JarvisApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let assistant = Assistant()
-    /// The panels (Frasi, Registro, …) as movable windows, opened from the menu bar.
-    lazy var panels = PanelWindows(assistant: assistant)
+    /// The Plancia (1.30.81): one window for dialogue, day, status and thought; it replaces the seven panels.
+    lazy var plancia = Plancia(assistant: assistant)
+    /// The menu-bar icon: the robot's head, with the one quick menu.
+    private var statusItem: NSStatusItem?
+    fileprivate let statusMenu = NSMenu()
     private var window: HUDWindow?
     /// The bar to type to JARVIS, hung under the SATELLITE or next to the sphere's window.
     lazy var typeBar = TypeBar(assistant: assistant)
@@ -116,7 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate()
         }
         updateCompactVisible()
-        panels.anchor = { [weak self] in self?.jarvisFrame() }
+        plancia.anchor = { [weak self] in self?.jarvisFrame() }
+        setUpQuickMenu()
         typeBar.anchor = { [weak self] in
             guard let self else { return nil }
             if let window = self.window, window.isVisible { return .init(window: window, isHUD: true) }
@@ -124,7 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let near = self.nucleus(on: self.screenAtMouse)
             return (near?.isVisible == true ? near : self.reactors.values.first { $0.isVisible }).map { .init(window: $0, isHUD: false) }
         }
-        panels.restore()
+        plancia.restore()
         SystemWatch.shared.start()
         assistant.boot()
         enableLaunchAtLoginOnce()
@@ -140,6 +126,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.window?.orderFrontRegardless()
             }
         }
+    }
+
+    /// The one quick menu: the menu-bar icon, and what the right-click menus need to know.
+    private func setUpQuickMenu() {
+        QuickMenu.assistant = assistant
+        QuickMenu.sphereOpen = { [weak self] in self?.window?.isVisible == true }
+        QuickMenu.openSphere = { [weak self] in self?.showHUD() }
+        QuickMenu.closeSphere = { [weak self] in self?.showCompact() }
+        QuickMenu.showOnboarding = { [weak self] in self?.onboarding.show() }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.image = RobotHeadIcon.image()
+        item.button?.toolTip = "AL-76"
+        statusMenu.delegate = self
+        item.menu = statusMenu
+        statusItem = item
     }
 
     /// Where JARVIS is on screen now: the HUD if open, otherwise the SATELLITE of the main display.
@@ -415,4 +416,12 @@ final class HUDWindow: NSWindow {
     }
 
     override func cancelOperation(_ sender: Any?) { orderOut(nil) }
+}
+
+/// The menu-bar icon's menu is filled again each time it opens: ticks and names always current.
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusMenu else { return }
+        QuickMenu.fill(menu)
+    }
 }

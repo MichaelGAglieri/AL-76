@@ -69,7 +69,7 @@ public sealed class ActivityTracker
         {
             string closed = CloseOpen(began ?? now, italian);
             var start = began is DateTime b && b <= now && b > now.AddHours(-12) ? b : now;
-            var s = new Session(sessions.Count == 0 ? 1 : sessions.Max(x => x.Id) + 1, name.Trim(), kind, start);
+            var s = new Session(sessions.Count == 0 ? 1 : sessions.Max(x => x.Id) + 1, KnownName(name.Trim()), kind, start);
             sessions.Add(s);
             Save();
             string last = sessions.LastOrDefault(x => x.Id != s.Id && Same(x.Name, s.Name) && x.Report.Length > 0)?.Report ?? "";
@@ -99,11 +99,58 @@ public sealed class ActivityTracker
     {
         lock (gate)
         {
-            if (Open is null) return italian ? "Non c'è una sessione in corso." : "No session in progress.";
+            if (Open is not { } open) return italian ? "Non c'è una sessione in corso." : "No session in progress.";
             string text = CloseOpen(now, italian).Trim();
             Save();
+            // Under two minutes (Mac 1.30.79: 49 s of a session started with a misheard name) there is nothing to
+            // report: only how to remove it if it was a mistake.
+            if (sessions.Last(x => x.Id == open.Id).Length(now) < ReportMinimum)
+                return text + (italian ? " Se era per sbaglio, di': elimina l'ultima sessione." : " If it was a mistake, say: delete the last session.");
             return text + (italian ? " Se vuoi, dimmi dove sei arrivato e lo ricordo per la prossima volta." : " If you like, tell me where you got to and I will remember it next time.");
         }
+    }
+
+    /// <summary>Below this a closed session asks for no report.</summary>
+    public static readonly TimeSpan ReportMinimum = TimeSpan.FromMinutes(2);
+
+    /// <summary>"Elimina la sessione di fisica", "elimina l'ultima sessione" (Mac 1.30.79): the most recent session with
+    /// that name (even the open one, or a name a letter or two away), or the last one. Its report goes with it.</summary>
+    public string Delete(string? name, bool italian)
+    {
+        lock (gate)
+        {
+            int index = name is { Length: > 0 } ? sessions.FindLastIndex(x => Close(StudyPlan.Key(x.Name), StudyPlan.Key(name))) : sessions.Count - 1;
+            if (index < 0)
+                return name is { Length: > 0 } ? (italian ? $"Nessuna sessione «{name}» da eliminare." : $"No \"{name}\" session to delete.")
+                                               : (italian ? "Nessuna sessione da eliminare." : "No session to delete.");
+            var removed = sessions[index];
+            sessions.RemoveAt(index);
+            if (removed.End is null) breakTimer?.Dispose();
+            Save();
+            return italian
+                ? $"Eliminata la sessione «{removed.Name}» del {removed.Start:dd/MM} delle {removed.Start:HH:mm}" + (removed.End is null ? " (era in corso)." : $", {Spoken(removed.Length(removed.End.Value), true)}.")
+                : $"Deleted the \"{removed.Name}\" session of {removed.Start:MM/dd} at {removed.Start:HH:mm}" + (removed.End is null ? " (it was in progress)." : $", {Spoken(removed.Length(removed.End.Value), false)}.");
+        }
+    }
+
+    /// <summary>A name Whisper wrote a little differently from one already used becomes that one ("Chimico Organica"
+    /// for "Chimica Organica", Mac 1.30.79). Numbers must be the same: "Fisica 2" is not "Fisica 1".</summary>
+    public string KnownName(string name)
+    {
+        string key = StudyPlan.Key(name);
+        lock (gate)
+        {
+            if (key.Length < 5 || sessions.Any(x => StudyPlan.Key(x.Name) == key)) return name;
+            return sessions.LastOrDefault(x => Close(StudyPlan.Key(x.Name), key))?.Name ?? name;
+        }
+    }
+
+    /// <summary>One letter of difference every eight (at least one), the same digits, the same number of words.</summary>
+    private static bool Close(string a, string b)
+    {
+        if (a == b) return true;
+        if (!a.Where(char.IsDigit).SequenceEqual(b.Where(char.IsDigit)) || a.Split(' ').Length != b.Split(' ').Length) return false;
+        return Voice.TextTools.Distance(a, b) <= Math.Max(1, Math.Min(a.Length, b.Length) / 8);
     }
 
     public string Pause(int minutes, DateTime now, bool italian)

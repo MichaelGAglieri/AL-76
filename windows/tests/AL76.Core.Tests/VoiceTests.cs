@@ -7,6 +7,49 @@ public class WakePhraseTests
 {
     private readonly WakePhrase al = new("Ehi Al");
 
+    /// <summary>A renamed assistant (Windows test, 23/11): any name the user chose in the setup, as Whisper writes it.</summary>
+    [Theory]
+    [InlineData("Ehi Zephyr", "Ehi Zephyr, che ore sono?", "che ore sono")]
+    [InlineData("Ehi Zephyr", "Zephyr, che ore sono?", "che ore sono")]          // a long name alone
+    [InlineData("Ehi Zephyr", "Ehi Zefir, che tempo fa?", "che tempo fa")]      // the same sound spelt otherwise
+    [InlineData("Ehi Zephyr", "Hey Zepir, apri Word.", "apri Word")]            // a letter lost
+    [InlineData("Ehi Zephyr", "Ehi Zeph yr, spegni la luce", "spegni la luce")] // the name split in two
+    [InlineData("Ehi Zephyr", "Zephyr.", "")]
+    [InlineData("Ehi Kira", "Ehi Chira, che ore sono?", "che ore sono")]
+    [InlineData("Ehi Kira", "Hey Kyra che giorno è", "che giorno è")]
+    [InlineData("Ehi mio Orione", "Ehi mio Orione, accendi la luce", "accendi la luce")]   // a call of three words
+    [InlineData("Ehi mio Orione", "Hey mio Orione che ore sono", "che ore sono")]
+    [InlineData("Ehi mio Orione", "Orione, che ore sono?", "che ore sono")]
+    [InlineData("Ciao Galileo", "Ciao Galileo, che ore sono?", "che ore sono")]
+    [InlineData("Galileo", "Galileo che ore sono", "che ore sono")]
+    [InlineData("Ehi Franco", "Ehi Franco, che ore sono?", "che ore sono")]
+    [InlineData("Ehi Franco", "Hey Franco che tempo fa", "che tempo fa")]
+    [InlineData("Ehi Franco", "Franco, accendi la luce.", "accendi la luce")]
+    [InlineData("Ehi Franco", "Ei Franko.", "")]             // a call of one word
+    [InlineData("Ehi Zephyr", "Ehi Al, che ore sono?", "che ore sono")]         // "Ehi Al" always works too
+    [InlineData("Ehi mio Orione", "Eyal, apri la musica.", "apri la musica")]
+    public void ACustomCallIsHeard(string call, string heard, string command) => Assert.Equal(command, new WakePhrase(call).Command(heard));
+
+    [Theory]
+    [InlineData("Ehi Zephyr", "ho visto un film ieri")]
+    [InlineData("Ehi Zephyr", "domani parlo con Zephyr")]
+    [InlineData("Ehi Kira", "Kira, che ore sono?")]                 // a short name needs the greeting
+    [InlineData("Ehi Kira", "ehi Carla che fai")]
+    [InlineData("Ehi mio Orione", "ehi mio caro, come stai")]
+    [InlineData("Galileo", "ho letto di Galileo")]
+    public void ACustomCallIsNotHeardByChance(string call, string heard) => Assert.Null(new WakePhrase(call).Command(heard));
+
+    [Theory]
+    [InlineData("AL-76", "Ehi Al", "Orione", "Ehi Al", "Ehi Orione")]          // renamed, call left as it was
+    [InlineData("Orione", "Ehi Orione", "Nova", "Ehi Orione", "Ehi Nova")]
+    [InlineData("AL-76", "Ehi Al", "Orione", "Ok computer", "Ok computer")]    // a call of their own stays
+    [InlineData("AL-76", "Jarvis", "Orione", "Jarvis", "Jarvis")]             // a call unrelated to the name stays
+    [InlineData("Orione", "Ehi Orione", "AL-76", "Ehi Orione", "Ehi Al")]
+    [InlineData("AL-76", "Ehi Al", "AL-76", "Ehi Al", "Ehi Al")]
+    [InlineData("AL-76", "Ehi Al", "Franco", "Ehi Al", "Ehi Franco")]          // a name saved by 0.1.0, at start-up
+    public void TheCallFollowsTheName(string oldName, string oldCall, string newName, string newCall, string expected) =>
+        Assert.Equal(expected, AL76.Core.Setup.SetupFlow.CallForName(oldName, oldCall, newName, newCall));
+
     [Theory]
     [InlineData("Ehi Al, che ore sono?", "che ore sono")]
     [InlineData("Hey Al che ore sono", "che ore sono")]
@@ -328,5 +371,143 @@ public class StreamingTests
         Assert.Equal([100, 200, 300], voice.Played);
         Assert.True(r.FirstAudio < TimeSpan.FromMilliseconds(450), $"first audio {r.FirstAudio}");
         Assert.True(r.Elapsed < TimeSpan.FromMilliseconds(1500), $"total {r.Elapsed}");   // overlapped: 0.2 + 3 × 0.3, not 3 × 0.5
+    }
+}
+
+public class SettingsRequestTests
+{
+    [Theory]
+    [InlineData("impostazioni", true)]
+    [InlineData("Apri le impostazioni.", true)]
+    [InlineData("puoi aprire le impostazioni?", true)]
+    [InlineData("Open settings", true)]
+    [InlineData("cambia le impostazioni della stampante", false)]
+    [InlineData("come va lo studio?", false)]
+    public void OpensTheSettingsOnlyWhenAsked(string said, bool expected) => Assert.Equal(expected, AL76.Core.Assistant.AsksForSettings(said));
+}
+
+public class GeminiQuickModelTests
+{
+    [Fact]
+    public void PicksFlashAtMediumEffort() => Assert.Equal("gemini-3.8-flash-medium", AL76.Core.Brains.GeminiBrain.Quick(
+        "Fetching available models...\ngemini-3.8-flash-high\tGemini 3.8 Flash (High)\ngemini-3.8-flash-medium\tGemini 3.8 Flash (Medium)\ngemini-3.8-flash-low\tGemini 3.8 Flash (Low)\nclaude-sonnet-4-6\tClaude Sonnet 4.6 (Thinking)\n"));
+
+    [Fact]
+    public void NoFlashMeansAgysOwnDefault() => Assert.Equal("", AL76.Core.Brains.GeminiBrain.Quick("gemini-4-pro\tGemini 4 Pro\nclaude-opus\tClaude"));
+}
+
+public class MacParityTests
+{
+    [Theory]
+    [InlineData("disattiva l'IA", false)]
+    [InlineData("Spegni l'intelligenza artificiale.", false)]
+    [InlineData("senza IA", false)]
+    [InlineData("riattiva l'IA", true)]
+    [InlineData("accendi la IA", true)]
+    public void SwitchesTheAI(string said, bool on) => Assert.Equal(on, AL76.Core.Assistant.AISwitch(said));
+
+    [Theory]
+    [InlineData("che ore sono?")]
+    [InlineData("disattiva la luce")]
+    public void NotAnAISwitch(string said) => Assert.Null(AL76.Core.Assistant.AISwitch(said));
+
+    [Fact]
+    public void SplitsACompoundRequest() =>
+        Assert.Equal(["Apri Word", "metti un timer di 5 minuti"], AL76.Core.Commands.KnownCommands.Parts("Apri Word e poi metti un timer di 5 minuti.")!);
+
+    [Fact]
+    public void OnePartIsNotSplit() => Assert.Null(AL76.Core.Commands.KnownCommands.Parts("che tempo fa domani"));
+
+    [Fact]
+    public void SuggestsTheNearestCommand() =>
+        Assert.Equal("metti un timer di 5 minuti", AL76.Core.Commands.KnownCommands.Suggestions("fammi un conto alla rovescia di dieci minuti")[0]);
+
+    /// <summary>Every example must be understood without a model.</summary>
+    [Fact]
+    public void EveryExampleIsKnown()
+    {
+        foreach (var topic in AL76.Core.Commands.KnownCommands.Topics)
+            foreach (var e in topic.Examples)
+                Assert.True(AL76.Core.Commands.InstantCommands.Answer(e, "it", DateTime.Now) is not null
+                            || AL76.Core.Commands.InstantAction.Parse(e) is not null
+                            || AL76.Core.Commands.DirectCommand.Parse(e, DateTime.Now) is not null
+                            || AL76.Core.Assistant.AsksForSettings(e) || AL76.Core.Assistant.AISwitch(e) is not null, e);
+    }
+
+    [Theory]
+    [InlineData("Leggimi promemoria.")]
+    [InlineData("Che pro-memorial.")]
+    [InlineData("che promemoria ho?")]
+    public void RemindersAreListed(string said) =>
+        Assert.IsType<AL76.Core.Commands.DirectCommand.ListReminders>(AL76.Core.Commands.DirectCommand.Parse(said, DateTime.Now));
+
+    [Theory]
+    [InlineData("apri il PDF di chimica organica", "chimica organica", "pdf")]
+    [InlineData("apri la dispensa di fisica 2", "fisica 2", "pdf")]
+    [InlineData("apri le slide di chimica", "chimica", "slide")]
+    public void OpensAFileByName(string said, string query, string kind)
+    {
+        var c = Assert.IsType<AL76.Core.Commands.DirectCommand.OpenFile>(AL76.Core.Commands.DirectCommand.Parse(said, DateTime.Now));
+        Assert.Equal(query, c.Query);
+        Assert.Equal(kind, c.Kind);
+    }
+
+    [Theory]
+    [InlineData("apri PDF Craft")]
+    [InlineData("apri Word")]
+    public void AnAppIsNotAFile(string said) =>
+        Assert.IsNotType<AL76.Core.Commands.DirectCommand.OpenFile>(AL76.Core.Commands.DirectCommand.Parse(said, DateTime.Now));
+
+    [Theory]
+    [InlineData("fisica 2", @"C:\x\Fisica_2_Dispense.pdf", true)]
+    [InlineData("fisica 2", @"C:\x\Fisica_1_Dispense.pdf", false)]
+    [InlineData("dispense chimica", @"C:\x\Chimica_Organica_Dispensa.pdf", true)]
+    public void MatchesTheFileName(string query, string path, bool expected) =>
+        Assert.Equal(expected, AL76.Core.Commands.DirectCommand.NameHasAll(query, path));
+
+    [Theory]
+    [InlineData("elimina l'ultima sessione", null)]
+    [InlineData("elimina la sessione di chimica organica", "Chimica Organica")]
+    [InlineData("cancella la sessione sbagliata", null)]
+    public void DeletesASession(string said, string? name) =>
+        Assert.Equal(name, Assert.IsType<AL76.Core.Commands.DirectCommand.DeleteSession>(AL76.Core.Commands.DirectCommand.Parse(said, DateTime.Now)).Name);
+
+    [Fact]
+    public void AMisheardNameBecomesTheKnownOne()
+    {
+        var t = new AL76.Core.Study.ActivityTracker(null);
+        var now = DateTime.Now;
+        t.Log("Chimica Organica", AL76.Core.Study.ActivityKind.Study, 30, now.AddHours(-2), true);
+        Assert.Equal("Chimica Organica", t.KnownName("Chimico Organica"));
+        Assert.Equal("Fisica 2", t.KnownName("Fisica 2"));
+        t.Start("Chimico Organica", AL76.Core.Study.ActivityKind.Study, now, null, true);
+        Assert.Contains("elimina", t.Stop(now.AddSeconds(50), true));
+        Assert.Contains("Eliminata", t.Delete(null, true));
+        Assert.Single(t.All);
+    }
+
+    [Fact]
+    public void AllIsACallToo() => Assert.Equal("che promemoria ho", new WakePhrase("Ehi Al").Command("Ehi, allo, che promemoria ho?"));
+
+    [Fact]
+    public void ClearPhrase()
+    {
+        Assert.True(VoiceLoop.IsClearPhrase("il nostro contratto finisce a gennaio"));
+        Assert.False(VoiceLoop.IsClearPhrase("Ehi Al."));
+    }
+
+    [Fact]
+    public void RequestLogCountsTheRoads()
+    {
+        var log = new AL76.Core.Diagnostics.RequestLog(null);
+        var now = DateTime.Now;
+        log.Record("che ore sono", AL76.Core.Diagnostics.RequestLog.Road.Instant, now);
+        log.Record("apri Word", AL76.Core.Diagnostics.RequestLog.Road.Direct, now);
+        log.Record("spiegami le derivate", AL76.Core.Diagnostics.RequestLog.Road.Model, now, "Claude", 6.2, ["search_notes"]);
+        log.Record("scrivi una poesia", AL76.Core.Diagnostics.RequestLog.Road.WithoutAI, now);
+        var day = log.DayOf(now);
+        Assert.Equal(4, day.Total);
+        Assert.Equal(50, day.ModelFree);
+        Assert.Contains(log.ModelGroups(7, now), g => g.Name == "appunti");
     }
 }

@@ -100,6 +100,13 @@ public static class StudyTools
         };
         yield return new ToolDef
         {
+            Name = "delete_activity",
+            Description = "Delete a session recorded by mistake or with the wrong name (\"elimina la sessione di fisica\", \"cancella l'ultima sessione\"): the most recent with that name, even the one in progress, otherwise the last one.",
+            Properties = new() { ["name"] = Prop("string", "Which session; default the last one") },
+            Run = (a, c, _) => Task.FromResult(ToolOutcome.Ok(activity.Delete(a.Str("name"), c.Italian))),
+        };
+        yield return new ToolDef
+        {
             Name = "pause_activity",
             Description = "Pause the current session for a break (\"pausa\"): it stays open, the break is not counted, and when it is over AL-76 says so and asks to go on.",
             Properties = new() { ["minutes"] = Prop("integer", "Length of the break, default 10.") },

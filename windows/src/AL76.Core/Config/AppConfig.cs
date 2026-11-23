@@ -178,6 +178,8 @@ public sealed class AppConfig
     public string RobotConsoleUrl { get; set; } = "";
     /// <summary>"claude", "chatgpt", "gemini" or "local"; empty = the first one ready, in that order.</summary>
     public string Brain { get; set; } = "";
+    /// <summary>"Senza IA" (Mac 1.30.84): no model, local or online; only the commands AL-76 knows.</summary>
+    public bool NoAI { get; set; }
     /// <summary>Model for the chosen cloud brain; empty = the CLI's default for the subscription.</summary>
     public string BrainModel { get; set; } = "";
     /// <summary>Ollama model for the local brain; empty = the one of the PC tier (none on Base).</summary>

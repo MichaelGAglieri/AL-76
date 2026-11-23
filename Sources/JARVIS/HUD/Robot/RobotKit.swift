@@ -201,7 +201,7 @@ struct Face {
             c.setLineWidth(r * 0.55)
             let eyes = [CGPoint(x: -0.0485 + look.x, y: 0.008 + look.y), CGPoint(x: 0.0485 + look.x, y: 0.008 + look.y)]
             let mouthAt = CGPoint(x: look.x * 0.6, y: -0.02 + look.y * 0.5)
-            for (i, e) in eyes.enumerated() {
+            for e in eyes {
                 switch mood {
                 case .error:
                     let k = r * 0.8

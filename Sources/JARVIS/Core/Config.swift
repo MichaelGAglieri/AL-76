@@ -82,6 +82,9 @@ struct JarvisConfig: Codable, Equatable {
     var memoryUnloadBelow = 20
     /// "local" (Ollama) or "claude" (Claude Code with the subscription).
     var brain = "local"
+    /// "Senza IA" (1.30.84): no language model at all, local or online. AL-76 answers only with the commands
+    /// it knows; Whisper, the voice and the voiceprint stay (they are its ears and mouth, not a brain).
+    var noAI = false
     var claudeModel = "sonnet"
     /// Words Whisper must spell correctly (names, acronyms): they are given to it
     /// as context before every transcription. You can add your own.
@@ -184,6 +187,7 @@ struct JarvisConfig: Codable, Equatable {
         if !c.contains(.memoryUnloadBelow) && modelKeepAlive == "5m" { modelKeepAlive = d.modelKeepAlive }
         memoryUnloadBelow = try c.decodeIfPresent(Int.self, forKey: .memoryUnloadBelow) ?? d.memoryUnloadBelow
         brain = try c.decodeIfPresent(String.self, forKey: .brain) ?? d.brain
+        noAI = try c.decodeIfPresent(Bool.self, forKey: .noAI) ?? d.noAI
         claudeModel = try c.decodeIfPresent(String.self, forKey: .claudeModel) ?? d.claudeModel
         vocabulary = try c.decodeIfPresent(String.self, forKey: .vocabulary) ?? d.vocabulary
         userFullName = try c.decodeIfPresent(String.self, forKey: .userFullName) ?? d.userFullName

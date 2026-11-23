@@ -1,12 +1,20 @@
 <Project>
   <!-- Shared by every project of AL-76 for Windows. -->
   <PropertyGroup>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Product>AL-76</Product>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <!-- Lets the Windows projects build on the Mac too (the app only runs on Windows). -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- No path of the build machine inside the files (it holds the user name): sources seen as /_/,
+         no separate .pdb and no path to it in the DLLs. -->
+    <Deterministic>true</Deterministic>
+    <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))=/_/</PathMap>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 </Project>

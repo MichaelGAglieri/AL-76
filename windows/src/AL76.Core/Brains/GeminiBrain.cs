@@ -18,6 +18,10 @@ public sealed class GeminiBrain : BrainBase
     public override string Id => "gemini";
     public override string Name => "Gemini";
     public string Model { get; set; } = "";
+    /// <summary>The quick model from "agy models", used when none was chosen: agy's own default thinks long, and
+    /// "come va?" took 8 s instead of 5 (Mac, 23/11; a tester found Gemini slow on Windows).</summary>
+    public string QuickModel { get; private set; } = "";
+    private bool quickAsked;
     public string? Executable { get; set; } = CliRunner.Find("agy");
     public override bool IsInstalled => Executable is not null;
     public const string Hint = "installa Antigravity CLI e accedi con «agy»";
@@ -36,6 +40,7 @@ public sealed class GeminiBrain : BrainBase
         if (!ToolsAllowed()) return BrainStatus.NotPrepared;
         // Signed in: "agy models" lists the models only with a valid account.
         string? text = await CliRunner.OutputAsync(Executable, ["models"], TimeSpan.FromSeconds(20), ct);
+        if (text is not null) QuickModel = Quick(text);
         return text?.Contains("gemini", StringComparison.OrdinalIgnoreCase) == true ? BrainStatus.Ready : BrainStatus.LoginNeeded;
     }
 
@@ -71,6 +76,15 @@ public sealed class GeminiBrain : BrainBase
         File.WriteAllText(SettingsFile, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
+    /// <summary>From the list of "agy models" (id, tab, title): Gemini Flash at medium effort, else at low, else none.</summary>
+    public static string Quick(string models)
+    {
+        var ids = models.Split('\n').Select(l => l.Split('\t', ' ')[0].Trim()).Where(id => id.StartsWith("gemini", StringComparison.OrdinalIgnoreCase)).ToList();
+        return ids.FirstOrDefault(id => id.Contains("flash-medium", StringComparison.OrdinalIgnoreCase))
+               ?? ids.FirstOrDefault(id => id.Contains("flash-low", StringComparison.OrdinalIgnoreCase))
+               ?? ids.FirstOrDefault(id => id.Contains("flash", StringComparison.OrdinalIgnoreCase)) ?? "";
+    }
+
     public static List<string> Arguments(string prompt, string model, string? session)
     {
         var a = new List<string> { "-p", prompt, "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "5m" };
@@ -100,10 +114,16 @@ public sealed class GeminiBrain : BrainBase
         await File.WriteAllTextAsync(Path.Combine(agents, "mcp_config.json"), config.ToJsonString(), ct);
         await File.WriteAllTextAsync(Path.Combine(folder, "AGENTS.md"), setup.SystemPrompt, ct);
 
+        // Chosen by hand in the settings, the status was never asked: the list of models once, for the quick one.
+        if (Model.Length == 0 && !quickAsked)
+        {
+            quickAsked = true;
+            if (await CliRunner.OutputAsync(Executable, ["models"], TimeSpan.FromSeconds(20), ct) is string models) QuickModel = Quick(models);
+        }
         if (StartsNewSession) SessionId = null;
         var parser = new Parser();
         var run = new CliRunner.Run();
-        await foreach (var json in CliRunner.JsonLinesAsync(Executable, Arguments(prompt, Model, SessionId), folder, null, run, ct))
+        await foreach (var json in CliRunner.JsonLinesAsync(Executable, Arguments(prompt, Model.Length > 0 ? Model : QuickModel, SessionId), folder, null, run, ct))
         {
             foreach (var e in parser.Read(json)) yield return e;
             if (parser.Session is not null) SessionId = parser.Session;

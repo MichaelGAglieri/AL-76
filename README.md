@@ -110,6 +110,12 @@ After a code change, rebuild and reinstall:
 ./scripts/build.sh --install
 ```
 
+The tests (since 1.30.83) check the model-free commands, the answers to AL-76's own questions and the wake word on invented phrases; on the Mac where AL-76 is used they also replay the real phrases of `voce.log` and `diagnostica.log` and report those understood differently from last time (snapshot in `local/`, never published):
+
+```bash
+scripts/test.sh
+```
+
 For Claude, log in once:
 
 ```bash
@@ -132,7 +138,7 @@ claude auth login --claudeai
   can pause to think.
 - "Stop" or "cancel" ("basta", "annulla") stop it. It answers in the language you speak.
 - **Esc** hides the sphere; AL-76 keeps listening. A **double click** on the sphere shrinks it to the SATELLITE.
-  The ◎ icon in the menu bar brings it back.
+  AL-76's menu-bar icon (the robot's head) brings it back.
 - AL-76 starts at login (can be turned off in ⚙︎ › System).
 
 ## What it can do
@@ -218,13 +224,19 @@ reinstalled every 7 days (it warns two days before); pairing and settings are ke
 - **HUD**: the neural sphere alone, in a borderless window that wraps it closely. No buttons and no state label
   around it (only privacy mode and errors are written). Drag it to move it; double-click it to go back to the
   SATELLITE.
-- **Panels**: Phrases, Log, Activity, Modules, Protocol and Thought open from the **Schede** menu, in the menu
-  bar on the left while AL-76 is in front and in the ◎ icon's menu. Each panel is its own window: drag it
-  anywhere, resize it; it remembers where it was and reopens at the next launch. They work with both the sphere
-  and the SATELLITE.
+- **Plancia** (control deck): one window in the style of the Settings, with four sections in its sidebar:
+  **Dialogo** (what was said and typed, with a field to type), **Giornata** (session in progress, today's and
+  the week's totals, sessions, reports and flashcards due), **Stato** (modules and log) and **Pensiero**
+  (thought). At the top you pick the brain and, with Claude, the model. Any section can be detached into a
+  small window to keep beside the robot. It opens with ⌃⌥K, from the quick menu and from the **Plancia** menu on
+  the left of the menu bar (⌘1–⌘4 for the sections); it remembers its place and section and reopens at launch if
+  it was left open. For a quick line the ⌃⌥T typing bar stays, hanging from the robot or the SATELLITE.
+- **Quick menu**: the same menu, with the same rows, on AL-76's menu-bar icon (the robot's head) and on the
+  right click of the robot, the SATELLITE, the reactor and the sphere: speak, type, new conversation, Plancia
+  and sections, brain, privacy, sphere, the robot's rows (corner and speech bubble), settings.
 - **Thought**: a request activity log. It shows the route, tools,
   queries, files consulted, domains found, outcomes and errors. It keeps up to 300 lines in memory and clears on “New conversation”.
-- **NUCLEUS** (◎): shrinks AL-76 to a small window. In the **SATELLITE** style (the default) it is a detailed 3D
+- **NUCLEUS**: shrinks AL-76 to a small window. In the **SATELLITE** style (the default) it is a detailed 3D
   satellite that floats above every window, on every desktop and over full-screen apps; the other styles stay
   on the desktop, above the wallpaper and below every app window. There is one on every display, kept within its own display. It pulses while
   AL-76 listens or speaks; a click opens the HUD around it on that display (if the HUD is open on another
@@ -253,13 +265,21 @@ internet, **Gemma 4 12B** answers locally through Ollama. AL-76 starts a small *
 protected by a token that changes at every launch, so Claude uses the same tools as the local model.
 
 - "use Claude" / "back to local" switch brain; "ask Claude …" sends one request only.
-- "use Opus", "switch to Sonnet", "use Haiku" pick the Claude model (also from the PROTOCOL panel).
+- "use Opus", "switch to Sonnet", "use Haiku" pick the Claude model (also from the chips at the top of the Plancia).
 - Offline, Gemma takes over automatically and the panel shows "OFFLINE · GEMMA ANSWERS".
 - **When it does not understand**: after two failed requests in a row, or a correction ("you didn't get it"),
   it asks **Claude Opus**, which works out what you meant, runs it, and adds up to three misheard words to
   Whisper's vocabulary.
 - `Core/MemoryGuard.swift` unloads Gemma from RAM when free memory drops below 20 % and reloads it only
   when there is room again.
+- **No AI** (since 1.30.84): from Settings › Brain, the quick menu, the "Senza IA" chip at the top of the Plancia or by voice
+  ("disattiva l'IA" / "riattiva l'IA") AL-76 uses no model at all — no Claude, ChatGPT, Gemini or Gemma, not even the notes'
+  meaning model (word search stays). It runs only the commands it knows; hearing, voice and voiceprint stay. A compound
+  request ("che ore sono e quanta batteria ho") is split and the known parts are done; for the rest it says it cannot and
+  suggests the two nearest known commands (`Core/KnownCommands.swift`).
+- **How many requests need no model**: every request goes to `richieste.json` (30 days, on the Mac only) with its road:
+  instant, direct, model (brain, seconds, tools used) or not done without AI. Plancia › Stato shows today's and the last
+  7 days' model-free share (goal 60 %) and the requests that went to the model grouped by the tool it used.
 
 ## Confirmations: three levels
 
@@ -362,7 +382,7 @@ quiet hours (23–8). Each one can be turned off in Settings › Initiative.
 | Robotics | ROS 2 bridge (rclpy in pixi), Robot Console API, arduino-cli, Bambu Studio, MQTT | `Sources/JARVIS/Robotics/`, `Resources/ros_bridge.py` |
 | Claude | Claude Code (`claude -p`) + MCP server | `Sources/JARVIS/AI/ClaudeBridge.swift`, `MCPServer.swift` |
 | Voice | Qwen3, Kokoro, Supertonic in a Python service | `Sources/JARVIS/Audio/SpeechEngine.swift`, `Resources/tts_server.py` |
-| Orchestration | state machine | `Sources/JARVIS/Core/Assistant.swift` |
+| Orchestration | state machine | `Sources/JARVIS/Core/Assistant.swift` (state and answer) and `Assistant+*.swift` (voiceprint, direct commands, breaks, vocabulary, iPhone, test hooks, first-run setup) |
 | iPhone app and encrypted link | Network.framework (TLS-PSK), SwiftUI, VideoToolbox | `Sources/JARVIS/Core/PhoneBridge.swift`, `PhoneLink.swift`, `ScreenShare.swift`, `iPhone/` |
 | Settings | JSON file + ⚙︎ window | `Sources/JARVIS/Core/Config.swift`, `SettingsView.swift` |
 | Manual | ReportLab | `scripts/build_manual.py` → [`Manual_AL-76.pdf`](Manual_AL-76.pdf) |
@@ -395,7 +415,7 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
 - **External content** (mail, pages, files, screenshots, devices) is marked as data: AL-76 does not follow
   instructions found inside it, it reports them.
 - **Local services** listen only on 127.0.0.1, with a token, and refuse browser requests.
-- **Privacy mode**: "Ehi Al, privacy" (or ⌃⌥P, or the ◎ menu) turns the microphone off and blocks camera and
+- **Privacy mode**: "Ehi Al, privacy" (or ⌃⌥P, or the quick menu) turns the microphone off and blocks camera and
   screen; you leave it only with ⌃⌥P or the menu, not by voice.
 - **Stays on the Mac**: audio, transcripts, conversation, memory, calendar, mail, files, screenshots and photos
   (images are never saved). **Leaves the Mac**: web searches (DuckDuckGo), weather (wttr.in), the news sites' public feeds and, in Claude
@@ -403,7 +423,7 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
 
 ## Troubleshooting
 
-- **It does not hear "Ehi Al"**: the MODULES panel must show `"EHI AL" ATTIVA · WHISPER`; check the microphone
+- **It does not hear "Ehi Al"**: the Stato section of the Plancia must show `"EHI AL" ATTIVA · WHISPER`; check the microphone
   permission in System Settings › Privacy & Security › Microphone, or use ⌃⌥Space. The `wake NO` lines in
   `diagnostica.log` show what Whisper heard.
 - **Slow answers**: with the model loaded the first word comes in about 3 s; a cold reload takes about 45 s

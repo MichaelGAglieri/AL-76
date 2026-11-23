@@ -318,26 +318,10 @@ final class ReactorHostingView: NSHostingView<CompactReactorView> {
         dragging = false
     }
 
+    /// The one quick menu (1.30.81), the same as the menu-bar icon's.
     override func rightMouseDown(with event: NSEvent) {
-        let menu = NSMenu()
-        // The hosting view answers macOS's "is this item valid?" with no for actions it does not know:
-        // every row came out grey and could not be clicked (15 November).
-        menu.autoenablesItems = false
-        menu.addItem(withTitle: "Apri HUD", action: #selector(openHUD), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Parla (⌃⌥Spazio)", action: #selector(talk), keyEquivalent: "").target = self
-        menu.addItem(NucleusMenu.typeBarItem())
-        menu.addItem(withTitle: "Nuova conversazione", action: #selector(reset), keyEquivalent: "").target = self
-        menu.addItem(.separator())
-        menu.addItem(NucleusMenu.dialogueItem())
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Esci da AL-76", action: #selector(quit), keyEquivalent: "").target = self
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
+        NSMenu.popUpContextMenu(QuickMenu.make(), with: event, for: self)
     }
-
-    @objc private func openHUD() { onClick?() }
-    @MainActor @objc private func talk() { assistant?.pushToTalk() }
-    @MainActor @objc private func reset() { assistant?.resetConversation() }
-    @objc private func quit() { NSApp.terminate(nil) }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

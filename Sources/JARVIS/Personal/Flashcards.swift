@@ -3,7 +3,7 @@ import Foundation
 /// Flashcards in schede.json. Box-based repetition (Leitner): a right answer sees the card
 /// again later and later, a wrong one sees it tomorrow. Nothing is deleted without asking.
 @MainActor
-final class Flashcards {
+final class Flashcards: ObservableObject {
     struct Card: Codable {
         var id: Int
         var topic: String
@@ -16,12 +16,15 @@ final class Flashcards {
 
     private static let intervals = [1, 2, 4, 8, 16, 32]
     private let url = JarvisConfig.directory.appendingPathComponent("schede.json")
-    private lazy var cards: [Card] = {
-        guard let data = try? Data(contentsOf: url) else { return [] }
+    /// Published for the "Studio" panel, which lists them.
+    @Published private(set) var cards: [Card] = []
+
+    init() {
+        guard let data = try? Data(contentsOf: url) else { return }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([Card].self, from: data)) ?? []
-    }()
+        cards = (try? decoder.decode([Card].self, from: data)) ?? []
+    }
 
     private func save() {
         let encoder = JSONEncoder()

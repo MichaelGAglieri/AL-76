@@ -42,9 +42,13 @@ final class RobotNucleusView: NSView {
     private var dragging = false
     private var lastMouse = NSPoint(x: -1, y: -1)
 
+    /// The robot on screen (only on the main display), for the quick menu's "Robottino" rows.
+    private(set) static weak var main: RobotNucleusView?
+
     init(assistant: Assistant) {
         self.assistant = assistant
         super.init(frame: NSRect(origin: .zero, size: Self.size(large: assistant.config.robotLarge)))
+        Self.main = self
         wantsLayer = true
         layer?.isOpaque = false
         scnView.frame = bounds
@@ -314,43 +318,23 @@ final class RobotNucleusView: NSView {
         dragging = false
     }
 
+    /// The one quick menu (1.30.81): the robot's own rows are in its "Robottino" submenu.
     override func rightMouseDown(with event: NSEvent) {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.addItem(withTitle: "Apri HUD", action: #selector(openHUD), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Parla (⌃⌥Spazio)", action: #selector(talk), keyEquivalent: "").target = self
-        menu.addItem(NucleusMenu.typeBarItem())
-        menu.addItem(withTitle: "Nuova conversazione", action: #selector(reset), keyEquivalent: "").target = self
-        menu.addItem(.separator())
-        // Locked in the bottom right corner (19 November, user request): a tick, also by voice ("Al, stai fermo").
-        let pinned = assistant?.config.robotPinned == true
-        menu.addItem(BlockMenuItem("Blocca nell'angolo in basso a destra", checked: pinned) { [weak self] in
-            self?.assistant?.setRobotPinned(!pinned)
-        })
-        menu.addItem(.separator())
-        // The speech bubble (17 November, user request): shown again or closed by hand, and optionally
-        // for spoken answers as well as typed ones.
-        if bubble.isShown {
-            menu.addItem(BlockMenuItem("Nascondi nuvoletta") { [weak self] in self?.bubble.dismiss() })
-        } else {
-            menu.addItem(BlockMenuItem("Mostra nuvoletta", enabled: !bubble.lastText.isEmpty || lastReply != nil) { [weak self] in
-                self?.showBubble()
-            })
-        }
-        let voice = assistant?.voiceBubble == true
-        menu.addItem(BlockMenuItem("Nuvoletta anche per le risposte a voce", checked: voice) { [weak self] in
-            guard let self, let assistant = self.assistant else { return }
-            self.voiceSkip = assistant.conversation.last?.id
-            assistant.voiceBubble = !voice
-        })
-        menu.addItem(NucleusMenu.dialogueItem())
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Esci da AL-76", action: #selector(quit), keyEquivalent: "").target = self
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
+        NSMenu.popUpContextMenu(QuickMenu.make(), with: event, for: self)
     }
 
-    @objc private func openHUD() { onOpen?() }
-    @objc private func talk() { assistant?.pushToTalk() }
+    // The speech bubble's commands for the quick menu (17 November): shown again or closed by hand,
+    // and optionally for spoken answers as well as typed ones. The bubble itself is unchanged.
+    var bubbleShown: Bool { bubble.isShown }
+    var canShowBubble: Bool { !bubble.lastText.isEmpty || lastReply != nil }
+    func hideBubble() { bubble.dismiss() }
+    func showBubbleAgain() { showBubble() }
+    func toggleVoiceBubble() {
+        guard let assistant else { return }
+        voiceSkip = assistant.conversation.last?.id
+        assistant.voiceBubble.toggle()
+    }
+
     /// The last answer in the conversation, typed or spoken.
     private var lastReply: Assistant.Exchange? {
         assistant?.conversation.last(where: { !$0.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
@@ -361,9 +345,6 @@ final class RobotNucleusView: NSView {
         // The last answer of the conversation, spoken ones included; else the last one the bubble said.
         if let exchange = lastReply { bubble.replay(exchange.reply, id: exchange.id, at: t) } else { bubble.replay(at: t) }
     }
-
-    @objc private func reset() { assistant?.resetConversation() }
-    @objc private func quit() { NSApp.terminate(nil) }
 }
 
 /// Mouse events go to the robot's container, not to SceneKit.

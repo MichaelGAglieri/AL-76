@@ -41,7 +41,8 @@ final class ActivityTracker: ObservableObject {
 
     var current: Session? { sessions.last.flatMap { $0.end == nil ? $0 : nil } }
     private let reportsURL = JarvisConfig.directory.appendingPathComponent("resoconti.json")
-    private var reports: [String: Report] = [:]
+    /// Published for the "Studio" panel, which lists them.
+    @Published private(set) var reports: [String: Report] = [:]
 
     init() {
         let decoder = JSONDecoder()
@@ -59,10 +60,18 @@ final class ActivityTracker: ObservableObject {
         name.lowercased().folding(options: .diacriticInsensitive, locale: nil).trimmingCharacters(in: .whitespaces)
     }
 
+    /// The reports for the "Studio" panel, newest first, with the name as the sessions spell it.
+    var reportList: [(name: String, report: Report)] {
+        reports.map { key, report in
+            (sessions.last { Self.key($0.name) == key }?.name ?? key.capitalized, report)
+        }.sorted { $0.report.date > $1.report.date }
+    }
+
     // MARK: Commands
 
     /// `at`: when the session really began ("è iniziata da un'ora"); never in the future.
-    func start(_ name: String, category: Category, at begin: Date? = nil) -> String {
+    func start(_ said: String, category: Category, at begin: Date? = nil) -> String {
+        let name = knownName(said)
         var message = ""
         let begin = min(begin ?? Date(), Date())
         if let open = current {
@@ -83,8 +92,79 @@ final class ActivityTracker: ObservableObject {
     func stop() -> String {
         guard let open = current else { return "Nessuna sessione in corso" }
         stopCurrent()
-        return closedMessage(open)
-            + " Now ask the user what to write in the report of this session (e.g. \"Cosa scriviamo nel resoconto?\") and save their answer with save_session_report."
+        // Under two minutes (23 November: 49 s of a session started with the wrong name) there is
+        // nothing to report: no question, only how to remove it if it was a mistake.
+        if (sessions.last?.duration ?? open.duration) < Self.reportMinimum {
+            return closedMessage(open) + " Se era per sbaglio, dica: elimina l'ultima sessione."
+        }
+        return closedMessage(open) + Self.reportRequest
+    }
+
+    /// Below this length a closed session asks for no report.
+    nonisolated static let reportMinimum: TimeInterval = 120
+    /// What stop() adds when the report is wanted; DirectCommand asks the question only then.
+    nonisolated static let reportRequest = " Now ask the user what to write in the report of this session (e.g. \"Cosa scriviamo nel resoconto?\") and save their answer with save_session_report."
+
+    /// "Elimina la sessione di chimica organica", "elimina l'ultima sessione": removes the most recent
+    /// session with that name (even the open one), or the last one. Its report goes too, if no other
+    /// session with that name is left (a misheard name leaves no trace).
+    func delete(name: String?) -> String {
+        let index: Int?
+        if let name, !name.trimmingCharacters(in: .whitespaces).isEmpty {
+            index = sessionIndex(named: name)
+        } else {
+            index = sessions.indices.last
+        }
+        guard let index else { return name.map { "Nessuna sessione \"\($0)\" da eliminare." } ?? "Nessuna sessione da eliminare." }
+        let removed = sessions.remove(at: index)
+        save()
+        let key = Self.key(removed.name)
+        var message = "Eliminata la sessione \"\(removed.name)\" di \(Self.day(removed.start)) delle \(Self.time(removed.start))"
+            + (removed.end == nil ? " (era in corso)." : ", \(Self.spoken(removed.duration)).")
+        if !sessions.contains(where: { Self.key($0.name) == key }), reports.removeValue(forKey: key) != nil {
+            saveReports()
+            message += " Tolto anche il suo resoconto."
+        }
+        return message
+    }
+
+    /// The most recent session with this name or with a name one or two letters away ("chimico
+    /// organica" for "Chimica Organica"): the misheard one just made comes before older ones
+    /// spelled right. The open session is always the last.
+    private func sessionIndex(named name: String) -> Int? {
+        let key = Self.key(name)
+        return sessions.lastIndex { Self.close(Self.key($0.name), key) }
+    }
+
+    /// A name Whisper wrote a little differently from one already used becomes that one: "Chimico
+    /// Organica" and "Fisico" were "Chimica Organica" and "Fisica" (invented examples of real cases).
+    /// Numbers must be the same: "Fisica 2" is not "Fisica 1".
+    func knownName(_ name: String) -> String {
+        let key = Self.key(name)
+        guard key.count >= 5, !sessions.contains(where: { Self.key($0.name) == key }) else { return name }
+        return sessions.last { Self.close(Self.key($0.name), key) }?.name ?? name
+    }
+
+    /// One letter of difference every eight (at least one), the same digits, the same number of words.
+    private static func close(_ a: String, _ b: String) -> Bool {
+        guard a != b else { return true }
+        guard a.filter(\.isNumber) == b.filter(\.isNumber),
+              a.split(separator: " ").count == b.split(separator: " ").count else { return false }
+        return distance(a, b) <= max(1, min(a.count, b.count) / 8)
+    }
+
+    private static func distance(_ a: String, _ b: String) -> Int {
+        let a = Array(a), b = Array(b)
+        guard !a.isEmpty, !b.isEmpty else { return max(a.count, b.count) }
+        var previous = Array(0...b.count)
+        for i in 1...a.count {
+            var row = [i] + [Int](repeating: 0, count: b.count)
+            for j in 1...b.count {
+                row[j] = min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1))
+            }
+            previous = row
+        }
+        return previous[b.count]
     }
 
     /// A forgotten session (13 November): closed at `end` (never before its start, never in the future),
@@ -98,7 +178,7 @@ final class ActivityTracker: ObservableObject {
     /// "Ho smesso alle 17": the end of the last session with that name moves there,
     /// not before its start, not after now or after the next session began.
     func setEnd(of name: String, to end: Date) -> String {
-        guard let index = sessions.lastIndex(where: { Self.key($0.name) == Self.key(name) }) else { return "Nessuna sessione \"\(name)\"." }
+        guard let index = sessionIndex(named: name) else { return "Nessuna sessione \"\(name)\"." }
         var limit = Date()
         if index + 1 < sessions.count { limit = min(limit, sessions[index + 1].start) }
         let finish = min(max(end, sessions[index].start.addingTimeInterval(60)), limit)
@@ -146,13 +226,11 @@ final class ActivityTracker: ObservableObject {
     }
 
     func saveReport(_ text: String, name: String?) -> String {
-        guard let name = name ?? sessions.last?.name else { return "Nessuna sessione a cui legare il resoconto." }
+        guard let name = (name.map { n in sessionIndex(named: n).map { sessions[$0].name } ?? n }) ?? sessions.last?.name else {
+            return "Nessuna sessione a cui legare il resoconto."
+        }
         reports[Self.key(name)] = Report(date: Date(), text: text)
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted]
-        try? encoder.encode(reports).write(to: reportsURL, options: .atomic)
-        Security.protect(reportsURL)
+        saveReports()
         var message = "Resoconto di \"\(name)\" salvato: lo ricorderò alla prossima sessione."
         // Study sessions (12 November): flashcards on what was studied, only after his yes.
         if sessions.last(where: { Self.key($0.name) == Self.key(name) })?.category == .study {
@@ -232,8 +310,7 @@ final class ActivityTracker: ObservableObject {
 
     /// Corrects a session: the open one, or the most recent with that name. Only the values given change.
     func edit(name: String?, newName: String?, category: Category?, start: Date?, minutes: Int?) -> String {
-        let key = name.map(Self.key)
-        guard let index = key.flatMap({ k in sessions.lastIndex { Self.key($0.name) == k } })
+        guard let index = name.flatMap({ sessionIndex(named: $0) })
                 ?? sessions.indices.last else { return "Nessuna sessione da correggere." }
         var session = sessions[index]
         if let newName, !newName.isEmpty { session.name = newName }
@@ -304,6 +381,14 @@ final class ActivityTracker: ObservableObject {
               sessions[index].duration > maxSession else { return }
         sessions[index].end = sessions[index].start.addingTimeInterval(maxSession)
         save()
+    }
+
+    private func saveReports() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted]
+        try? encoder.encode(reports).write(to: reportsURL, options: .atomic)
+        Security.protect(reportsURL)
     }
 
     private func save() {

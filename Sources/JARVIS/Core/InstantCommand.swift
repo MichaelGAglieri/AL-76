@@ -22,13 +22,15 @@ enum InstantCommand: Equatable {
     case minimizeWindow(String)
     /// "Al, stai fermo" / "Al, puoi camminare": the ROBOTTINO locked in the bottom right corner, or free to walk.
     case robotPin(Bool)
+    /// "Disattiva l'IA" / "riattiva l'IA" (1.30.84): the "Senza IA" switch of Impostazioni › Cervello.
+    case artificialIntelligence(on: Bool)
 
     enum MusicAction: String { case pause, play, next, previous, status }
 
     static func parse(_ raw: String) -> InstantCommand? {
         let text = clean(raw)
         guard !text.isEmpty else { return nil }
-        if let found = robotPin(text) ?? time(text) ?? music(text) ?? television(text) ?? filament(text) ?? printer(text) { return found }
+        if let found = aiSwitch(text) ?? robotPin(text) ?? time(text) ?? music(text) ?? television(text) ?? filament(text) ?? printer(text) { return found }
         return volume(text) ?? timer(text) ?? closeAllCommand(text) ?? minimizeCommand(text) ?? app(text)
     }
 
@@ -70,12 +72,29 @@ enum InstantCommand: Equatable {
                     "resta nell'angolo", "stai nell'angolo", "rimani nell'angolo", "torna nell'angolo", "vai nell'angolo",
                     "blocca il robottino", "blocca robottino", "robottino stai fermo", "robottino fermo",
                     "non camminare", "non camminare più", "smetti di camminare", "smettila di camminare",
-                    "stay still", "stay in the corner", "stop walking"]
+                    "stay still", "stay in the corner", "stop walking",
+                    // 23 November: the words of its own menu, «Blocca nell'angolo in basso a destra», went to Claude.
+                    "blocca nell'angolo in basso a destra", "blocca in basso a destra", "blocca lì in basso a destra",
+                    "bloccati in basso a destra", "bloccati nell'angolo", "resta in basso a destra", "stai in basso a destra",
+                    "vai in basso a destra", "torna in basso a destra", "mettiti in basso a destra", "mettiti nell'angolo"]
         let free = ["sblocca il robottino", "sblocca robottino", "puoi camminare", "puoi muoverti", "puoi passeggiare",
                     "torna a camminare", "torna a passeggiare", "vai a passeggiare", "cammina", "robottino cammina",
                     "you can walk", "start walking"]
         if lock.contains(text) { return .robotPin(true) }
         if free.contains(text) { return .robotPin(false) }
+        return nil
+    }
+
+    // MARK: AI switch
+
+    /// Whisper writes "IA" in several ways: "l'IA", "la IA", "l'ia", "l'AI", "l'intelligenza artificiale".
+    private static func aiSwitch(_ text: String) -> InstantCommand? {
+        let ai = #"(?:l'ia|la ia|l'i\.a|ia|l'ai|l'intelligenza artificiale|intelligenza artificiale)"#
+        let off = #"(?:disattiva|spegni|disabilita|togli|stacca|ferma)(?: pure)? \#(ai)|(?:modalità |lavora |vai |passa )?senza (?:ia|intelligenza artificiale|modelli)(?: da ora)?"#
+        let on = #"(?:riattiva|attiva|accendi|riaccendi|abilita|riabilita|rimetti|torna a usare|usa(?: di nuovo)?) \#(ai)|(?:torna|ritorna|passa) con (?:l'ia|l'intelligenza artificiale)"#
+        // Whole sentences only: "un robot senza IA" in a question is not the switch.
+        if captures(text, "^(?:" + off + ")$") != nil { return .artificialIntelligence(on: false) }
+        if captures(text, "^(?:" + on + ")$") != nil { return .artificialIntelligence(on: true) }
         return nil
     }
 
@@ -156,7 +175,7 @@ enum InstantCommand: Equatable {
     private static let otherThings: Set<String> = [
         "e", "ed", "poi", "su", "in", "con", "per", "nel", "nella", "nei", "dentro", "a", "al", "alla", "da", "dal", "del", "della", "che",
         "and", "then", "on", "with", "for", "from", "to", "of", "at",
-        "file", "cartella", "progetto", "sito", "pagina", "documento", "link", "video", "scheda", "schede", "finestra", "finestre",
+        "file", "dispensa", "dispense", "slide", "presentazione", "cartella", "progetto", "sito", "pagina", "documento", "link", "video", "scheda", "schede", "finestra", "finestre",
         "tutto", "tutte", "tutti", "questa", "questo", "quella", "quello", "mia", "mio", "ultima", "ultimo",
         "all", "everything", "this", "that", "my", "tab", "window", "folder", "project", "page",
     ]

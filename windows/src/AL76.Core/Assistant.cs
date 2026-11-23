@@ -105,6 +105,116 @@ public sealed class Assistant : IAsyncDisposable
     /// <summary>The first request of the day was answered within the briefing hours: the app asks for the briefing
     /// with this sentence, as if the user had said it (Mac: the briefing starts after the first request of the day).</summary>
     public event Action<string>? BriefingDue;
+
+    /// <summary>Every request and its road (Mac 1.30.84), for the Plancia: richieste.json in the data folder.</summary>
+    public RequestLog Requests { get; private set; } = new(null);
+    private readonly List<string> usedTools = [];
+    private bool noAIHintGiven;
+
+    private void Record(string command, Answer answer, double seconds)
+    {
+        if (command.Trim().Length == 0 || answer.By is "chiamata" or "dettatura") return;
+        bool model = Brains.Any(b => b.Name == answer.By);
+        var road = answer.By switch
+        {
+            "istantaneo" => RequestLog.Road.Instant,
+            "senza IA" or "nessuno" => RequestLog.Road.WithoutAI,
+            _ when model => RequestLog.Road.Model,
+            _ => RequestLog.Road.Direct,
+        };
+        List<string> tools;
+        lock (usedTools) tools = usedTools.ToList();
+        Requests.Record(command, road, DateTime.Now, model ? answer.By : null, model ? seconds : null, tools);
+    }
+
+    /// <summary>"Disattiva l'IA", "riattiva l'IA" (Mac 1.30.84); null when it is not that.</summary>
+    public static bool? AISwitch(string command)
+    {
+        string t = Voice.TextTools.NormalizePhrase(command.Replace('\'', ' ').Replace('’', ' '));
+        if (System.Text.RegularExpressions.Regex.IsMatch(t, @"^(?:per favore )?(?:disattiva|spegni|togli|disabilita)(?: l| la)? (?:ia|intelligenza artificiale)$|^(?:passa a |modalita )?senza ia$")) return false;
+        if (System.Text.RegularExpressions.Regex.IsMatch(t, @"^(?:per favore )?(?:riattiva|attiva|accendi|riaccendi|abilita|rimetti)(?: l| la)? (?:ia|intelligenza artificiale)$")) return true;
+        return null;
+    }
+
+    /// <summary>The AI goes off or comes back (voice, menu, settings).</summary>
+    public void SetArtificialIntelligence(bool on)
+    {
+        if (config.NoAI == !on) return;
+        config.NoAI = !on;
+        saveConfig();
+        Log.Info(on ? "cervello: IA riaccesa" : "cervello: IA spenta, solo comandi senza modello");
+        if (!on && LocalModel is { } local) _ = local.UnloadAsync();
+        ConfigChanged();
+    }
+
+    /// <summary>With the AI off: the known parts of a compound request are done; for the rest, the nearest commands.</summary>
+    private async Task<Answer> WithoutAIAsync(string command, string language, string source, CancellationToken ct)
+    {
+        bool it = language == "it";
+        if (KnownCommands.Parts(command) is { } parts)
+        {
+            var done = new List<string>();
+            var missed = new List<string>();
+            var said = new List<string>();
+            foreach (var part in parts)
+            {
+                if (ct.IsCancellationRequested) break;
+                var a = await RouteAsync(part, language, source, null, ct, split: false);
+                if (a.By is "senza IA" or "nessuno") missed.Add(part);
+                else { done.Add(part); said.Add(a.Text); }
+            }
+            if (done.Count > 0)
+            {
+                Log.Info($"senza IA: richiesta composta, fatte {done.Count} parti su {parts.Count}");
+                string text = string.Join(" ", said);
+                if (missed.Count > 0)
+                {
+                    string list = string.Join(it ? " e " : " and ", missed.Select(m => $"«{m}»"));
+                    text += it ? $" Non ho fatto {list}: senza IA non so farlo." : $" I did not do {list}: I can't without the AI.";
+                }
+                return new(text, missed.Count == 0 ? "diretto" : "senza IA");
+            }
+        }
+        Log.Info($"senza IA: non so farlo: «{(command.Length > 60 ? command[..60] : command)}»");
+        var examples = KnownCommands.Suggestions(command);
+        string reply;
+        if (it)
+        {
+            reply = "Senza IA non so farlo.";
+            if (examples.Count > 0) reply += " Prova con: " + examples[0].TrimEnd('?') + ".";
+            if (!noAIHintGiven) reply += " Per riaccenderla: riattiva l'IA.";
+        }
+        else
+        {
+            reply = "I can't do that without the AI. Try a command like " + string.Join(" or ", (examples.Count > 0 ? examples : [.. KnownCommands.General]).Select(e => $"\"{e}\"")) + ".";
+            if (!noAIHintGiven) reply += " To turn the AI back on, say \"riattiva l'IA\".";
+        }
+        noAIHintGiven = true;
+        return new(reply, "senza IA");
+    }
+
+    /// <summary>"Impostazioni", "apri le impostazioni": the app opens its settings window.</summary>
+    public event Action? SettingsWanted;
+    /// <summary>"Apri la plancia": the app opens the Plancia.</summary>
+    public event Action? PlanciaWanted;
+
+    public static bool AsksForPlancia(string command) =>
+        Voice.TextTools.NormalizePhrase(command) is "plancia" or "apri la plancia" or "apri plancia" or "mostra la plancia" or "mostrami la plancia" or "open the dashboard" or "dashboard";
+
+    private static readonly HashSet<string> SettingsPhrases =
+    [
+        "impostazioni", "apri impostazioni", "apri le impostazioni", "mostra le impostazioni", "aprimi le impostazioni",
+        "le impostazioni", "vai alle impostazioni", "aprire le impostazioni", "settings", "open settings", "open the settings", "show the settings",
+    ];
+
+    /// <summary>The request is only "open the settings" (not "cambia le impostazioni della stampante").</summary>
+    public static bool AsksForSettings(string command)
+    {
+        string plain = Voice.TextTools.NormalizePhrase(command);
+        foreach (string lead in new[] { "per favore ", "puoi ", "mi ", "please ", "can you " })
+            if (plain.StartsWith(lead)) plain = plain[lead.Length..];
+        return SettingsPhrases.Contains(plain);
+    }
     /// <summary>The area the schedule held at the last check: a switch happens only when a slot begins.</summary>
     private string? scheduledArea;
     private bool scheduleChecked;
@@ -191,6 +301,7 @@ public sealed class Assistant : IAsyncDisposable
         Organizer = new Organizer(config, new LocalSource(Calendar, Reminders), id => accounts?.Organizer(id));
         // Phase 6: study and work; the "university" module reads the university portal.
         var secrets = accounts?.Secrets;
+        Requests = new RequestLog(Path.Combine(dataDir, "richieste.json"));
         var tracker = new ActivityTracker(Path.Combine(dataDir, "attivita.json"));
         Study = new StudyDesk(tracker, new StudyPlan(Path.Combine(dataDir, "piano_studio.json"), tracker), new Flashcards(Path.Combine(dataDir, "schede.json")),
                               new Timetable(Path.Combine(dataDir, "orario.json"), () => config.TimetableUrl),
@@ -487,6 +598,8 @@ public sealed class Assistant : IAsyncDisposable
                       : $"{title} is not installed on this PC: connect it in Settings, on the Brain page."), "cervello");
         switch (sw)
         {
+            case BrainSwitch.AskOnce when config.NoAI:
+                return new(it ? "Senza IA non chiedo a nessun modello. Per riaccenderla: riattiva l'IA." : "With the AI off I ask no model. To turn it back on: riattiva l'IA.", "senza IA");
             case BrainSwitch.AskOnce once:
                 return await AskAsync(brain, once.Question, language, speak, acknowledged: false, ct);
             case BrainSwitch.ClaudeModel m:
@@ -506,6 +619,19 @@ public sealed class Assistant : IAsyncDisposable
     /// <summary>What was said lately, for a brain that starts a new conversation (Mac: recentConversation).</summary>
     private readonly List<(DateTime at, string user, string reply, string by)> exchanges = [];
 
+    /// <summary>The last exchanges, oldest first, for the Plancia's dialogue.</summary>
+    public IReadOnlyList<(DateTime at, string user, string reply, string by)> Exchanges { get { lock (exchanges) return exchanges.ToList(); } }
+
+    /// <summary>The brain's last steps (tools and results), for the Plancia's "Pensiero".</summary>
+    public IReadOnlyList<(DateTime at, string line)> Trace { get { lock (trace) return trace.ToList(); } }
+    private readonly List<(DateTime at, string line)> trace = [];
+
+    /// <summary>The AI is off ("Senza IA").</summary>
+    public bool NoAI => config.NoAI;
+    /// <summary>The brain chosen in the settings ("" = automatic) and the one answering now, if known.</summary>
+    public string ChosenBrain => config.Brain;
+    public string? ActiveBrainName => chosen?.Name;
+
     /// <summary>
     /// Answers one request. With <paramref name="speak"/>, a brain's answer goes to the voice sentence by
     /// sentence while it arrives, after an acknowledgment said at once (as on the Mac); the returned
@@ -520,9 +646,12 @@ public sealed class Assistant : IAsyncDisposable
             string? control = Dictation.Dictated(command, new WakePhrase(config.EffectiveWakePhrase(language)), language == "it", DateTime.Now);
             return new Answer(control ?? (language == "it" ? $"✎ Scritto ({Dictation.Count} frasi)." : $"✎ Written ({Dictation.Count} phrases)."), "dettatura");
         }
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        lock (usedTools) usedTools.Clear();
         var answer = await RouteAsync(command.Trim(), language, source, speak, ct);
+        Record(command, answer, clock.Elapsed.TotalSeconds);
         // The first request of the morning (by voice or typed): then the briefing. Not after an answer that waits for a "yes".
-        if (source is "voce" or "scritto" && !answer.AwaitsYes && command.Trim().Length > 0 && BriefingNow(command, DateTime.Now))
+        if (source is "voce" or "scritto" && !answer.AwaitsYes && command.Trim().Length > 0 && !config.NoAI && BriefingNow(command, DateTime.Now))
             BriefingDue?.Invoke(language == "it" ? "Fammi il briefing del mattino." : "Give me my morning briefing.");
         lock (exchanges)
         {
@@ -532,7 +661,7 @@ public sealed class Assistant : IAsyncDisposable
         return answer;
     }
 
-    private async Task<Answer> RouteAsync(string command, string language, string source, Action<string>? speak, CancellationToken ct)
+    private async Task<Answer> RouteAsync(string command, string language, string source, Action<string>? speak, CancellationToken ct, bool split = true)
     {
         bool it = language == "it";
         current = new ToolContext(command, language, source);
@@ -578,6 +707,26 @@ public sealed class Assistant : IAsyncDisposable
             }
         }
 
+        // 1a. "Disattiva l'IA" / "riattiva l'IA" (Mac 1.30.84).
+        if (AISwitch(command) is bool aiOn)
+        {
+            SetArtificialIntelligence(aiOn);
+            return new(aiOn ? (it ? "IA riaccesa." : "AI back on.") : (it ? "IA spenta: faccio solo i comandi che conosco. Per riaccenderla: riattiva l'IA." : "AI off: I only run the commands I know. To turn it back on: riattiva l'IA."), "diretto");
+        }
+
+        // 1b. "Impostazioni": the settings window, by voice or typed. A way in when no right-click menu opens (a tester, 23/11).
+        if (AsksForSettings(command) && SettingsWanted is { } openSettings)
+        {
+            openSettings();
+            return new(it ? "Apro le impostazioni." : "Opening the settings.", "istantaneo");
+        }
+
+        if (AsksForPlancia(command) && PlanciaWanted is { } openPlancia)
+        {
+            openPlancia();
+            return new(it ? "Apro la plancia." : "Opening the dashboard.", "istantaneo");
+        }
+
         // 2. Time and date, from the clock.
         if (InstantCommands.Answer(command, language, DateTime.Now) is string instant) return new(instant, "istantaneo");
 
@@ -615,7 +764,9 @@ public sealed class Assistant : IAsyncDisposable
         // 4b. Direct commands: a tool and a fixed sentence, no brain.
         if (DirectCommand.Parse(command, DateTime.Now) is DirectCommand direct && await RunDirectAsync(direct, it, ct) is Answer viaDirect) return viaDirect;
 
-        // 5. The brain.
+        // 5. The brain, unless the AI is off.
+        if (config.NoAI)
+            return split ? await WithoutAIAsync(command, language, source, ct) : new(it ? "Senza IA non so farlo." : "I can't do that without the AI.", "senza IA");
         var brain = await BrainAsync(ct);
         if (brain is null)
             return new(it ? "Non ho ancora un cervello per questa domanda: collega Claude, ChatGPT o Gemini dalle Impostazioni."
@@ -732,6 +883,35 @@ public sealed class Assistant : IAsyncDisposable
                 // A folder AL-76 cannot find goes to the brain, which may know where it is.
                 if (error) return null;
                 return new(it ? $"Apro {f.Name}." : $"Opening {f.Name}.", "diretto");
+            }
+            case DirectCommand.DeleteSession ds:
+                return new((await Call("delete_activity", new() { ["name"] = ds.Name ?? "" })).text, "diretto");
+            case DirectCommand.OpenFile f:
+            {
+                // With the AI on, only one clear file: otherwise the model looks and chooses (Mac 1.30.85).
+                var (found, error) = await Call("search_files", new() { ["query"] = f.Query });
+                if (error) return config.NoAI ? new(found, "diretto") : null;
+                var candidates = DirectCommand.FileCandidates(found, f.Kind);
+                var complete = candidates.Where(p => DirectCommand.NameHasAll(f.Query, p)).ToList();
+                string label = f.Kind switch { "pdf" => it ? "un PDF" : "a PDF", "slide" => it ? "delle slide" : "slides", "word" => it ? "un documento Word" : "a Word document", _ => it ? "un file" : "a file" };
+                string? pick;
+                int others = 0;
+                if (config.NoAI)
+                {
+                    pick = complete.FirstOrDefault() ?? candidates.FirstOrDefault();
+                    if (pick is null) return new(it ? $"Non trovo {label} che si chiami {f.Query}." : $"I can't find {label} called {f.Query}.", "diretto");
+                    others = (complete.Count > 0 ? complete : candidates).Count - 1;
+                }
+                else
+                {
+                    if (complete.Count != 1) return null;
+                    pick = complete[0];
+                }
+                var (opened, failed) = await Call("open_path", new() { ["path"] = pick });
+                if (failed || !opened.StartsWith(it ? "Aperto" : "Opened")) return new(opened, "diretto");
+                string name = DirectCommand.SpokenFileName(pick);
+                return new((it ? $"Apro {name}." : $"Opening {name}.")
+                           + (others > 0 ? (it ? $" Ce ne sono altri {others} con quel nome: se non è questo, dimmi il nome più preciso." : $" There are {others} more with that name: if it's not this one, tell me a more precise name.") : ""), "diretto");
             }
             case DirectCommand.CreateFolder f:
             {
@@ -885,6 +1065,7 @@ public sealed class Assistant : IAsyncDisposable
                         foreach (var sentence in splitter.Push(t.Value)) Say(sentence);
                         break;
                     case BrainEvent.Tool tool:
+                        lock (usedTools) usedTools.Add(tool.Name);
                         // Text before and after a tool are separate sentences.
                         foreach (var sentence in splitter.Push("\n")) Say(sentence);
                         if (Acts(tool.Name)) acting = true;
@@ -895,6 +1076,11 @@ public sealed class Assistant : IAsyncDisposable
                         }
                         break;
                     case BrainEvent.Trace t:
+                        lock (trace)
+                        {
+                            trace.Add((DateTime.Now, t.Line));
+                            if (trace.Count > 120) trace.RemoveAt(0);
+                        }
                         Activity?.Invoke(t.Line);
                         Log.Info("cervello: " + t.Line);
                         break;

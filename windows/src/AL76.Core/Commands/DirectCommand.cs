@@ -24,6 +24,10 @@ public abstract record DirectCommand
     public sealed record Battery : DirectCommand;
     public sealed record Math(string Expression) : DirectCommand;
     public sealed record OpenFolder(string Name) : DirectCommand;
+    /// <summary>"Elimina la sessione di fisica", "cancella l'ultima sessione" (Mac 1.30.79); null Name = the last one.</summary>
+    public sealed record DeleteSession(string? Name) : DirectCommand;
+    /// <summary>"Apri il PDF di fisica", "apri la dispensa di chimica" (Mac 1.30.85): Kind is "pdf", "slide", "word" or "" for any file.</summary>
+    public sealed record OpenFile(string Query, string Kind) : DirectCommand;
     public sealed record CreateFolder(string Name, string? Place) : DirectCommand;
     public sealed record DarkMode(bool On) : DirectCommand;
     public sealed record SleepDisplay : DirectCommand;
@@ -36,7 +40,7 @@ public abstract record DirectCommand
     {
         string text = Clean(raw);
         if (text.Length == 0 || text.Split(' ').Length > 14) return null;
-        return DictationCommand(text) ?? Incomplete(text) ?? Agenda(text) ?? Reminders(text, raw, now) ?? WeatherCommand(text) ?? SystemCommand(text) ?? Arithmetic(text) ?? Folder(text);
+        return DictationCommand(text) ?? Incomplete(text) ?? Agenda(text) ?? Reminders(text, raw, now) ?? WeatherCommand(text) ?? SystemCommand(text) ?? Arithmetic(text) ?? SessionDelete(text) ?? FileByName(text) ?? Folder(text);
     }
 
     /// <summary>Lower case; Whisper's stray full stops and question marks in the middle go away ("quanto fa? 781 per 28").</summary>
@@ -116,7 +120,9 @@ public abstract record DirectCommand
 
     private static DirectCommand? Reminders(string t, string raw, DateTime now)
     {
-        if (Match(t, "(?:quali|che) promemoria (?:ho|ci sono)(?: oggi| in sospeso)?|(?:che )?cosa devo fare(?: oggi)?|(?:leggimi|dimmi|elenca) i (?:miei )?promemoria|ho (?:dei )?promemoria(?: in sospeso)?|what are my reminders|(?:read|list) my reminders|what do i have to do(?: today)?") is not null)
+        // Mac 1.30.85 (AI off, 23/11): "Leggimi promemoria." and "Che pro-memorial." were not understood.
+        string asked = Regex.Replace(t, @"\bpro ?memoria?l?e?\b|\bpromemoriali?\b", "promemoria");
+        if (Match(asked, "(?:quali|che) promemoria(?: (?:ho|ci sono))?(?: oggi| in sospeso)?|(?:che )?cosa devo fare(?: oggi)?|(?:leggimi|dimmi|elenca|leggi)(?: i)?(?: miei)? promemoria|ho (?:dei )?promemoria(?: in sospeso)?|promemoria|what are my reminders|(?:read|list) my reminders|what do i have to do(?: today)?") is not null)
             return new ListReminders();
         var m = Match(t, "(?:ricordami|ricordati di dirmi|ricordami che devo)(?: di| che)? (.+)|(?:crea|creami|metti|aggiungi|imposta|fai|segna)(?: un| il)? promemoria(?: per| di| che dice)? (.+)|promemoria (.+)|remind me(?: to| that)? (.+)|(?:create|add|set)(?: a)? reminder(?: to| for)? (.+)");
         if (m is null) return null;
@@ -196,6 +202,55 @@ public abstract record DirectCommand
         ["download"] = "downloads", ["downloads"] = "downloads", ["immagini"] = "pictures", ["pictures"] = "pictures",
         ["musica"] = "music", ["music"] = "music", ["video"] = "videos", ["videos"] = "videos",
     };
+
+    private static DirectCommand? SessionDelete(string t)
+    {
+        if (Match(t, "(?:elimina|elimini|cancella|cancelli|rimuovi|togli)(?: la| l'| quella| questa)? ?(?:ultima )?sessione(?: (?:di studio|appena (?:avviata|chiusa|fatta)|sbagliata|per sbaglio))?(?: (?:di|su|del|della|chiamata) (.+))?|delete the last session") is not { } m)
+            return null;
+        string name = m.Length > 1 ? m[1] : "";
+        return new DeleteSession(name.Length == 0 ? null : System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(name));
+    }
+
+    /// <summary>A file by name, with an article or preposition only: "apri Word" stays an app. "Appunti" is left out
+    /// ("apri gli appunti di fisica" may mean the notes search).</summary>
+    private static DirectCommand? FileByName(string t)
+    {
+        if (Match(t, "(?:apri|aprimi|riapri|mostrami|fammi vedere)( il| la| lo| le| i| gli| un| una| l')? ?(pdf|file|dispensa|dispense|documento|slide|presentazione|powerpoint|word) ((?:di|del|della|dello|dei|delle|degli|sul|sulla|sui|su|che si chiama|chiamato|chiamata) )?(.+)") is not { } m)
+            return null;
+        if (m[1].Length == 0 && m[3].Length == 0) return null;
+        int words = m[4].Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        if (words is < 1 or > 6) return null;
+        string kind = m[2] switch { "pdf" or "dispensa" or "dispense" => "pdf", "slide" or "presentazione" or "powerpoint" => "slide", "word" => "word", _ => "" };
+        return new OpenFile(m[4], kind);
+    }
+
+    /// <summary>The files of a search_files answer of the kind asked, in the same order (most similar first).</summary>
+    public static List<string> FileCandidates(string found, string kind)
+    {
+        string[] allowed = kind switch
+        {
+            "pdf" => [".pdf"],
+            "slide" => [".ppt", ".pptx", ".odp", ".key", ".pdf"],
+            "word" => [".doc", ".docx", ".odt", ".rtf"],
+            _ => [],
+        };
+        return found.Split('\n').Skip(1).Select(l => l.Trim()).Where(p => p.Length > 0 && File.Exists(p))
+                    .Where(p => allowed.Length == 0 || allowed.Contains(Path.GetExtension(p).ToLowerInvariant())).ToList();
+    }
+
+    /// <summary>Every word of three letters or more of the request is in the file name (its first letters are enough:
+    /// "dispense" finds "Dispensa"); numbers must match whole ("fisica 2" never opens "Fisica 1").</summary>
+    public static bool NameHasAll(string query, string path)
+    {
+        string name = Regex.Replace(Voice.TextTools.NormalizePhrase(Regex.Replace(Path.GetFileNameWithoutExtension(path), @"[_\-.]+", " ")), @"\s+", " ");
+        var nameWords = name.Split(' ');
+        var words = Voice.TextTools.NormalizePhrase(query).Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                         .Where(w => w.Length >= 3 || w.All(char.IsDigit)).ToList();
+        return words.Count > 0 && words.All(w => w.All(char.IsDigit) ? nameWords.Contains(w) : name.Contains(w[..System.Math.Min(w.Length, System.Math.Max(4, w.Length - 2))]));
+    }
+
+    /// <summary>"Dispense_Fisica-1.pdf" → "Dispense Fisica 1".</summary>
+    public static string SpokenFileName(string path) => Regex.Replace(Path.GetFileNameWithoutExtension(path), @"[_\-]+", " ").Trim();
 
     private static DirectCommand? Folder(string t)
     {

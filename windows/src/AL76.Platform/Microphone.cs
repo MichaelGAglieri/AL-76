@@ -34,19 +34,98 @@ public sealed class Microphone : IDisposable
     /// (voice processing, no echo reference control) or "plain".</summary>
     public string Mode { get; private set; } = "";
 
+    /// <summary>The ways to open a microphone, in order: Windows' default input (the one in Settings › Sound) with
+    /// voice processing, then without, then the communications default, then any other active input. A tester's PC
+    /// gave only silence (23/11): a step that hears nothing but digital silence for 8 s gives way to the next.</summary>
+    private readonly List<(string id, string name, bool voice)> plan = [];
+    private int step;
+    private DateTime stepStarted;
+    private bool heard;
+    private int switching;
+    private const double SilentSeconds = 8;
+
     public void Start()
     {
         using var devices = new MMDeviceEnumerator();
-        var device = devices.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
-        DeviceName = device.FriendlyName;
-        try { StartCommunications(device); }
-        catch (Exception e)
+        MMDevice? Default(Role role) { try { return devices.GetDefaultAudioEndpoint(DataFlow.Capture, role); } catch (Exception) { return null; } }
+        var main = Default(Role.Console);
+        var talk = Default(Role.Communications);
+        var all = devices.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active).ToList();
+        Log.Info($"microfono: trovati {all.Count}: {string.Join("; ", all.Select(d => d.FriendlyName + (d.ID == main?.ID ? " [predefinito]" : "") + (d.ID == talk?.ID ? " [comunicazioni]" : "")))}");
+        void Add(MMDevice? d, bool voice) { if (d is not null && !plan.Any(p => p.id == d.ID && p.voice == voice)) plan.Add((d.ID, d.FriendlyName, voice)); }
+        Add(main, true);
+        Add(main, false);
+        Add(talk, true);
+        Add(talk, false);
+        foreach (var d in all.Where(d => !Loopback(d.FriendlyName))) Add(d, false);
+        if (plan.Count == 0) throw new InvalidOperationException("nessun microfono attivo");
+        Open(0);
+    }
+
+    /// <summary>"Stereo Mix" and the like record what the PC plays, not a voice.</summary>
+    private static bool Loopback(string name) =>
+        new[] { "stereo mix", "missaggio stereo", "what u hear", "wave out", "loopback" }.Any(n => name.Contains(n, StringComparison.OrdinalIgnoreCase));
+
+    private void Open(int index)
+    {
+        for (int i = index; i < plan.Count; i++)
         {
-            Log.Info($"microfono: modalità comunicazioni non disponibile ({e.Message}), uso quella normale");
-            recorder?.Dispose();
-            recorder = null;
-            StartPlain(device);
+            step = i;
+            heard = false;
+            stepStarted = DateTime.UtcNow;
+            var (id, name, voice) = plan[i];
+            DeviceName = name;
+            try
+            {
+                using var devices = new MMDeviceEnumerator();
+                var device = devices.GetDevice(id);
+                if (voice) StartCommunications(device); else StartPlain(device);
+                return;
+            }
+            catch (Exception e)
+            {
+                Log.Info($"microfono: {name} {(voice ? "con elaborazione voce" : "normale")} non disponibile ({e.Message})");
+                Close();
+            }
         }
+        throw new InvalidOperationException("nessun microfono si apre");
+    }
+
+    private void Close()
+    {
+        try { capture?.StopRecording(); } catch (Exception) { }
+        try { recorder?.StopRecording(); } catch (Exception) { }
+        capture?.Dispose();
+        recorder?.Dispose();
+        capture = null;
+        recorder = null;
+    }
+
+    /// <summary>Only digital silence so far: the next way, on a pool thread (never stop a capture from its own callback).</summary>
+    private void Watch(float[] raw)
+    {
+        if (heard) return;
+        float peak = 0;
+        foreach (var x in raw) { float a = Math.Abs(x); if (a > peak) peak = a; }
+        if (peak > 1e-5f)
+        {
+            heard = true;
+            Log.Info($"microfono: segnale da {DeviceName} ({Mode})");
+            return;
+        }
+        if ((DateTime.UtcNow - stepStarted).TotalSeconds < SilentSeconds || step + 1 >= plan.Count) return;
+        if (Interlocked.Exchange(ref switching, 1) == 1) return;
+        Task.Run(() =>
+        {
+            try
+            {
+                Log.Info($"microfono: da {DeviceName} ({Mode}) solo silenzio per {SilentSeconds:0} s, provo il prossimo");
+                Close();
+                Open(step + 1);
+            }
+            catch (Exception e) { Log.Info($"microfono: nessun altro modo ({e.Message})"); }
+            finally { Interlocked.Exchange(ref switching, 0); }
+        });
     }
 
     /// <summary>
@@ -82,6 +161,7 @@ public sealed class Microphone : IDisposable
 
     private void OnSamples(float[] samples, WaveFormat format)
     {
+        Watch(samples);
         var mono = Wav.Resample(Wav.ToMono(samples, format.Channels), format.SampleRate, VoiceActivityDetector.SampleRate);
         if (mono.Length > 0)
         {
@@ -142,7 +222,6 @@ public sealed class Microphone : IDisposable
     public void Dispose()
     {
         Stop();
-        capture?.Dispose();
-        recorder?.Dispose();
+        Close();
     }
 }

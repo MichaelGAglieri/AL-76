@@ -477,6 +477,8 @@ public static class Pages
         _ = Refresh();
         return Ui.Stack(
             Ui.Intro(s["setup.step.Brain"], s["setup.brain.text"]),
+            // "Senza IA" (Mac 1.30.84): no model at all, only the commands AL-76 knows.
+            Ui.Section("", Ui.Switch(s["brain.noai"], s["brain.noai.note"], d.NoAI, v => { d.NoAI = v; c.Changed(); })),
             Ui.Section("", choices, Ui.Row(Ui.Button(s["brain.recheck"], () => _ = Refresh())), Ui.Caption(s["brain.console.note"])),
             Ui.Section("", Ui.Caption(s["brain.privacy"], 12, new Thickness(0))));
     }
@@ -629,13 +631,35 @@ public static class Pages
         if (d.NucleusStyle != "robottino") return page;
         if (!AppPaths.CompanionModel)
         {
+            // Guided (a tester had no robot, 23/11): Sketchfab in the browser, then the zip from Downloads.
+            var result = Ui.Caption("", 13);
+            void Install()
+            {
+                string downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                string? zip = CompanionModel.FindZip(downloads);
+                if (zip is null)
+                {
+                    var pick = new Microsoft.Win32.OpenFileDialog { Filter = "Zip|*.zip", InitialDirectory = Directory.Exists(downloads) ? downloads : "" };
+                    if (pick.ShowDialog() != true) return;
+                    zip = pick.FileName;
+                }
+                string? problem = CompanionModel.Install(zip, AppPaths.Companion);
+                Log.Info(problem is null ? $"robottino: modello installato da {Path.GetFileName(zip)}" : $"robottino: modello non installato: {problem}");
+                if (problem is not null) { result.Text = s.Format("look.robot.failed", problem); return; }
+                c.Changed();
+                c.Redraw();
+            }
             page.Children.Add(Ui.Section(s["look.robot"],
                 Ui.Caption(s.Format("look.robot.missing", c.Name, AppPaths.Companion), 13),
-                Ui.Row(Ui.Button(s["look.robot.folder"], () =>
-                {
-                    System.IO.Directory.CreateDirectory(AppPaths.Companion);
-                    WindowsSetup.Open(AppPaths.Companion);
-                }))));
+                Ui.Caption(s["look.robot.steps"], 13),
+                Ui.Row(Ui.Button(s["look.robot.get"], () => WindowsSetup.Open(CompanionModel.Page)),
+                       Ui.Button(s["look.robot.install"], Install),
+                       Ui.Button(s["look.robot.folder"], () =>
+                       {
+                           Directory.CreateDirectory(AppPaths.Companion);
+                           WindowsSetup.Open(AppPaths.Companion);
+                       })),
+                result));
             return page;
         }
         var flames = new StackPanel { Orientation = Orientation.Horizontal };

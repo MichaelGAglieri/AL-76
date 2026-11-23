@@ -8,6 +8,8 @@ import Foundation
 enum DirectCommand: Equatable {
     case startSession(name: String, category: String)
     case stopSession
+    /// "Elimina la sessione di chimica organica", "cancella l'ultima sessione" (nil = the last one).
+    case deleteSession(name: String?)
     case pauseSession(minutes: Int)
     case resumeSession
     case studyReport(period: String)
@@ -27,6 +29,9 @@ enum DirectCommand: Equatable {
     case reminder(title: String, due: Date?)
     case event(title: String, start: Date)
     case openFolder(String)
+    /// "Apri il PDF di chimica organica", "apri la dispensa di fisica" (1.30.85): `kind` is "pdf", "slide",
+    /// "word" or "" for any file.
+    case openFile(query: String, kind: String)
     case briefing
     case closeFinderWindows(all: Bool)
     case startDictation
@@ -125,6 +130,9 @@ enum DirectCommand: Equatable {
         }
         if let m = match(text, "(?:inizio|comincio|incomincio|mi metto) a studiare (.+)") { return .startSession(name: title(m[1]), category: "study") }
         if let m = match(text, "(?:inizio|comincio) a lavorare (?:al progetto |sul progetto |al |a |su |sul )(.+)") { return .startSession(name: title(m[1]), category: "project") }
+        if let m = match(text, "(?:elimina|elimini|cancella|cancelli|rimuovi|togli)(?: la| l'| quella| questa)? ?(?:ultima )?\(word)(?: (?:di studio|appena (?:avviata|chiusa|fatta)|sbagliata|per sbaglio))?(?: (?:di|su|del|della|chiamata) (.+))?") {
+            return .deleteSession(name: m[1].isEmpty ? nil : title(m[1]))
+        }
         if match(text, "(?:interrompi|interrompe|chiudi|termina|ferma|finisci|concludi|stoppa|stop)(?: la| questa)? \(word)(?: .+)?") != nil
             || match(text, "(?:interrompi|interrompe|termina|ferma|chiudi|finisci) lo studio(?: .+)?") != nil
             || match(text, "ho finito(?: di studiare| di lavorare| lo studio| per oggi)?|fine (?:sessione|studio)|ho smesso di studiare") != nil {
@@ -195,7 +203,9 @@ enum DirectCommand: Equatable {
         if let m = match(text, "(?:che|quali) \(things) (?:ho|ci sono)(?: per)?(?: (oggi|domani))?|(?:ho|ci sono) \(things)(?: per)?(?: (oggi|domani))?|(?:che )?cosa ho(?: in programma| in agenda| in calendario)?(?: per)? (oggi|domani)|(?:com'è|come e|come è) la (?:mia )?giornata(?: di)?(?: (oggi|domani))?") {
             return .events(tomorrow: m.dropFirst().contains("domani"))
         }
-        if match(text, "(?:quali|che) promemoria (?:ho|ci sono)(?: oggi| in sospeso)?|(?:che )?cosa devo fare(?: oggi)?|(?:leggimi|dimmi|elenca) i (?:miei )?promemoria|ho (?:dei )?promemoria(?: in sospeso)?") != nil {
+        // 23 November, AI off: "Leggimi promemoria." and "Che pro-memorial." were not understood.
+        let text = text.replacingOccurrences(of: #"\bpro ?memoria?l?e?\b|\bpromemoriali?\b"#, with: "promemoria", options: .regularExpression)
+        if match(text, "(?:quali|che) promemoria(?: (?:ho|ci sono))?(?: oggi| in sospeso)?|(?:che )?cosa devo fare(?: oggi)?|(?:leggimi|dimmi|elenca|leggi)(?: i)?(?: miei)? promemoria|ho (?:dei )?promemoria(?: in sospeso)?|promemoria") != nil {
             return .reminders
         }
         return nil
@@ -438,6 +448,14 @@ enum DirectCommand: Equatable {
             let name = m[1].isEmpty ? m[2].replacingOccurrences(of: "i ", with: "") : m[1]
             return name.split(separator: " ").count <= 5 ? .openFolder(name) : nil
         }
+        // A file by name. "Appunti" is left out: "apri gli appunti di fisica" may mean the notes search.
+        // With an article or a preposition only: "apri PDF Craft" and "apri Word" are apps (the replay test caught it).
+        if let m = match(text, "(?:apri|aprimi|riapri|mostrami|fammi vedere)( il| la| lo| le| i| gli| un| una| l')? ?(pdf|file|dispensa|dispense|documento|slide|presentazione|powerpoint|word) ((?:di|del|della|dello|dei|delle|degli|sul|sulla|sui|su|che si chiama|chiamato|chiamata) )?(.+)"),
+           !m[1].isEmpty || !m[3].isEmpty, (1...6).contains(m[4].split(separator: " ").count) {
+            let kinds = ["pdf": "pdf", "dispensa": "pdf", "dispense": "pdf", "slide": "slide", "presentazione": "slide",
+                         "powerpoint": "slide", "word": "word"]
+            return .openFile(query: m[4], kind: kinds[m[2]] ?? "")
+        }
         // "Crea una cartella sulla scrivania col titolo test": the place before the name.
         if let m = match(text, "(?:crea|creami|fai|fammi)(?: una| la)? (?:nuova )?cartella (?:sulla|sul|nella|nei|in|dentro) (scrivania|desktop|documenti|download|downloads|progetti|projects) (?:col titolo|con titolo|con il titolo|chiamata|di nome|con nome|col nome|con il nome|intitolata|che si chiama) (.+)"),
            m[2].split(separator: " ").count <= 6 {
@@ -474,7 +492,8 @@ enum DirectCommand: Equatable {
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         switch command {
         case .stopSession:
-            return text.hasPrefix("Nessuna sessione") ? "Non c'è nessuna sessione in corso." : text + " Cosa scrivo nel resoconto?"
+            if text.hasPrefix("Nessuna sessione") { return "Non c'è nessuna sessione in corso." }
+            return raw.contains(ActivityTracker.reportRequest) ? text + " Cosa scrivo nel resoconto?" : text
         case .studyReport:
             return text.replacingOccurrences(of: "Totale today", with: "Oggi in totale").replacingOccurrences(of: "Totale yesterday", with: "Ieri in totale")
                 .replacingOccurrences(of: "Totale week", with: "Questa settimana in totale").replacingOccurrences(of: "Totale month", with: "Questo mese in totale")
@@ -553,10 +572,65 @@ enum DirectCommand: Equatable {
     }
 
     /// The answer to "cosa scrivo nel resoconto?" / "creo le schede?" that means no.
+    /// A phrase that opens with an order ("apri…", "avvia…", "elimina…") is a request, not the words of a
+    /// report; "scrivi…" or anything with "resoconto" in it stays a report ("metti nel resoconto le derivate").
+    static func isRequest(_ raw: String) -> Bool {
+        let text = clean(raw)
+        guard !text.contains("resoconto"), let first = text.split(separator: " ").first.map(String.init) else { return false }
+        return requestVerbs.contains(first)
+    }
+
+    private static let requestVerbs: Set<String> = [
+        "apri", "aprimi", "avvia", "avviami", "chiudi", "termina", "elimina", "cancella", "rimuovi", "togli",
+        "cerca", "cercami", "accendi", "spegni", "mostra", "mostrami", "dimmi", "fammi", "crea", "imposta", "manda", "invia",
+        "leggi", "leggimi", "riproduci", "suona", "ferma", "alza", "abbassa", "controlla", "calcola", "metti", "mettimi",
+        "vai", "attiva", "disattiva", "stampa", "carica", "scarica", "ricordami", "chiama", "spiegami",
+    ]
+
     static func isNo(_ raw: String) -> Bool {
         let text = clean(raw)
         return ["no", "niente", "nulla", "no grazie", "no niente", "no nulla", "nulla nulla", "lascia stare", "lascia perdere", "non serve",
                 "nessuno", "nessun resoconto", "niente resoconto", "annulla", "non scrivere niente", "non scrivere nulla"].contains(text)
+    }
+
+    /// "No" to "Cosa scrivo nel resoconto?", also when longer or misheard (1.30.82): on 18 November
+    /// "Nulla, non scriverai nulla nel resoconto." and on 23 November "Mulla." (Whisper for "Nulla") were
+    /// saved as reports, and AL-76 offered five flashcards on "Mulla".
+    static func isNoReport(_ raw: String) -> Bool {
+        if isNo(raw) { return true }
+        let text = clean(raw)
+        let words = text.split(separator: " ").map(String.init)
+        // One word a letter away from "nulla" or "niente": "mulla", "nula", "gnente".
+        if words.count == 1, let word = words.first, word.count >= 4,
+           ["nulla", "niente"].contains(where: { letterDistance(word, $0) <= 1 }) { return true }
+        // A real report that starts with "no" ("no, nel resoconto scrivi integrali") must stay a report:
+        // only a negated "write" with nothing, or "no report", counts.
+        let patterns = [
+            // "Nulla, non scriverai nulla nel resoconto", "non scrivere niente", "non serve niente"
+            #"(?:.* )?non (?:scriv\w*|mettere|metterci|serve|c'è)(?: .*)? (?:nulla|niente)(?: .*)?"#,
+            // "Per oggi nessun resoconto", "niente resoconto grazie", "senza resoconto"
+            #"(?:.* )?(?:nessun|niente|nulla|senza) (?:il )?resoconto(?: .*)?"#,
+            // "Nulla, nulla", "no, niente grazie"
+            #"(?:no|nulla|niente)(?: (?:no|nulla|niente|grazie|davvero|per oggi|oggi))*"#,
+        ]
+        return patterns.contains { match(text, $0) != nil }
+    }
+
+    /// Letters to change, add or remove to turn one word into the other.
+    private static func letterDistance(_ a: String, _ b: String) -> Int {
+        let a = Array(a), b = Array(b)
+        guard !a.isEmpty, !b.isEmpty else { return max(a.count, b.count) }
+        var row = Array(0...b.count)
+        for i in 1...a.count {
+            var previous = row[0]
+            row[0] = i
+            for j in 1...b.count {
+                let kept = row[j]
+                row[j] = min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] == b[j - 1] ? 0 : 1))
+                previous = kept
+            }
+        }
+        return row[b.count]
     }
 
     // MARK: "Sta ancora studiando?"

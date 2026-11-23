@@ -41,6 +41,8 @@ public static class WebLayer
         core.Settings.IsZoomControlEnabled = false;
         core.Settings.AreBrowserAcceleratorKeysEnabled = false;
         core.SetVirtualHostNameToFolderMapping(Host, Path.Combine(AppContext.BaseDirectory, "web", "hud"), CoreWebView2HostResourceAccessKind.DenyCors);
+        // Always mapped: a model installed from the settings shows without a restart.
+        try { Directory.CreateDirectory(AppPaths.Companion); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         if (Directory.Exists(AppPaths.Companion))
             core.SetVirtualHostNameToFolderMapping(CompanionHost, AppPaths.Companion, CoreWebView2HostResourceAccessKind.Allow);
         core.NavigationStarting += (_, e) => { if (!e.Uri.StartsWith($"https://{Host}/")) e.Cancel = true; };

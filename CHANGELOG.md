@@ -3,6 +3,83 @@
 Every version was built, installed and tested on the Mac (and on the iPhone and iPad app when it was
 involved) before moving to the next one. All dates are in 2026.
 
+## 1.30.85 — 23 November
+
+First real use without AI (23 November, 16:34–16:36): four requests out of five had gone unanswered.
+
+- **"Ehi, allo, che promemoria ho?"**: Whisper wrote the call as "allo" and the command was not recognised; without AI, AL-76 suggested the very phrase he had said. "allo" and "alle" after "ehi" are now the call.
+- **Reminders said other ways**: "Leggimi promemoria", "Che pro-memorial", "che promemoria", "promemoria" alone.
+- **Opening a file by name without a model**: "apri il PDF di …", "apri la dispensa di …", "aprimi le slide di …", "apri il documento …", "apri il file …". With the AI on it opens only when exactly one file has every requested word in its name (numbers exact), otherwise the model chooses as before; with the AI off it opens the most similar and says if there are others. An article or a preposition is required: "apri PDF Craft" and "apri Word" stay apps (the real-phrase replay flagged it during the change).
+- **Shorter no-AI answer**: "Senza IA non so farlo. Prova con: che tempo fa domani." and the way back only the first time.
+- Tests: 26. Tested in the app through the writing bar; opening a real PDF was not tried, so as not to open files on screen.
+
+## 1.30.84 — 23 November
+
+Phase 3 of the 23 November proposals, and a user request: a switch that turns off every AI, for a plain assistant that works the Mac with the commands it knows and to see what can be done without a model.
+
+- **No AI**: Settings › Brain ("Senza IA: solo i comandi che conosco"), quick menu › Brain, the "Senza IA" chip at the top of the Plancia, or by voice "disattiva l'IA" / "riattiva l'IA" (also "spegni l'IA", "modalità senza IA", "accendi l'IA", "torna con l'IA"; whole sentences only). When off, no request reaches Claude, ChatGPT, Gemini or Gemma by any road (voice, writing bar, iPhone, protocols, vocabulary learning); Ollama is not started and Gemma leaves memory; notes search is by words only. Hearing, voice and voiceprint stay. "Chiedi a Claude…", "usa Opus", "usa Claude" answer with how to turn it back on. The morning briefing is the model-free one; flashcards after a report are not offered; a protocol with a part for the model does the model-free steps and says the rest needs the AI. Plancia header and menu: "in attesa · senza IA".
+- **Requests that would need the AI**: a compound request ("che ore sono e quanta batteria ho", "apri Safari, poi alza il volume") is split on "e", "poi", "e poi", commas and full stops, and the known parts run in order with one answer; the unknown ones are listed. Otherwise: "Senza IA questa non la so fare. Posso però: …" with the two nearest commands by topic (new Core/KnownCommands.swift, 22 topics; verbs like "apri" weigh half) and, the first time, how to turn it back on. Splitting is tried only on phrases not understood as a whole, and only with the AI off.
+- **Request log** (new Core/RequestLog.swift, `richieste.json`, 30 days, on the Mac only): every request with its road (instant, direct, model with brain, seconds and tools used, not done without AI).
+- **Plancia › Stato**: new "Senza modello" section with today's and the last 7 days' share (green from 60 %, the goal), the breakdown and the average model time; "Andate al modello · 7 giorni" groups the requests by the tool the model used, with three examples: the next ones to turn into direct commands. The brain module says "IA SPENTA · SOLO COMANDI".
+- **Robot**: "blocca lì in basso a destra" (the words of its own menu) and similar now pin it in the corner without a model; today it had gone to Claude, which did not understand.
+- diagnostica.log: "richiesta …" for every request, "senza IA …", and "cervello: nessuno, IA spenta".
+- Tests: 22 (8 new). The real-phrase replay flagged by itself the two changed robot phrases, accepted.
+- Tested in the app through the writing bar: voice switch both ways, poem refused with suggestions, compound request 2 of 2 and 1 of 2, "chiedi a Claude" blocked, model-free briefing, Plancia › Stato and Dialogo seen. Settings › Brain was not opened on screen. Test requests were removed from the log and the AI left on.
+
+## 1.30.83 — 23 November
+
+Code robustness (phase 2 of the 23 November proposals).
+
+- **Fixed tests**: `scripts/test.sh` (or `swift test`), new JARVISTests target in `tests/unit`. 14 tests, 67 invented phrases: instant and direct commands, free questions that must go to the model, "no" to the report, yes/no, "sta ancora studiando?", past times, the "Ehi Al" call, booklet grades. About 4 seconds after the first build.
+- **Real phrases replayed**: on the Mac in use the test re-reads the phrases of voce.log and diagnostica.log (688 distinct today) and compares them with the snapshot in local/istantanea_comandi.tsv, which is never published. A new rule that changes how an old phrase is understood fails the test and shows it ("prima modello → ora istantaneo …"); `AL76_ACCETTA=1 scripts/test.sh` accepts the new results. Tested by altering one line on purpose.
+- **Assistant.swift split**: from 3,611 to 1,980 lines. Seven parts moved to their own files with no change in behaviour: Assistant+Voiceprint, +DirectCommands, +SessionBreaks, +Vocabulary, +Phone, +DebugHooks, +Onboarding. Stored properties stay in the main file; some functions and properties that were private are now visible in the module.
+- **Compiler warnings**: the new Swift 6.4 gave 9, already before these changes. The 6 with no visible effect are gone (Combine imports in Onboarding and PermissionsPage, an unused variable in RobotKit, an explicit conversion in CloudBrains); 3 graphics warnings remain (borderColor, showsBaselineSeparator, a capture in the robot), to be touched only with a visual check.
+- Tested in the installed app: start-up, test hooks, writing bar with direct commands ("che giorno è oggi?", "quanta batteria ho?") and study sessions.
+
+## 1.30.82 — 23 November
+
+Wrong session reports (23 November: to "What shall I write in the report?" the answer "Nulla" heard as "Mulla." was saved as the Elettrotecnica report, and AL-76 offered five flashcards on "Mulla"; on 18 November the same happened with "Nulla, non scriverai nulla nel resoconto.").
+
+- **"No" to the report is recognised also when long or misheard**: "non scrivere niente", "non scriverai nulla nel resoconto", "nessun resoconto per oggi", "senza resoconto", and a single word one letter away from "nulla" or "niente" ("Mulla", "Nula", "Nullo"). A real report starting with "no" ("no, nel resoconto scrivi integrali doppi") stays a report.
+- **A one-word report is confirmed before saving**: "Ho capito «Integrali». Lo salvo come resoconto?". Yes saves it (and for study offers flashcards), no asks again what to write; any other phrase counts as the report said again.
+- The two wrong reports were removed from resoconti.json (copy in resoconti.json.prima-resoconti-nulla).
+- Recognition tested standalone on 22 phrases (real and invented) and on all 683 distinct phrases in voce.log: only four more phrases are taken as "no", all of them real "no"s. The spoken confirmation was not tried in the app because the user was using AL-76.
+
+## 1.30.81 — 23 November
+
+Panels redone (23 November, user request: the seven panels were a leftover of the JARVIS concept; they worked but had no common logic or style; only the Settings' layout was liked).
+
+- **Plancia** (control deck) instead of the seven panels: one window in the style of the Settings (sidebar, title with an explanation, grouped boxes) with four sections. **Dialogo** = Phrases, with a field to type, the microphone and "New conversation". **Giornata** = Activity + Study: session in progress with its clock, today's and the week's totals, flashcards due, then Sessions / Reports / Flashcards as in 1.30.80's Study panel. **Stato** = Modules + Log, with a green or amber dot per module. **Pensiero** stays the terminal. The **Protocol** panel is gone: brain and Claude model are the chips at the top (the language is still chosen phrase by phrase by itself). At the top of the sidebar, AL-76's state with a pulsing dot.
+- **Detachable sections**: "Stacca in finestrella" opens the section in a small window to keep beside the robot; its button puts it back in the Plancia. The Plancia and the small windows remember position, section and whether they were open.
+- It opens with **⌃⌥K** (again to close it when it is in front), from the quick menu and from the **Plancia** menu on the left (⌘1–⌘4 for the sections).
+- **One quick menu**, with the same rows in the same order on the menu-bar icon and on the right click of the robot, the SATELLITE, the reactor and the sphere: Speak, Type, New conversation, Open Plancia, Sections, Brain (with the Claude model), Privacy mode, Open the sphere / Shrink, Robot (corner, speech bubble), Settings, Guided setup, Quit. Before, every place had a different menu.
+- **Menu-bar icon**: the robot's head stylized, in colour, with eyes in the HUD's cyan (variant "D", chosen by the user out of six; preview and variants in tests/plancia). It used to be a ◎ circle.
+- Unchanged by the user's choice: the **⌃⌥T typing bar** hanging from the robot, to type a quick line without opening the Plancia, and the robot's **speech bubble** (its rows only moved to the Robot submenu).
+- New debug.plancia test channel (test mode only): opens a section without taking the keyboard, detaches one, closes, writes the quick menu's rows to diagnostica.log.
+- Tested in the installed app with debug.plancia: the four sections with real data, a detached section reopened at launch, the quick menu's rows with the right ticks, the menu-bar icon. Not tried by hand: a real right click on robot, satellite and sphere, ⌃⌥K, typing in the Dialogo field and "Settings…" from the quick menu.
+
+## 1.30.80 — 23 November
+
+- **New "Studio" panel** (the "Schede" menu, like the others: a movable, resizable window that reopens where it was left). Three text sections, read-only: **Sessioni** by day, newest first, with kind, times, length, breaks and the day's total (the one in progress with a running clock and "IN CORSO" / "IN PAUSA"); **Resoconti**, newest first, with the session name and date; **Schede** (flashcards) by subject, with question, answer, source, level and when it is next due (the ones due today in amber). It updates by itself when a session starts, closes or is deleted, a report is saved or a flashcard is graded. The text can be selected and copied.
+
+## 1.30.79 — 23 November
+
+Study sessions (23 November: a session started with a misheard name (e.g. "Chimico Organica") could not be deleted, and the next command ended up in its report).
+
+- **Delete a session by voice**, without the model: "elimina la sessione di chimica organica", "cancella l'ultima sessione", "elimina la sessione sbagliata". It removes the most recent one with that name (even the one in progress), otherwise the last one; if no other session with that name is left its report goes too. New delete_activity tool for Claude as well.
+- **Misheard names brought back to the ones already used**: "Chimico Organica" becomes "Chimica Organica", "Fisico" becomes "Fisica" (one letter of difference every eight, same number of words, same numbers: "Fisica 2" stays apart from "Fisica 1"). Also when correcting, closing and deleting.
+- **The report is no longer compulsory.** A session shorter than two minutes closes without asking for a report ("se era per sbaglio, dica: elimina l'ultima sessione"). And after "Cosa scrivo nel resoconto?" a phrase opening with an order ("apri…", "avvia…", "cerca…", "elimina…") is a request: it is carried out and does not become the report; "scrivi…" or a phrase with "resoconto" in it is still the report.
+- Tested in the app with debug.text: deleting by name and the last one, closing a session of a few seconds with no question; close names and request/report phrases tested apart. The report question after a long session was not tested in the app, so as not to close the study session in progress.
+
+## 1.30.78 — 20 November
+
+Fewer accidental wakes (20 November: three in half an hour while the user was talking to someone in the room).
+
+- **Whisper writing the hint back.** The first pass for the call gives Whisper the hint "Ehi Al."; with overlapping voices or cut phrases Whisper sometimes writes the hint instead of what it heard: eight seconds of conversation came out as "Ehi Al." and, being the user's voice, passed the voice print (in the log 34 of 62 bare calls had been stopped only by the voice print). Now a bare call from the hinted pass is checked again without the hint: if that gives a clear phrase of three or more words with no call, the wake is dropped and diagnostica.log says "indizio ripetuto da Whisper". It costs about 0.4 s, only on bare calls, before the beep.
+- **No bare call right after "basta".** For 6 seconds after a "basta" a lone "Ehi Al" is ignored (the conversation going on); a call with a command ("Ehi Al, apri Safari") always goes through.
+- **"Non ho capito, puoi ripetere?" only after phrases up to 10 seconds.** After the false call 12 seconds of conversation came out empty: the question opened a reply and the next remark, said to another person, went to Claude.
+- Tested in the app with debug.wake: test bare calls recognised (0.9-1.0 s), conversation phrases and overlapping voices dropped, "Ehi Al" 2.7 s after a basta ignored and 10 s after accepted. The hint echo could not be reproduced with synthetic voices: to be checked in real use.
+
 ## 1.30.77 — 19 November
 
 - **ROBOTTINO locked in the corner** (user request): it stays still in the bottom right corner, no more strolls, and dragging does not move it (a click is still a pat, a double click the HUD). If it is elsewhere it flies there on its jets, without walking. Three ways to turn it on and off: its right-click menu ("Blocca nell'angolo in basso a destra", with a tick), by voice without the model ("Al, stai fermo", "resta nell'angolo", "smetti di camminare" / "Al, puoi camminare", "sblocca il robottino", which also sets it strolling again) and Settings › Appearance › Robottino. The phrases do not overlap the robot arm's emergency stop ("fermati", "ferma il robot"). Tested in the app: from x 941 it flew to 1345 (the corner) and stayed there for two minutes; unlocked, it went back to strolling.

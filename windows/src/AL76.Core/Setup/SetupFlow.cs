@@ -69,10 +69,25 @@ public static class SetupFlow
     public static void Apply(AppConfig draft, AppConfig live, bool finished = false)
     {
         Normalize(draft);
+        draft.WakePhrase = CallForName(live.AssistantName, live.WakePhrase, draft.AssistantName, draft.WakePhrase);
         // What AL-76 itself keeps up to date while a window is open is not taken back from the copy.
         foreach (var p in typeof(AppConfig).GetProperties().Where(p => p.CanRead && p.CanWrite && p.Name is not (nameof(AppConfig.LastBriefingDay) or nameof(AppConfig.LastEveningDay))))
             p.SetValue(live, p.GetValue(draft) is List<string> list ? new List<string>(list) : p.GetValue(draft));
         if (finished) live.OnboardingDone = true;
+    }
+
+    /// <summary>The call after a rename: a new name ("Orione") with the call left as it was ("Ehi Al", or "Ehi" + the old
+    /// name) becomes "Ehi Orione"; a call the user wrote themself stays. A friend renamed AL-76 and called it by the new
+    /// name, which was never the call (Windows test, 23/11).</summary>
+    public static string CallForName(string oldName, string oldCall, string newName, string newCall)
+    {
+        if (!newCall.Equals(oldCall, StringComparison.OrdinalIgnoreCase) || newName.Equals(oldName, StringComparison.OrdinalIgnoreCase)) return newCall;
+        string Plain(string t) => Voice.TextTools.NormalizePhrase(t);
+        bool derived = Plain(oldCall) == Plain(AppConfig.DefaultWakePhrase) || Plain(oldCall) == Plain("Hey Al")
+                       || Plain(oldCall) == Plain(oldName) || Plain(oldCall).EndsWith(" " + Plain(oldName));
+        if (!derived) return newCall;
+        // "AL-76" goes back to "Ehi Al"; another name is called with "Ehi" before it.
+        return Plain(newName) is "al 76" or "al76" or "al" ? AppConfig.DefaultWakePhrase : $"Ehi {newName}";
     }
 
     public static void Normalize(AppConfig c)

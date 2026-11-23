@@ -222,7 +222,7 @@ final class CodexBridge: CloudBridge {
                         if let text = item["text"] as? String, !text.isEmpty { continuation.yield(.text(text + "\n")) }
                     case "mcp_tool_call":
                         let error = (item["error"] as? [String: Any])?["message"] as? String
-                        let content = (item["result"] as? [String: Any])?["content"] ?? error
+                        let content = (item["result"] as? [String: Any])?["content"] ?? error as Any
                         continuation.yield(.trace(ClaudeBridge.describeToolResult(content, tool: item["tool"] as? String, isError: error != nil)))
                     case let web where web.contains("web_search"):
                         let query = item["query"] as? String ?? ((item["action"] as? [String: Any])?["query"] as? String) ?? ""

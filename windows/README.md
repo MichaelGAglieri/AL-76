@@ -4,7 +4,7 @@ AL-76 is a voice assistant for study, work and the PC. This folder is the Window
 WPF and WebView2, built for everyone (any school, job or city), with optional modules. The Mac version lives in
 the rest of the repository; the two share ideas, not code.
 
-> **Status: preview (0.1.0).** Everything below is written and covered by automated tests, and the app has
+> **Status: preview (0.1.1).** Everything below is written and covered by automated tests, and the app has
 > been run in a Windows 11 virtual machine. It has not yet been tried on a real PC with a real microphone,
 > camera, Windows Hello, Samsung TV, Bambu Lab printer or robot: those parts may need fixes. Reports are welcome
 > as GitHub issues (the tray menu's **Export diagnostics** makes a zip without personal data to attach).
@@ -23,6 +23,16 @@ the rest of the repository; the two share ideas, not code.
    the optional modules. The Whisper and voice models are downloaded at that point (a few hundred MB, once).
 5. If Windows asks whether AL-76 may use the network, choose **Private networks**: it is needed only by the
    phone app on the home network.
+
+**Settings** open from the AL-76 icon by the clock (right click › Settings…), from the right-click menu of the
+sphere or the robot, by starting AL-76 again from the Start menu while it runs, or by typing *impostazioni* in the
+writing bar (Ctrl+Alt+T). The **Plancia** (dialogue, day, status, thought) opens from the same menus or with
+*apri la plancia*. **Without AI** (Settings › Brain, the menus, or *disattiva l'IA* / *riattiva l'IA*) turns every
+model off: AL-76 then runs only the commands it knows.
+
+The **robot** look needs its 3D model, which is not part of AL-76: "Mini Robot" by Onur on Sketchfab (CC-BY 4.0,
+a free Sketchfab account is needed). In Settings › Look choose Robottino, press **Open Sketchfab**, download the
+model as glTF, then press **Install the downloaded zip**: AL-76 finds it in the Downloads folder.
 
 If the Microsoft Visual C++ Redistributable is missing, AL-76 says so at the first start and shows Microsoft's
 official download link. **Uninstall** from Windows Settings › Apps › Installed apps › AL-76. Your settings,
@@ -103,7 +113,7 @@ Without Git: **Code › Download ZIP**, extract it, and open PowerShell in the e
 ```
 
 It runs the tests, builds a self-contained app (no .NET needed on the PC that installs it) into
-`windows\out\win-x64` and the installer `windows\out\AL-76-Setup-0.1.0-x64.exe`. If PowerShell refuses to run
+`windows\out\win-x64` and the installer `windows\out\AL-76-Setup-0.1.1-x64.exe`. If PowerShell refuses to run
 scripts, start it once with `powershell -ExecutionPolicy Bypass -File .\windows\scripts\build.ps1`.
 
 | Option | What it does |
@@ -126,7 +136,7 @@ $id = [guid]::NewGuid()          # once: write it down and reuse it for every la
 .\windows\scripts\build.ps1 -AppName "AL-76 Lab" -Publisher "Your name" -AppId $id
 ```
 
-The result is `windows\out\AL-76-Lab-Setup-0.1.0-x64.exe`, installed in `%LOCALAPPDATA%\Programs\AL-76 Lab` with
+The result is `windows\out\AL-76-Lab-Setup-0.1.1-x64.exe`, installed in `%LOCALAPPDATA%\Programs\AL-76 Lab` with
 its own Start menu entry and uninstall entry. The version number is in `windows\Directory.Build.props` and
 `windows\packaging\AL-76.iss` (`AppVersion`). Both versions keep their settings in the same `%APPDATA%\AL-76`
 folder; the installer is not signed, so Windows SmartScreen warns as for the official one (sign it with your own

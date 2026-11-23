@@ -192,9 +192,21 @@ struct SettingsView: View {
                 Caption("Altre voci: Impostazioni di Sistema › Accessibilità › Contenuti letti ad alta voce › Gestisci voci.")
             }
         case .brain:
+            Section("Intelligenza artificiale") {
+                // Applied at once, like the brain picker; the draft follows so that «Salva» does not undo it.
+                Toggle("Senza IA: solo i comandi che conosco", isOn: Binding(
+                    get: { assistant.config.noAI },
+                    set: { off in
+                        assistant.setArtificialIntelligence(!off)
+                        draft.noAI = off
+                    }))
+                Caption("Spenta l'IA, AL-76 non usa nessun modello, né Claude, ChatGPT o Gemini né Gemma sul Mac: fa solo i comandi che conosce (app, volume, timer, sessioni, mail, calendario, promemoria, meteo, musica, cartelle, stampante, TV…). Una richiesta composta («apri Safari e metti un timer») la divide e fa le parti che conosce; per il resto dice che non può e suggerisce i comandi più vicini. Udito, voce e impronta vocale restano. A voce: «disattiva l'IA» · «riattiva l'IA». Le richieste rimaste senza risposta si vedono nella Plancia › Stato.")
+            }
             Section("Cervello in uso") {
                 BrainPicker(selection: Binding(get: { assistant.brain.rawValue },
                                                set: { assistant.setBrain(Assistant.Brain(rawValue: $0) ?? .local) }))
+                    .disabled(assistant.config.noAI)
+                    .opacity(assistant.config.noAI ? 0.45 : 1)
             }
             Section("Cervello locale") {
                 TextField("Modello locale (Ollama)", text: $draft.localModel)

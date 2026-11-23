@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Impostazioni › Permessi (v1.30.74, user request 2026-11-17): everything AL-76 is allowed to do, in one place.

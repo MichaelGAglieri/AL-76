@@ -436,6 +436,19 @@ public sealed class VoiceHost(AppConfig config, Strings s, TierDecision tier, Ma
     });
 
     /// <summary>A Kokoro voice chosen in the settings takes over at once.</summary>
+    /// <summary>The call from the settings, at once (before 23/11 only from the next start: a renamed assistant did
+    /// not answer to its new name).</summary>
+    public void UpdateCall()
+    {
+        var call = new WakePhrase(config.EffectiveWakePhrase(s.Language));
+        if (active is { } loop && loop.Call.Phrase != call.Phrase)
+        {
+            loop.Call = call;
+            Log.Info($"voce: chiamata ora «{call.Phrase}»");
+            if (IsListening) window.SetVoiceStatus(s.Format("voice.listening", call.Phrase));
+        }
+    }
+
     public void SetKokoroVoice(string name)
     {
         if (kokoro is null || active is null || active.Voice is not KokoroVoice) return;

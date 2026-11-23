@@ -39,7 +39,7 @@ public sealed record PhraseResult(string Heard, string? Command, string? Reply, 
 /// command model transcribes again with the call as hint; an instant command answers; the voice speaks.
 /// In phase 2 the brains take everything the instant commands do not know.
 /// </summary>
-public sealed class VoiceLoop(ITranscriber wake, ITranscriber command, IVoice? voice, WakePhrase call, string language)
+public sealed class VoiceLoop(ITranscriber wake, ITranscriber command, IVoice? voice, WakePhrase startCall, string language)
 {
     /// <summary>When false, the answer is synthesized but not played (test mode writes it to a file).</summary>
     public bool Speak { get; set; } = true;
@@ -58,6 +58,9 @@ public sealed class VoiceLoop(ITranscriber wake, ITranscriber command, IVoice? v
     /// Without it only time and date are answered.
     /// The middle argument says a sentence at once (the acknowledgment, a brain's sentences as they arrive).</summary>
     public Func<string, Action<string>, CancellationToken, Task<Answer>>? Answerer { get; set; }
+    /// <summary>The call: changed in the settings or the setup, it applies from the next phrase, without a restart.</summary>
+    public WakePhrase Call { get => call; set => call = value; }
+    private volatile WakePhrase call = startCall;
     /// <summary>The voiceprint check: other voices (the TV, people in the room) are refused in mode "on".</summary>
     public VoiceCheck? Owner { get; set; }
     /// <summary>The room's talk and noise skipped before Whisper; null = every phrase goes to Whisper.</summary>
@@ -89,6 +92,14 @@ public sealed class VoiceLoop(ITranscriber wake, ITranscriber command, IVoice? v
     public float VoiceLevel => playing is { } p ? HudLevels.VoiceAt(p.Samples, p.Rate, p.Clock.Elapsed) : 0;
 
     private void Show(HudState state) => StateChanged?.Invoke(state);
+
+    /// <summary>When AL-76 was last stopped with "basta"; a bare call within 6 s is ignored (Mac 1.30.78).</summary>
+    private DateTime lastStopAt = DateTime.MinValue;
+    private static readonly TimeSpan CallPauseAfterStop = TimeSpan.FromSeconds(6);
+
+    /// <summary>Three or more words made of letters: Whisper understood a whole phrase (Mac: Transcriber.isClearPhrase).</summary>
+    public static bool IsClearPhrase(string? text) =>
+        text is not null && TextTools.Words(text).Count(w => w.Count(char.IsLetter) >= 2) >= 3;
 
     public async Task<PhraseResult> HandleAsync(float[] phrase, CancellationToken ct = default)
     {
@@ -124,6 +135,18 @@ public sealed class VoiceLoop(ITranscriber wake, ITranscriber command, IVoice? v
         // "Fermo!", "stop" while the arm moves: at once, no call, no voiceprint (a STOP is never refused).
         if (moving && Commands.RobotVoiceCommand.IsMotionStop(heard))
             return await Reply(heard, "", "stop robot", await StopRobot!(ct));
+        // Just the call, heard with the hint: Whisper may have written the hint back over other talk (Mac 1.30.78,
+        // 20/11: eight seconds of conversation came out "Ehi Al."). Without the hint a clear phrase with no call
+        // means it was the hint: dropped.
+        if (call.Command(heard) is "" && call.Hint.Trim().Length > 0)
+        {
+            string plain = (await wake.TranscribeAsync(phrase, "", ct)).Trim();
+            if (IsClearPhrase(plain) && call.Command(plain) is null)
+                return Done(plain, null, null, $"«{heard}» solo con l'indizio: indizio ripetuto da Whisper, scartato");
+        }
+        // Just stopped with "basta": a bare call now is the talk going on (Mac 1.30.78). With a command it goes through.
+        if (call.Command(heard) is "" && DateTime.Now - lastStopAt < CallPauseAfterStop)
+            return Done(heard, null, null, $"chiamata sola {(DateTime.Now - lastStopAt).TotalSeconds:0.0} s dopo un basta: ignorata");
         bool following = DateTime.Now < followUntil;
         followUntil = DateTime.MinValue;
         if (following && call.Command(heard) is null)
@@ -228,8 +251,9 @@ public sealed class VoiceLoop(ITranscriber wake, ITranscriber command, IVoice? v
                 first = firstAt;
                 LastAudio = all;
                 stop = heard;
-                if (stop is not null) note += $" · interrotta («{stop}»)";
+                if (stop is not null) { note += $" · interrotta («{stop}»)"; lastStopAt = DateTime.Now; }
             }
+            if (StopWords.IsStop(cmd)) lastStopAt = DateTime.Now;
             if (stop is null && (awaits || cmd.Length == 0 || reply.TrimEnd().EndsWith('?'))) followUntil = DateTime.Now + FollowUpWindow;
             return Done(text, cmd, reply, note) with { FirstAudio = first };
         }

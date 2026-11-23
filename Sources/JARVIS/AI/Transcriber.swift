@@ -73,6 +73,16 @@ actor Transcriber {
             }
             guard let results = try? await model.transcribe(audioArray: audio, decodeOptions: options) else { continue }
             let text = results.map(\.text).joined(separator: " ")
+            // Only the call, with the hint: Whisper may have just written the hint back. On 20 November
+            // at 02:39 eight seconds of conversation ("il nostro contratto finisce…") came out as "Ehi Al."
+            // and, being the user's voice, woke AL-76 (three times in half an hour; 34 of 62 bare calls
+            // in the log were refused by the voice print). Without the hint the same audio is a clear
+            // phrase with no call in it: that one is kept and the wake goes no further.
+            if hinted, WakeVerifier.command(from: text)?.isEmpty == true,
+               let echo = await hintEcho(model, audio: audio, language: language) {
+                Diagnostics.log("wake --   \"\(text)\" solo con l'indizio; senza: \"\(echo)\": indizio ripetuto da Whisper, scartato")
+                return echo
+            }
             if WakeVerifier.command(from: text) != nil || WakeVerifier.isSoundalike(text) { return text }
             if first?.trimmingCharacters(in: .whitespaces).isEmpty ?? true { first = text }
         }
@@ -86,6 +96,19 @@ actor Transcriber {
             }
         }
         return first
+    }
+
+    /// The hinted pass gave just "Ehi Al": transcribes again without the hint. Returns that text when it
+    /// is a clear phrase with no call, even a loose one ("E allora…" is not "Eyal"): the call was the
+    /// hint written back. nil keeps the call (a real "Ehi Al" alone gives nothing clear without the hint).
+    private func hintEcho(_ model: WhisperKit, audio: [Float], language: String) async -> String? {
+        let options = DecodingOptions(language: language, temperatureFallbackCount: 0, usePrefillPrompt: true,
+                                      detectLanguage: false, skipSpecialTokens: true, withoutTimestamps: true)
+        guard let results = try? await model.transcribe(audioArray: audio, decodeOptions: options) else { return nil }
+        let plain = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        guard Self.isClearPhrase(plain), WakeVerifier.command(from: plain, loose: true) == nil,
+              !WakeVerifier.isSoundalike(plain), WakeVerifier.soundalikeCommand(from: plain) == nil else { return nil }
+        return plain
     }
 
     /// Three or more words made of letters: Whisper understood a whole phrase.
@@ -255,7 +278,7 @@ enum WakeVerifier {
     /// The text without the call at its start ("Ehi Al, apri Safari" → "apri Safari"). Not "e al": with
     /// no call, in a conversation, "e al mare che tempo fa?" is a real question.
     static func strippingCall(_ text: String) -> String {
-        let pattern = #"^\s*(?:(?:ehi|hey|hei|ei|eh|ey|ehy)[\s,.!]+(?:al|all|hal|hall)(?:[\s-]?76)?|eyal|eial|ehial|heyal|al(?=[,.!?]))(?=[\s,.!?;:]|$)[\s,.!?;:]*"#
+        let pattern = #"^\s*(?:(?:ehi|hey|hei|ei|eh|ey|ehy)[\s,.!]+(?:al|all|allo|alle|hal|hall)(?:[\s-]?76)?|eyal|eial|ehial|heyal|al(?=[,.!?]))(?=[\s,.!?;:]|$)[\s,.!?;:]*"#
         guard let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return text }
         return String(text[range.upperBound...])
     }

@@ -1,5 +1,5 @@
 PackageIdentifier: AL76.Assistant
-PackageVersion: 0.1.0
+PackageVersion: 0.1.1
 PackageLocale: it-IT
 ShortDescription: Assistente vocale per studio, lavoro e PC, con modelli locali e nel cloud.
 ManifestType: locale

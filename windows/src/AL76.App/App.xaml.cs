@@ -39,6 +39,8 @@ public partial class App : Application
     private TierDecision? tier;
     private SetupWindow? setup;
     private SettingsWindow? settings;
+    private PlanciaWindow? plancia;
+    private Forms.ToolStripMenuItem? noAIItem;
     private Forms.ToolStripMenuItem? brainMenu;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -46,13 +48,29 @@ public partial class App : Application
         base.OnStartup(e);
         single = new Mutex(true, @"Local\AL76.Windows.SingleInstance", out bool first);
         // After "Riavvia", the new AL-76 waits for the old one to close (microphone and tray are its until then).
-        if (!first && !(Array.IndexOf(e.Args, "--restart") >= 0 && WaitForOld(single))) { Shutdown(); return; }
+        if (!first && !(Array.IndexOf(e.Args, "--restart") >= 0 && WaitForOld(single)))
+        {
+            // AL-76 is already running: clicking it again in the Start menu or on the desktop opens its settings.
+            try { using var ask = EventWaitHandle.OpenExisting(SettingsSignal); ask.Set(); }
+            catch (Exception x) when (x is WaitHandleCannotBeOpenedException or UnauthorizedAccessException or IOException) { }
+            Shutdown();
+            return;
+        }
+        ListenForSettings();
 
         Log.Start(AppPaths.Data);
         // Whatever escapes a handler is written down before Windows closes the app.
         DispatcherUnhandledException += (_, args) => Log.Info($"errore non gestito: {args.Exception}");
         var config = this.config = AppConfig.Load(AppPaths.ConfigFile);
         if (!File.Exists(AppPaths.ConfigFile)) config.Save(AppPaths.ConfigFile);
+        // A name chosen with 0.1.0 left the call at "Ehi Al" (a tester's renamed assistant, 23/11): the call follows the name.
+        if (config.AssistantName.Trim().Length > 0
+            && SetupFlow.CallForName("AL-76", config.WakePhrase, config.AssistantName.Trim(), config.WakePhrase) is var call && call != config.WakePhrase)
+        {
+            Log.Info($"chiamata: «{config.WakePhrase}» diventa «{call}», come il nome");
+            config.WakePhrase = call;
+            config.Save(AppPaths.ConfigFile);
+        }
         var strings = this.strings = new Strings(config.EffectiveLanguage(CultureInfo.CurrentUICulture.Name));
 
         var pc = WindowsHardware.Probe();
@@ -102,7 +120,7 @@ public partial class App : Application
         string documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         var notes = new AL76.Core.Notes.NotesIndex(Path.Combine(AppPaths.Data, "appunti.sqlite"),
             () => AL76.Core.Notes.NotesIndex.Folders(config.NotesFolders, documents),
-            AL76.Core.Notes.NotesIndex.Ollama(() => config.OllamaUrl), new WindowsPageReader(), WindowsPageReader.OnBattery);
+            NoModelWhenOff(AL76.Core.Notes.NotesIndex.Ollama(() => config.OllamaUrl), config), new WindowsPageReader(), WindowsPageReader.OnBattery);
         var secrets = new WindowsSecrets(Path.Combine(AppPaths.Data, "segreti"));
         assistant = new Assistant(config, () => config.Save(AppPaths.ConfigFile), new WindowsPcActions(),
             Assistant.StandardBrains(config, decision.LocalBrain), AppPaths.Data, documents,
@@ -123,6 +141,10 @@ public partial class App : Application
         assistant.Activity += _ => Dispatcher.BeginInvoke(status.ToolUsed);
         // Timers that run out and reminders that fall due are said aloud.
         assistant.Announcement += text => voiceHost?.Announce(text);
+        // "Impostazioni", said or typed.
+        assistant.SettingsWanted += () => Dispatcher.BeginInvoke(() => OpenSettings());
+        assistant.PlanciaWanted += () => Dispatcher.BeginInvoke(OpenPlancia);
+        assistant.BrainChanged += _ => Dispatcher.BeginInvoke(() => { if (noAIItem is not null) noAIItem.Checked = assistant.NoAI; });
         // The morning briefing after the first request of the day (phase 5).
         assistant.BriefingDue += text => voiceHost?.Request(text);
         assistant.Start(strings.Language);
@@ -161,6 +183,7 @@ public partial class App : Application
         SetupFlow.Apply(draft, config, finished);
         config.Save(AppPaths.ConfigFile);
         assistant?.ConfigChanged();
+        voiceHost?.UpdateCall();
         phoneHost?.Update();
         nucleus?.Apply(config);
         try
@@ -183,15 +206,75 @@ public partial class App : Application
 
     private void OpenSettings(string page = "")
     {
-        if (config is null || strings is null || assistant is null || tier is null) return;
-        if (settings is null)
+        if (config is null || strings is null || assistant is null || tier is null) { Log.Info("impostazioni: non ancora pronte"); return; }
+        try
         {
-            settings = new SettingsWindow(config, strings, assistant, voiceHost, tier, ApplyConfig, OpenSetup, Restart);
-            settings.Closed += (_, _) => settings = null;
-            settings.Show();
+            if (settings is null)
+            {
+                settings = new SettingsWindow(config, strings, assistant, voiceHost, tier, ApplyConfig, OpenSetup, Restart);
+                settings.Closed += (_, _) => settings = null;
+                settings.Show();
+                Log.Info("impostazioni: aperte");
+            }
+            if (page.Length > 0) settings.Go(page);
+            if (settings.WindowState == WindowState.Minimized) settings.WindowState = WindowState.Normal;
+            settings.Activate();
+            SetForegroundWindow(new System.Windows.Interop.WindowInteropHelper(settings).Handle);
         }
-        if (page.Length > 0) settings.Go(page);
-        settings.Activate();
+        catch (Exception e)
+        {
+            settings = null;
+            Log.Info($"impostazioni: non aperte: {e}");
+            tray?.ShowBalloonTip(4000, AppInfo.Name, e.Message, Forms.ToolTipIcon.Warning);
+        }
+    }
+
+    /// <summary>The Plancia (Mac 1.30.81): dialogue, day, status, thought.</summary>
+    private void OpenPlancia()
+    {
+        if (assistant is null || config is null || strings is null) return;
+        try
+        {
+            if (plancia is null)
+            {
+                plancia = new PlanciaWindow(assistant, config, strings, _ => { });
+                plancia.Closed += (_, _) => plancia = null;
+                plancia.Show();
+                Log.Info("plancia: aperta");
+            }
+            if (plancia.WindowState == WindowState.Minimized) plancia.WindowState = WindowState.Normal;
+            plancia.Activate();
+        }
+        catch (Exception e)
+        {
+            plancia = null;
+            Log.Info($"plancia: non aperta: {e}");
+        }
+    }
+
+    /// <summary>With "Senza IA" the notes get no vectors from Ollama (Mac 1.30.84: no model from any road).</summary>
+    private static AL76.Core.Notes.Embedder NoModelWhenOff(AL76.Core.Notes.Embedder inner, AppConfig config) =>
+        (texts, keepAlive, timeout, ct) => config.NoAI ? System.Threading.Tasks.Task.FromResult<double[][]?>(null) : inner(texts, keepAlive, timeout, ct);
+
+    private void ToggleAI() { if (assistant is not null) assistant.SetArtificialIntelligence(assistant.NoAI); }
+
+    private const string SettingsSignal = @"Local\AL76.Windows.OpenSettings";
+
+    /// <summary>A second AL-76 started (Start menu, desktop icon) asks this one for its settings, then quits.</summary>
+    private void ListenForSettings()
+    {
+        EventWaitHandle signal;
+        try { signal = new EventWaitHandle(false, EventResetMode.AutoReset, SettingsSignal); }
+        catch (Exception x) when (x is WaitHandleCannotBeOpenedException or UnauthorizedAccessException or IOException) { return; }
+        var thread = new Thread(() =>
+        {
+            while (signal.WaitOne())
+            {
+                Log.Info("impostazioni: chieste da un secondo avvio");
+                Dispatcher.BeginInvoke(() => OpenSettings());
+            }
+        }) { IsBackground = true, Name = "AL-76 settings signal" };
+        thread.Start();
     }
 
     /// <summary>Starts a new AL-76 and quits this one (language, name and call apply from the start).</summary>
@@ -213,6 +296,7 @@ public partial class App : Application
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add(strings["tray.show"], null, (_, _) => ShowWindow());
         menu.Items.Add(strings["tray.status"], null, (_, _) => ShowStatus());
+        menu.Items.Add(strings["tray.plancia"], null, (_, _) => OpenPlancia());
         menu.Items.Add(strings["tray.settings"], null, (_, _) => OpenSettings());
         menu.Items.Add(strings["tray.setup"], null, (_, _) => OpenSetup());
         // The brain at a glance, and changed with one click (Mac: the menu-bar menu).
@@ -226,6 +310,10 @@ public partial class App : Application
         brainMenu.DropDownItems.Add(new Forms.ToolStripSeparator());
         brainMenu.DropDownItems.Add(strings["settings.page.brain"] + "…", null, (_, _) => OpenSettings("brain"));
         menu.Items.Add(brainMenu);
+        // "Senza IA" (Mac 1.30.84), ticked while the AI is off.
+        noAIItem = new Forms.ToolStripMenuItem(strings["tray.noai"]) { Checked = config?.NoAI == true };
+        noAIItem.Click += (_, _) => ToggleAI();
+        menu.Items.Add(noAIItem);
         menu.Items.Add(strings["typebar.menu"], null, (_, _) => typeBar?.Toggle());
         menu.Items.Add(strings["tray.desktoplink"], null, (_, _) =>
         {
@@ -291,36 +379,36 @@ public partial class App : Application
     private void BuildNucleusMenu()
     {
         if (strings is null) return;
-        var menu = new System.Windows.Controls.ContextMenu();
-        void Add(string text, Action run)
+        var menu = new Forms.ContextMenuStrip();
+        Forms.ToolStripMenuItem Add(string text, Action run)
         {
-            var item = new System.Windows.Controls.MenuItem { Header = text };
+            var item = new Forms.ToolStripMenuItem(text);
             item.Click += (_, _) => run();
             menu.Items.Add(item);
+            return item;
         }
         Add(strings["nucleus.menu.open"], OpenHud);
         Add(strings["hud.menu.new"], NewConversation);
         Add(strings["typebar.menu"], () => typeBar?.Toggle());
-        menu.Items.Add(new System.Windows.Controls.Separator());
+        Add(strings["tray.plancia"], OpenPlancia);
+        Add(strings["tray.noai"], ToggleAI).Checked = assistant?.NoAI == true;
+        // Settings from the robot too (a tester looked for them there after the setup, 23/11).
+        Add(strings["tray.settings"], () => OpenSettings());
+        menu.Items.Add(new Forms.ToolStripSeparator());
         if (nucleus?.Look == "robottino")
         {
             // The speech bubble (Mac, 17 November): shown again or closed by hand, and optionally for spoken answers.
             var robot = nucleus;
             if (robot.BubbleShown) Add(strings["nucleus.menu.bubble.hide"], robot.HideBubble);
-            else
-            {
-                Add(strings["nucleus.menu.bubble.show"], robot.ShowBubble);
-                ((System.Windows.Controls.MenuItem)menu.Items[^1]).IsEnabled = robot.CanShowBubble;
-            }
+            else Add(strings["nucleus.menu.bubble.show"], robot.ShowBubble).Enabled = robot.CanShowBubble;
             bool voice = robot.VoiceBubble;
             Add(strings["nucleus.menu.bubble.voice"], () =>
             {
                 robot.SetVoiceBubble(!voice);
                 places.VoiceBubble = !voice;
                 places.Save();
-            });
-            ((System.Windows.Controls.MenuItem)menu.Items[^1]).IsChecked = voice;
-            menu.Items.Add(new System.Windows.Controls.Separator());
+            }).Checked = voice;
+            menu.Items.Add(new Forms.ToolStripSeparator());
         }
         Add(strings["hud.menu.quit"], Quit);
         Open(menu);
@@ -333,16 +421,18 @@ public partial class App : Application
         nucleus?.ForgetConversation();
     }
 
-    /// <summary>Opens a right-click menu at the mouse. The menu takes the foreground as it opens: a menu of a window that
-    /// never takes the keyboard (the nucleus) would otherwise stay open after a click elsewhere (seen in the VM, 18/11).</summary>
-    private static void Open(System.Windows.Controls.ContextMenu menu)
+    private Forms.ContextMenuStrip? popup;
+
+    /// <summary>Opens a right-click menu at the mouse, the same kind as the tray's. A WPF menu opened from the web page
+    /// (sphere, nucleus) had no mouse position of its own and was never seen to open on a real PC (tester, 23/11).
+    /// The menu takes the foreground, or it would stay open after a click elsewhere (seen in the VM, 18/11).</summary>
+    private void Open(Forms.ContextMenuStrip menu)
     {
-        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
-        menu.Opened += (_, _) =>
-        {
-            if (PresentationSource.FromVisual(menu) is System.Windows.Interop.HwndSource popup) SetForegroundWindow(popup.Handle);
-        };
-        menu.IsOpen = true;
+        popup?.Dispose();
+        popup = menu;
+        menu.Show(Forms.Cursor.Position);
+        SetForegroundWindow(menu.Handle);
+        Log.Info("menu: aperto");
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
@@ -359,20 +449,23 @@ public partial class App : Application
     private void ShowHudMenu()
     {
         if (strings is null) return;
-        var menu = new System.Windows.Controls.ContextMenu();
-        void Add(string text, Action run)
+        try
         {
-            var item = new System.Windows.Controls.MenuItem { Header = text };
-            item.Click += (_, _) => run();
-            menu.Items.Add(item);
+            var menu = new Forms.ContextMenuStrip();
+            void Add(string text, Action run) => menu.Items.Add(text, null, (_, _) => run());
+            Add(strings["hud.menu.new"], NewConversation);
+            Add(strings["hud.menu.compact"], ShowCompact);
+            Add(strings["typebar.menu"], () => typeBar?.Toggle());
+            Add(strings["tray.plancia"], OpenPlancia);
+            Add(strings["tray.noai"], ToggleAI);
+            ((Forms.ToolStripMenuItem)menu.Items[^1]).Checked = assistant?.NoAI == true;
+            Add(strings["tray.settings"], () => OpenSettings());
+            Add(strings["tray.status"], ShowStatus);
+            menu.Items.Add(new Forms.ToolStripSeparator());
+            Add(strings["hud.menu.quit"], Quit);
+            Open(menu);
         }
-        Add(strings["hud.menu.new"], NewConversation);
-        Add(strings["hud.menu.compact"], ShowCompact);
-        Add(strings["tray.settings"], () => OpenSettings());
-        Add(strings["tray.status"], ShowStatus);
-        menu.Items.Add(new System.Windows.Controls.Separator());
-        Add(strings["hud.menu.quit"], Quit);
-        Open(menu);
+        catch (Exception e) { Log.Info($"sfera: menu non aperto: {e}"); }
     }
 
     private void Quit()

@@ -404,7 +404,10 @@ enum NotesVectors {
 
     /// Asks Ollama for the vectors. `keepAlive` says how long the model stays in memory afterwards.
     static func embed(_ texts: [String], keepAlive: String, timeout: TimeInterval) -> [[Double]]? {
-        let base = JarvisConfig.load().ollamaURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let config = JarvisConfig.load()
+        // "Senza IA": bge-m3 is a model too. The search by words goes on; vectors wait for the AI to be back.
+        guard !config.noAI else { return nil }
+        let base = config.ollamaURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: base + "/api/embed") else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
