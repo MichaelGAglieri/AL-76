@@ -2,6 +2,7 @@
 // the three.js preview the user approved on 10 November, with the detail added on 11 November. Same sizes, same
 // materials, same canvas textures (same random seeds), same motion per state, same frame rates.
 import * as THREE from './vendor/three.module.min.js';
+import { Quality, softwareGpu } from './quality.js';
 
 // The picture follows the Mac's SceneKit, not the old three.js preview: colours are sRGB (colour managed), canvas
 // textures were brightened on the Mac so SceneKit reads them as they are (here: linear, no colour space), lights in
@@ -114,8 +115,9 @@ function environment(renderer) {
  */
 export function createSatellite(canvas) {
   THREE.ColorManagement.enabled = true;
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !softwareGpu, alpha: true, premultipliedAlpha: true, powerPreference: 'high-performance' });
   renderer.setClearColor(0x000000, 0);
+  const quality = new Quality(renderer);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.useLegacyLights = true;
@@ -483,7 +485,7 @@ export function createSatellite(canvas) {
   }
 
   function resize() {
-    const scale = Math.min(window.devicePixelRatio || 1, 2);
+    const scale = quality.ratio;
     const w = Math.max(1, Math.round(canvas.clientWidth * scale)), h = Math.max(1, Math.round(canvas.clientHeight * scale));
     if (canvas.width !== w || canvas.height !== h) {
       renderer.setSize(w, h, false);
@@ -509,10 +511,11 @@ export function createSatellite(canvas) {
     lastFrame = now;
     draw(now);
     frames++;
-    if (now - fpsStart > 1000) { fps = frames * 1000 / (now - fpsStart); frames = 0; fpsStart = now; }
+    if (now - fpsStart > 1000) { fps = frames * 1000 / (now - fpsStart); frames = 0; fpsStart = now; quality.feed(fps, 1000 / interval()); }
   }
   requestAnimationFrame(frame);
   return {
+    quality,
     set(values) { Object.assign(input, values); },
     /** One frame now, even while hidden (tests and snapshots). */
     draw(now = performance.now()) { draw(now); },

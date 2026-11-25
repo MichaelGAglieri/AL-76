@@ -26,9 +26,11 @@ public static class WebLayer
     private static Task<CoreWebView2Environment>? environment;
 
     /// <summary>One browser environment for every window: our own pages only. On PCs without a usable GPU (the VM)
-    /// WebGL needs the software renderer.</summary>
+    /// WebGL needs the software renderer. On gaming laptops with two GPUs (25/11: an RTX 4050 and an RTX 4060, the
+    /// sphere very slow) Windows gives WebView2 the integrated one: the sphere asks for the dedicated GPU.</summary>
     public static Task<CoreWebView2Environment> Environment() => environment ??=
-        CoreWebView2Environment.CreateAsync(null, AppPaths.Browser, new CoreWebView2EnvironmentOptions("--enable-unsafe-swiftshader"));
+        CoreWebView2Environment.CreateAsync(null, AppPaths.Browser,
+            new CoreWebView2EnvironmentOptions("--enable-unsafe-swiftshader --force_high_performance_gpu"));
 
     /// <summary>Prepares a WebView2 for one of our pages: no browser menus or keys, nothing else ever opens.</summary>
     public static async Task<CoreWebView2> StartAsync(WebView2 web, Action<string> received)

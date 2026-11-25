@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Linux app: GTK3 + WebKitGTK windows (all pages in HTML), single instance, later tray, voice and phone hosts. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>al76</AssemblyName>
+    <RootNamespace>AL76.Linux.App</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AL76.Linux.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/AL76.Core/AL76.Core.csproj" />
+    <ProjectReference Include="../Shared/AL76.Speech/AL76.Speech.csproj" />
+    <ProjectReference Include="../AL76.Linux.Platform/AL76.Linux.Platform.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The HUD pages of Windows, unchanged (the previews stay on the developer's machine); the Linux pages next to them. -->
+    <Content Include="$(WindowsWeb)hud/**" Exclude="$(WindowsWeb)hud/anteprima-*.html" LinkBase="web/hud" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../web/app/**" LinkBase="web/app" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Texts only Linux needs, next to the core's (locales.linux.it.json, locales.linux.en.json). -->
+    <EmbeddedResource Include="locales/*.json" LogicalName="locales.linux.%(Filename).json" />
+  </ItemGroup>
+</Project>

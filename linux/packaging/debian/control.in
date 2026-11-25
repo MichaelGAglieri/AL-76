@@ -1,0 +1,16 @@
+Package: al76
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: AL-76 contributors <al76@users.noreply.github.com>
+Installed-Size: @SIZE@
+Section: utils
+Priority: optional
+Depends: libc6 (>= 2.27), libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0, libicu78 | libicu76 | libicu74 | libicu72, libssl3t64 | libssl3, zlib1g, ca-certificates, xdg-utils
+Description: AL-76, a voice assistant for the desktop
+ AL-76 listens for its name, answers with a natural voice and acts on the
+ computer: apps, files, reminders, calendar, study and work sessions. It can
+ use Claude, ChatGPT, Gemini or a local model through Ollama. Speech
+ recognition and the voice run on this computer.
+ .
+ The sphere and the small nucleus float above the other windows (through
+ Xwayland on Wayland sessions).

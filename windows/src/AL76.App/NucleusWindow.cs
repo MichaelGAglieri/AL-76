@@ -65,6 +65,8 @@ public sealed class NucleusWindow : Window
     public Func<float> VoiceLevel { get; set; } = () => 0;
     public Func<float> MicLevel { get; set; } = () => 0;
     public event Action? OpenRequested;
+    /// <summary>The GPU WebGL uses (name, software renderer), once the page is ready (the reactor draws in 2D: none).</summary>
+    public event Action<string, bool>? GpuKnown;
     public event Action? MenuRequested;
     /// <summary>Moved by the user (the place is remembered).</summary>
     public event Action? Moved;
@@ -256,6 +258,8 @@ public sealed class NucleusWindow : Window
                     lastSent = "";
                     string shown = m.GetProperty("style").GetString() ?? effective;
                     Log.Info($"nucleo: {shown} pronto");
+                    if (m.TryGetProperty("renderer", out var gpu) && gpu.GetString() is { Length: > 0 } name)
+                        GpuKnown?.Invoke(name, m.TryGetProperty("software", out var sw) && sw.ValueKind == JsonValueKind.True);
                     if (shown != effective)
                     {
                         // The robot's model could not be used: the satellite, as on the Mac.
@@ -270,7 +274,8 @@ public sealed class NucleusWindow : Window
                     }
                     break;
                 case "fps":
-                    if (fpsReports++ < 2) Log.Info($"nucleo: {m.GetProperty("fps").GetDouble():0.#} fps");
+                    if (fpsReports++ < 2) Log.Info($"nucleo: {m.GetProperty("fps").GetDouble():0.#} fps{HudWindow.Scale(m)}"
+                        + (fpsReports == 1 && m.TryGetProperty("renderer", out var r) && r.GetString() is { Length: > 0 } card ? $", scheda video: {card}" : ""));
                     break;
                 case "error": Log.Info($"nucleo: errore della pagina: {m.GetProperty("text").GetString()}"); break;
                 case "metrics":

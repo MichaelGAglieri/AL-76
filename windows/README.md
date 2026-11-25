@@ -4,7 +4,7 @@ AL-76 is a voice assistant for study, work and the PC. This folder is the Window
 WPF and WebView2, built for everyone (any school, job or city), with optional modules. The Mac version lives in
 the rest of the repository; the two share ideas, not code.
 
-> **Status: preview (0.1.2).** Everything below is written and covered by automated tests, and the app has
+> **Status: preview (0.1.3).** Everything below is written and covered by automated tests, and the app has
 > been run in a Windows 11 virtual machine and by a first tester on a real PC (voice, apps, files). It has not
 > yet been tried with a real camera, Windows Hello, Samsung TV, Bambu Lab printer or robot: those parts may need fixes. Reports are welcome
 > as GitHub issues (the tray menu's **Export diagnostics** makes a zip without personal data to attach).
@@ -113,7 +113,7 @@ Without Git: **Code › Download ZIP**, extract it, and open PowerShell in the e
 ```
 
 It runs the tests, builds a self-contained app (no .NET needed on the PC that installs it) into
-`windows\out\win-x64` and the installer `windows\out\AL-76-Setup-0.1.2-x64.exe`. If PowerShell refuses to run
+`windows\out\win-x64` and the installer `windows\out\AL-76-Setup-0.1.3-x64.exe`. If PowerShell refuses to run
 scripts, start it once with `powershell -ExecutionPolicy Bypass -File .\windows\scripts\build.ps1`.
 
 | Option | What it does |
@@ -136,7 +136,7 @@ $id = [guid]::NewGuid()          # once: write it down and reuse it for every la
 .\windows\scripts\build.ps1 -AppName "AL-76 Lab" -Publisher "Your name" -AppId $id
 ```
 
-The result is `windows\out\AL-76-Lab-Setup-0.1.2-x64.exe`, installed in `%LOCALAPPDATA%\Programs\AL-76 Lab` with
+The result is `windows\out\AL-76-Lab-Setup-0.1.3-x64.exe`, installed in `%LOCALAPPDATA%\Programs\AL-76 Lab` with
 its own Start menu entry and uninstall entry. The version number is in `windows\Directory.Build.props` and
 `windows\packaging\AL-76.iss` (`AppVersion`). Both versions keep their settings in the same `%APPDATA%\AL-76`
 folder; the installer is not signed, so Windows SmartScreen warns as for the official one (sign it with your own

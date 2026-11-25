@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using AL76.Core.Localization;
 using AL76.Core.Voice;
 
@@ -19,6 +20,9 @@ public sealed class VoiceEnrollWindow : Window
     private readonly TextBlock message = new() { FontSize = 14, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 14, 0, 0) };
     private readonly ProgressBar progress = new() { Height = 6, Margin = new Thickness(0, 22, 0, 6), Maximum = 1 };
     private readonly TextBlock count = new() { FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center };
+    // The microphone level (25/11: a tester could not tell whether AL-76 heard him at all).
+    private readonly ProgressBar level = new() { Height = 4, Margin = new Thickness(0, 6, 0, 0), Maximum = 1 };
+    private readonly DispatcherTimer meter = new() { Interval = TimeSpan.FromMilliseconds(66) };
 
     public VoiceEnrollWindow(VoiceHost host, Strings s)
     {
@@ -43,8 +47,15 @@ public sealed class VoiceEnrollWindow : Window
         stack.Children.Add(message);
         stack.Children.Add(progress);
         stack.Children.Add(count);
+        var levelCaption = Ui.Caption(s["voiceprint.level"], 11);
+        levelCaption.Margin = new Thickness(0, 18, 0, 0);
+        stack.Children.Add(levelCaption);
+        level.Foreground = Ui.Brush("Accent");
+        stack.Children.Add(level);
         stack.Children.Add(stop);
         Content = stack;
+        meter.Tick += (_, _) => level.Value = Math.Clamp(host.MicLevel, 0, 1);
+        meter.Start();
         host.EnrollmentChanged += Changed;
         Show(host.Enrollment);
     }
@@ -69,6 +80,7 @@ public sealed class VoiceEnrollWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        meter.Stop();
         host.EnrollmentChanged -= Changed;
         host.CancelEnrollment();
         base.OnClosed(e);

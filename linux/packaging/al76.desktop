@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=AL-76
+GenericName=Voice assistant
+GenericName[it]=Assistente vocale
+Comment=Talk to your computer: apps, files, reminders, study and work
+Comment[it]=Parla con il computer: app, file, promemoria, studio e lavoro
+Exec=al76
+Icon=al76
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=assistant;voice;AI;Claude;assistente;voce;
+StartupNotify=false
+StartupWMClass=al76

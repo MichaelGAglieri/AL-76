@@ -25,6 +25,9 @@ public sealed class Microphone : IDisposable
     public event Action<float[]>? Phrase;
     /// <summary>Loudness of the last block (RMS), for a level meter.</summary>
     public event Action<float>? Level;
+    /// <summary>Every way to open a microphone gave only digital silence (Windows' privacy switch, a muted or
+    /// disabled input): true; a signal arrived afterwards: false.</summary>
+    public event Action<bool>? AllSilent;
 
     /// <summary>While false the audio is read but thrown away (AL-76 is speaking, or paused).</summary>
     public bool Listening { get; set; } = true;
@@ -43,6 +46,12 @@ public sealed class Microphone : IDisposable
     private bool heard;
     private int switching;
     private const double SilentSeconds = 8;
+    private bool reportedSilent;
+
+    // The level for the log in the first two minutes (25/11: "it does not hear me", no numbers to tell why).
+    private readonly DateTime opened = DateTime.UtcNow;
+    private DateTime statsFrom = DateTime.UtcNow;
+    private double statsPeak;
 
     public void Start()
     {
@@ -111,9 +120,20 @@ public sealed class Microphone : IDisposable
         {
             heard = true;
             Log.Info($"microfono: segnale da {DeviceName} ({Mode})");
+            if (reportedSilent) { reportedSilent = false; AllSilent?.Invoke(false); }
             return;
         }
-        if ((DateTime.UtcNow - stepStarted).TotalSeconds < SilentSeconds || step + 1 >= plan.Count) return;
+        if ((DateTime.UtcNow - stepStarted).TotalSeconds < SilentSeconds) return;
+        if (step + 1 >= plan.Count)
+        {
+            if (!reportedSilent)
+            {
+                reportedSilent = true;
+                Log.Info($"microfono: da nessun ingresso arriva suono (privacy di Windows: {MicrophonePrivacy.Blocked() ?? "consentito"})");
+                AllSilent?.Invoke(true);
+            }
+            return;
+        }
         if (Interlocked.Exchange(ref switching, 1) == 1) return;
         Task.Run(() =>
         {
@@ -167,12 +187,27 @@ public sealed class Microphone : IDisposable
         {
             double sum = 0;
             foreach (var s in mono) sum += s * s;
-            Level?.Invoke((float)Math.Sqrt(sum / mono.Length));
+            float rms = (float)Math.Sqrt(sum / mono.Length);
+            Level?.Invoke(rms);
+            LogLevels(rms);
         }
         lock (ringLock)
             foreach (var x in mono) { ring[ringEnd] = x; ringEnd = (ringEnd + 1) % ring.Length; }
         if (!Listening) return;
         foreach (var phrase in vad.Feed(mono)) Phrase?.Invoke(phrase);
+    }
+
+    /// <summary>Every 20 s in the first two minutes: the loudest block and the room's floor, as the VAD sees them
+    /// (a phrase starts above 3.5 times the floor, at least 0.004).</summary>
+    private void LogLevels(float rms)
+    {
+        var now = DateTime.UtcNow;
+        if ((now - opened).TotalMinutes > 2) return;
+        statsPeak = Math.Max(statsPeak, rms);
+        if ((now - statsFrom).TotalSeconds < 20) return;
+        Log.Info($"microfono: livello massimo {statsPeak:0.0000}, fondo {vad.NoiseFloor:0.0000} in 20 s ({DeviceName}, {Mode})");
+        statsPeak = 0;
+        statsFrom = now;
     }
 
     private static float[] Decode(ReadOnlySpan<byte> buffer, WaveFormat format)

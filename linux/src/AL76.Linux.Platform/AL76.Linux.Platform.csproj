@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything that touches Linux: XDG paths, hardware, desktop session; later audio, AT-SPI, portals, D-Bus. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AL76.Linux.Platform</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/AL76.Core/AL76.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+<Project>
+  <!-- Shared by every project of AL-76 for Linux. -->
+  <PropertyGroup>
+    <Version>0.0.1</Version>
+    <Product>AL-76</Product>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- The shared core and voice live in windows/ and are only read from here (never edited). -->
+    <WindowsSrc>$(MSBuildThisFileDirectory)../windows/src/</WindowsSrc>
+    <WindowsTests>$(MSBuildThisFileDirectory)../windows/tests/</WindowsTests>
+    <WindowsWeb>$(MSBuildThisFileDirectory)../windows/web/</WindowsWeb>
+  </PropertyGroup>
+</Project>

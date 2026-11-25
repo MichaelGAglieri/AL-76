@@ -1,0 +1,5 @@
+#!/bin/sh
+# AL-76 needs nothing at install time: menus and icons are refreshed by dpkg triggers, the data lives in each
+# user's home and starting at login is the user's choice in the first-run setup.
+set -e
+exit 0

@@ -65,13 +65,41 @@ public sealed class WindowsPcActions : IPcActions
             }
         }
         catch (Exception e) { Log.Info($"app: elenco del menu Start non letto: {e.Message}"); }
+        int start = list.Count;
+        AddDesktop(list);
         lock (gate)
         {
             if (list.Count > 0 || apps is null) apps = list;
             appsAt = DateTime.Now;
         }
-        Log.Info($"app: {list.Count} nel menu Start, letti in {clock.Elapsed.TotalSeconds:0.0} s");
+        Log.Info($"app: {start} nel menu Start, {list.Count - start} solo sul desktop, letti in {clock.Elapsed.TotalSeconds:0.0} s");
         return list;
+    }
+
+    /// <summary>Programs with only a shortcut on the desktop (portable programs, games, some installers skip the Start
+    /// menu): the user's and the shared desktop, OneDrive's too (Windows points DesktopDirectory there). The id is
+    /// the shortcut's path, opened as a double click would.</summary>
+    private static void AddDesktop(List<(string name, string id)> list)
+    {
+        var known = new HashSet<string>(list.Select(a => a.name), StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in new[] { Environment.SpecialFolder.DesktopDirectory, Environment.SpecialFolder.CommonDesktopDirectory })
+        {
+            string dir;
+            try { dir = Environment.GetFolderPath(folder); } catch (PlatformNotSupportedException) { continue; }
+            if (dir.Length == 0 || !Directory.Exists(dir)) continue;
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(dir))
+                {
+                    string ext = Path.GetExtension(file).ToLowerInvariant();
+                    if (ext is not (".lnk" or ".url" or ".exe" or ".appref-ms")) continue;
+                    string name = Path.GetFileNameWithoutExtension(file).Trim();
+                    if (name.Length == 0 || name.Contains("uninstall", StringComparison.OrdinalIgnoreCase) || !known.Add(name)) continue;
+                    list.Add((name, file));
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     public IReadOnlyList<string> InstalledApps() => Apps().Select(a => a.name).Distinct().OrderBy(n => n).ToList();
@@ -154,7 +182,9 @@ public sealed class WindowsPcActions : IPcActions
         string id = all.First(a => a.name == found).id;
         try
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"shell:AppsFolder\\{id}") { UseShellExecute = false });
+            // A desktop shortcut opens as a double click; a Start menu app by its AppUserModelID.
+            if (Path.IsPathRooted(id) && File.Exists(id)) Process.Start(new ProcessStartInfo(id) { UseShellExecute = true });
+            else Process.Start(new ProcessStartInfo("explorer.exe", $"shell:AppsFolder\\{id}") { UseShellExecute = false });
             Log.Audit("app aperta", found);
             Log.Info($"app: aperta {found} ({id})");
             return new PcResult(true, $"{found} opened.");

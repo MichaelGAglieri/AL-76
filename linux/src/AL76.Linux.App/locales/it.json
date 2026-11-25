@@ -1,0 +1,16 @@
+{
+  "linux.session": "Sistema: {0}",
+  "linux.webgl": "Grafica 3D della sfera: {0}",
+  "linux.webgl.none": "Grafica 3D della sfera: non disponibile",
+  "linux.composited": "Trasparenza: {0}",
+  "linux.composited.yes": "sì (compositore attivo)",
+  "linux.composited.no": "no: senza compositore la sfera ha uno sfondo scuro",
+  "linux.status.title": "Stato",
+  "linux.phase": "Fase 0 — fondamenta",
+  "linux.session.wayland": "{0}, {1}, Wayland (finestre di AL-76 con Xwayland)",
+  "linux.session.waylandonly": "{0}, {1}, Wayland senza Xwayland: la sfera non può stare sopra le altre finestre",
+  "linux.session.x11": "{0}, {1}, X11",
+  "linux.session.none": "{0}, senza schermo",
+  "linux.desktop.unknown": "desktop non riconosciuto",
+  "linux.webgl.on": "attiva"
+}

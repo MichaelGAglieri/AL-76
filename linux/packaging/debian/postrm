@@ -1,0 +1,5 @@
+#!/bin/sh
+# Removing (or purging) AL-76 never touches the users' own data in ~/.config/AL-76 and ~/.local/share/AL-76:
+# the manual says how to delete it.
+set -e
+exit 0

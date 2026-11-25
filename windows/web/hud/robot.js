@@ -4,6 +4,7 @@
 // (on the Mac the approved one is "Mini Robot" by Onur on Sketchfab, CC-BY 4.0). The rig uses that model's part
 // names; another model is refused and the app shows the satellite instead.
 import * as THREE from './vendor/three.module.min.js';
+import { Quality, softwareGpu } from './quality.js';
 
 const { PI, sin, cos, abs, max, min, exp, random } = Math;
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -756,8 +757,9 @@ const fakeVoice = (t) => max(0, 0.5 + 0.5 * sin(t * 13)) * (0.55 + 0.45 * sin(t 
  */
 export async function createRobot(canvas, { model }) {
   THREE.ColorManagement.enabled = true;
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !softwareGpu, alpha: true, premultipliedAlpha: true, powerPreference: 'high-performance' });
   renderer.setClearColor(0x000000, 0);
+  const quality = new Quality(renderer);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.useLegacyLights = true;
@@ -810,7 +812,7 @@ export async function createRobot(canvas, { model }) {
   }
   // The scene is drawn in linear light and only then encoded for the screen, as SceneKit does: the flames' particles
   // add up in linear light (orange, softly saturating) and not in sRGB, where they turned white at once.
-  const linearTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+  const linearTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: quality.samples });
   const copy = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
     uniforms: { map: { value: linearTarget.texture } },
     vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
@@ -820,7 +822,7 @@ export async function createRobot(canvas, { model }) {
   copy.frustumCulled = false;
   const copyScene = new THREE.Scene().add(copy), copyCamera = new THREE.Camera();
   function resize() {
-    const scale = Math.min(window.devicePixelRatio || 1, 2);
+    const scale = quality.ratio;
     const w = Math.max(1, Math.round(canvas.clientWidth * scale)), h = Math.max(1, Math.round(canvas.clientHeight * scale));
     if (canvas.width !== w || canvas.height !== h) {
       renderer.setSize(w, h, false);
@@ -863,7 +865,7 @@ export async function createRobot(canvas, { model }) {
     lastFrame = now;
     draw(now);
     frames++;
-    if (now - fpsStart > 1000) { fps = frames * 1000 / (now - fpsStart); frames = 0; fpsStart = now; }
+    if (now - fpsStart > 1000) { fps = frames * 1000 / (now - fpsStart); frames = 0; fpsStart = now; quality.feed(fps, 1000 / interval()); }
   }
   requestAnimationFrame(frame);
 
@@ -918,6 +920,7 @@ export async function createRobot(canvas, { model }) {
       return pixel[3] > 0;
     },
     get fps() { return fps; },
+    quality,
     get drawCalls() { return calls; },
     /** Stops drawing and frees the GPU memory (another style chosen, or the window closed). */
     dispose() { running = false; renderer.dispose(); },

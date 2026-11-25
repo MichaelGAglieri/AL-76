@@ -3,6 +3,7 @@
 // plexus sit exactly where the user approved them on the Mac. Two levels of detail, as on the Mac:
 // "full" (the HUD) and "light" (the Mac's compact geometry, for Base PCs without a real GPU).
 import * as THREE from './vendor/three.module.min.js';
+import { Quality } from './quality.js';
 
 // ── Seeded random: xorshift on 64 bits, as SeededRandom in Swift ────────────────────────────────────
 const MASK = (1n << 64n) - 1n;
@@ -485,8 +486,9 @@ function instanced(count, attributes) {
  */
 export function createSphere(canvas, { detail = 'full' } = {}) {
   const geometry = buildGeometry(detail === 'light');
-  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, premultipliedAlpha: true, antialias: false });
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, premultipliedAlpha: true, antialias: false, powerPreference: 'high-performance' });
   renderer.setClearColor(0x000000, 0);
+  const quality = new Quality(renderer);
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const uniforms = {
@@ -506,10 +508,10 @@ export function createSphere(canvas, { detail = 'full' } = {}) {
 
   const input = { state: 'idle', deepIdle: false, privacy: false, mic: 0, voice: 0 };
   const motion = new Motion();
-  let lastFrame = 0, frames = 0, fpsStart = performance.now(), fps = 0;
+  let lastFrame = 0, frames = 0, fpsStart = performance.now(), fps = 0, stopped = false;
 
   function resize() {
-    const scale = Math.min(window.devicePixelRatio || 1, 2);
+    const scale = quality.ratio;
     const w = Math.max(1, Math.round(canvas.clientWidth * scale)), h = Math.max(1, Math.round(canvas.clientHeight * scale));
     if (canvas.width !== w || canvas.height !== h) renderer.setSize(w, h, false);
     uniforms.viewport.value.set(w, h, scale, uniforms.viewport.value.w);
@@ -525,19 +527,25 @@ export function createSphere(canvas, { detail = 'full' } = {}) {
     renderer.render(scene, camera);
   }
   function frame(now) {
+    if (stopped) return;
     requestAnimationFrame(frame);
     if (document.hidden || now - lastFrame < interval() - 2) return;
     lastFrame = now;
     draw(now);
     frames++;
-    if (now - fpsStart > 1000) { fps = frames * 1000 / (now - fpsStart); frames = 0; fpsStart = now; }
+    if (now - fpsStart > 1000) { fps = frames * 1000 / (now - fpsStart); frames = 0; fpsStart = now; quality.feed(fps, 1000 / interval()); }
   }
   requestAnimationFrame(frame);
   return {
+    quality,
     set(values) { Object.assign(input, values); },
     /** One frame now, even while hidden (tests and snapshots). */
     draw(now = performance.now()) { draw(now); },
     get fps() { return fps; },
+    /** The frame rate wanted right now (30 working, 20 waiting, 6 after a minute). */
+    get target() { return 1000 / interval(); },
+    /** Stops drawing and frees the GPU (the page swaps in the light sphere). */
+    dispose() { stopped = true; renderer.dispose(); renderer.forceContextLoss(); },
     get counts() { return { segments: geometry.segments.length / 12, points: geometry.points.length / 8 }; },
     renderer,
   };

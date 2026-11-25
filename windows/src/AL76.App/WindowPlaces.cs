@@ -14,6 +14,9 @@ public sealed class WindowPlaces
     public double? NucleusTop { get; set; }
     /// <summary>The ROBOTTINO also says spoken answers in its speech bubble (Mac: voiceBubble, set from its menu).</summary>
     public bool VoiceBubble { get; set; }
+    /// <summary>The GPU on which the sphere could not keep up: with it the app shows only the nucleus. Another GPU
+    /// (a new PC, a driver that now works) gets the sphere again.</summary>
+    public string? HeavySphereGpu { get; set; }
 
     public static WindowPlaces Load()
     {

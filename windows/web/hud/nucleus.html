@@ -54,7 +54,7 @@
   }
   try { await create(); }
   catch (e) { post({ type: 'error', text: String(e?.message ?? e) }); }
-  post({ type: 'ready', style });
+  post({ type: 'ready', style, renderer: nucleus?.quality?.renderer ?? '', software: nucleus?.quality?.software ?? false });
 
   // From the app: { state, voice, mic, deepIdle, privacy, walk, grounded, lean, flames } 30 times a second, and
   // { type: 'hit', x, y } to know whether the mouse is on the nucleus (elsewhere clicks go to the windows below).
@@ -72,7 +72,7 @@
   }
   // The robot's measures for the window: mouth and head (speech bubble), feet (the edge it walks on), stride.
   if (robot) setInterval(() => post({ type: 'metrics', ...robot.metrics() }), 1000 / 30);
-  setInterval(() => nucleus && post({ type: 'fps', fps: Math.round(nucleus.fps * 10) / 10 }), 10000);
+  setInterval(() => nucleus && post({ type: 'fps', fps: Math.round(nucleus.fps * 10) / 10, scale: nucleus.quality?.ratio ?? 0, renderer: nucleus.quality?.renderer ?? '' }), 10000);
 
   // Mouse as on the Mac: drag moves it (after 3 points), a click opens the sphere (the robot: a pat, and a
   // double click opens the sphere), the right button opens the menu. Positions on the screen, for the app.

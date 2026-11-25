@@ -189,4 +189,20 @@ public class VoicePrintTests
         Assert.Equal(1, c.Step);   // three tries, then the next sentence
         Assert.Contains("saltiamo", c.Message);
     }
+
+    [Fact]
+    public void EnrollmentTakesTheThirdTryOfACallSentence()
+    {
+        var e = new VoiceEnrollment(VoiceEnrollment.Kind.First, new WakePhrase("Ehi Al"), "Ehi Al", true);
+        Assert.False(e.Accepts("e hai", 0.9));
+        e.Refused();
+        Assert.False(e.Accepts("e hai", 0.9));
+        e.Refused();
+        Assert.Equal(0, e.Step);                     // never skipped: the call sentences are the voiceprint
+        Assert.False(e.Accepts("", 0.9));            // nothing spoken
+        Assert.False(e.Accepts("e hai", 12));        // too long for a call: talk in the room
+        Assert.True(e.Accepts("e hai", 0.9));        // the third try is taken
+        e.Accept([1, 0]);
+        Assert.False(e.Accepts("e hai", 0.9));       // the next sentence starts strict again
+    }
 }

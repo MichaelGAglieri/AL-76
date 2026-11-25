@@ -33,6 +33,11 @@ public sealed class HudWindow : Window
     public Func<float> VoiceLevel { get; set; } = () => 0;
     public Func<float> MicLevel { get; set; } = () => 0;
     public event Action? CompactRequested;
+    /// <summary>The GPU WebGL uses (name, software renderer), once the page is ready.</summary>
+    public event Action<string, bool>? GpuKnown;
+    /// <summary>The sphere is too heavy for this PC (software renderer, or too slow even at one canvas pixel per
+    /// screen pixel): the page stopped it, the app shows the nucleus instead. The GPU's name comes with it.</summary>
+    public event Action<string>? TooHeavy;
     public event Action? MenuRequested;
 
     public HudWindow(Strings s, HudStatus status)
@@ -96,11 +101,17 @@ public sealed class HudWindow : Window
                 case "ready":
                     ready = true;
                     lastSent = "";
-                    Log.Info($"hud: sfera pronta, WebGL {(m.GetProperty("webgl").GetBoolean() ? "sì" : "no")}, «{m.GetProperty("renderer").GetString()}»");
+                    string gpu = m.GetProperty("renderer").GetString() ?? "";
+                    Log.Info($"hud: sfera pronta, WebGL {(m.GetProperty("webgl").GetBoolean() ? "sì" : "no")}, scheda video: {gpu}");
+                    if (gpu.Length > 0) GpuKnown?.Invoke(gpu, m.TryGetProperty("software", out var sw) && sw.ValueKind == JsonValueKind.True);
                     break;
                 case "fps":
                     // The first reports only: enough to know how the sphere runs on this PC.
-                    if (fpsReports++ < 3) Log.Info($"hud: {m.GetProperty("fps").GetDouble():0.#} fps ({HudLevels.Name(status.State)})");
+                    if (fpsReports++ < 3) Log.Info($"hud: {m.GetProperty("fps").GetDouble():0.#} fps ({HudLevels.Name(status.State)}){Scale(m)}");
+                    break;
+                case "heavy":
+                    Log.Info($"hud: sfera troppo pesante per questo PC ({(m.GetProperty("why").GetString() == "fps" ? $"solo {m.GetProperty("fps").GetDouble():0.#} fps anche a risoluzione ×1" : "grafica senza scheda video")}), resta il nucleo");
+                    TooHeavy?.Invoke(m.GetProperty("renderer").GetString() ?? "");
                     break;
                 case "error": Log.Info($"hud: errore della pagina: {m.GetProperty("text").GetString()}"); break;
                 case "drag": WebLayer.SystemDrag(this); break;
@@ -111,6 +122,12 @@ public sealed class HudWindow : Window
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or KeyNotFoundException) { }
     }
+
+    /// <summary>The drawing resolution the page chose (quality.js), for the log.</summary>
+    internal static string Scale(JsonElement m) =>
+        m.TryGetProperty("scale", out var k) && k.ValueKind == JsonValueKind.Number && k.GetDouble() > 0
+            ? $", risoluzione ×{k.GetDouble():0.##}" + (m.TryGetProperty("size", out var z) && z.ValueKind == JsonValueKind.Number ? $" ({z.GetInt32()} px)" : "")
+            : "";
 
     private void Send()
     {

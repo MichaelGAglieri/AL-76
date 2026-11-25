@@ -31,9 +31,29 @@
   let sphere;
   try { sphere = createSphere(document.getElementById('sphere'), { detail: 'full' }); }
   catch (e) { post({ type: 'error', text: String(e?.message ?? e) }); }
-  const gl = sphere?.renderer.getContext();
-  const info = gl?.getExtension('WEBGL_debug_renderer_info');
-  post({ type: 'ready', webgl: !!gl, renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : '' });
+  const renderer = sphere?.quality.renderer ?? '', software = sphere?.quality.software ?? false;
+  post({ type: 'ready', webgl: !!sphere, renderer, software });
+
+  // The sphere (69,000 filaments) wants a real GPU. Two testers' gaming laptops (25/11) drew it very slowly, and
+  // the Mac's light geometry looked bare. On a software renderer, or when it stays under 60 % of the wanted frame
+  // rate for 6 s even at one canvas pixel per screen pixel (quality.js lowers the resolution first), the page
+  // stops and tells the app, which shows the nucleus (robot, satellite or reactor) instead.
+  let given = false;
+  function giveUp(why) {
+    if (given || !sphere) return;
+    given = true;
+    const fps = Math.round(sphere.fps * 10) / 10;
+    sphere.dispose();
+    sphere = null;
+    post({ type: 'heavy', why, fps, renderer });
+  }
+  if (software) giveUp('renderer');
+  let slow = 0;
+  setInterval(() => {
+    if (!sphere || document.hidden || sphere.fps <= 0 || sphere.quality.ratio > 1) return;
+    slow = sphere.fps < sphere.target * 0.6 ? slow + 1 : 0;
+    if (slow >= 3) giveUp('fps');
+  }, 2000);
 
   // From the app: { state, voice, mic, deepIdle, privacy, label, detail }.
   host?.addEventListener('message', (e) => {
@@ -45,7 +65,7 @@
     if (m.detail !== undefined) document.getElementById('detail').textContent = m.detail;
   });
   // Frames per second, for the app's log (once every 10 s).
-  setInterval(() => sphere && post({ type: 'fps', fps: Math.round(sphere.fps * 10) / 10 }), 10000);
+  setInterval(() => sphere && post({ type: 'fps', fps: Math.round(sphere.fps * 10) / 10, scale: sphere.quality.ratio, size: document.getElementById('sphere').width }), 10000);
 
   // Mouse as on the Mac: dragging the sphere moves the window (after 3 px), a double click reduces it to the
   // satellite, the right button opens the menu, Esc hides it.

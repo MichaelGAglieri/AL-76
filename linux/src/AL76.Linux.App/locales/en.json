@@ -1,0 +1,16 @@
+{
+  "linux.session": "System: {0}",
+  "linux.webgl": "Sphere 3D graphics: {0}",
+  "linux.webgl.none": "Sphere 3D graphics: not available",
+  "linux.composited": "Transparency: {0}",
+  "linux.composited.yes": "yes (compositor running)",
+  "linux.composited.no": "no: without a compositor the sphere has a dark background",
+  "linux.status.title": "Status",
+  "linux.phase": "Phase 0 — foundations",
+  "linux.session.wayland": "{0}, {1}, Wayland (AL-76's windows through Xwayland)",
+  "linux.session.waylandonly": "{0}, {1}, Wayland without Xwayland: the sphere cannot float above other windows",
+  "linux.session.x11": "{0}, {1}, X11",
+  "linux.session.none": "{0}, no display",
+  "linux.desktop.unknown": "unknown desktop",
+  "linux.webgl.on": "on"
+}

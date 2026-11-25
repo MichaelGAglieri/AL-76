@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Windows core, compiled from its own files (windows/src/AL76.Core, read-only) with its own obj folder here,
+       so a Linux build never touches the Windows build. Packages: the same versions as windows (checked by scripts/build.sh). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AL76.Core</RootNamespace>
+    <AssemblyName>AL76.Core</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(WindowsSrc)AL76.Core/**/*.cs" Exclude="$(WindowsSrc)AL76.Core/obj/**;$(WindowsSrc)AL76.Core/bin/**" LinkBase="core" />
+    <EmbeddedResource Include="$(WindowsSrc)AL76.Core/locales/*.json" LogicalName="locales.%(Filename).json" LinkBase="locales" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.15" />
+    <PackageReference Include="PdfPig" Version="0.1.13" />
+  </ItemGroup>
+</Project>

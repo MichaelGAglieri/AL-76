@@ -98,9 +98,17 @@ public partial class App : Application
         };
         hud.MenuRequested += ShowHudMenu;
         hud.CompactRequested += ShowCompact;
+        hud.GpuKnown += GpuKnown;
+        hud.TooHeavy += gpu =>
+        {
+            places.HeavySphereGpu = gpu;
+            sphereOff = true;
+            ShowCompact();
+        };
         nucleus = new NucleusWindow(status, config);
         nucleus.Closing += (_, args) => args.Cancel = true;
         nucleus.OpenRequested += OpenHud;
+        nucleus.GpuKnown += GpuKnown;
         nucleus.MenuRequested += ShowNucleusMenu;
         nucleus.Moved += () => { places.NucleusLeft = nucleus.Left; places.NucleusTop = nucleus.Top; places.Save(); };
         nucleus.WalksChanged += walks => { config.RobotWalks = walks; config.Save(AppPaths.ConfigFile); };
@@ -346,10 +354,31 @@ public partial class App : Application
 
     private void ShowWindow() => OpenHud();
 
+    /// <summary>Without a GPU able to draw the sphere (software renderer, or one where it was too slow) the nucleus is
+    /// AL-76's only face on this PC (25/11: testers' laptops and the VM drew the sphere at 2–6 frames a second).</summary>
+    private bool sphereOff;
+
+    private void GpuKnown(string gpu, bool software)
+    {
+        bool off = software || gpu == places.HeavySphereGpu;
+        if (!off && places.HeavySphereGpu is not null)
+        {
+            Log.Info("hud: scheda video diversa da quella che non reggeva la sfera, la sfera torna disponibile");
+            places.HeavySphereGpu = null;
+            places.Save();
+        }
+        if (off == sphereOff) return;
+        sphereOff = off;
+        if (!off) return;
+        Log.Info("hud: su questa scheda video solo il nucleo, la sfera resta chiusa");
+        if (hud?.IsVisible == true) ShowCompact();
+    }
+
     /// <summary>From NUCLEUS to sphere: the sphere opens exactly around the nucleus, which steps aside (Mac: openHUD).</summary>
     private void OpenHud()
     {
         if (hud is null || nucleus is null) return;
+        if (sphereOff) { nucleus.Want(true); return; }
         if (!hud.IsVisible) hud.PlaceAround(nucleus.Center);
         hud.Show();
         hud.Activate();
@@ -387,7 +416,7 @@ public partial class App : Application
             menu.Items.Add(item);
             return item;
         }
-        Add(strings["nucleus.menu.open"], OpenHud);
+        if (!sphereOff) Add(strings["nucleus.menu.open"], OpenHud);
         Add(strings["hud.menu.new"], NewConversation);
         Add(strings["typebar.menu"], () => typeBar?.Toggle());
         Add(strings["tray.plancia"], OpenPlancia);

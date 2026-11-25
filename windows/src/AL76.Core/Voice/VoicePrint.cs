@@ -233,10 +233,18 @@ public sealed class VoiceEnrollment
         Message = it ? "Leggi la frase a voce normale, poi fai una breve pausa." : "Read the sentence in your normal voice, then pause briefly.";
     }
 
-    /// <summary>The recorded sentence is the right one: the call, or at least half the words of the command.</summary>
-    public bool Accepts(string heard)
+    /// <summary>Tries refused in a row on the same sentence, after which a call sentence is taken as it is.</summary>
+    public const int LenientAfter = 2;
+
+    /// <summary>The recorded sentence is the right one: the call, or at least half the words of the command. A tester
+    /// (25/11) reached sentence 5 of 18 in 40 minutes: Whisper on his laptop rarely wrote the call. The user is reading
+    /// from the screen, so after two refused tries any spoken sentence of 0.4–8 s is taken (a voice that differs from
+    /// the others is still left out when the voiceprint is saved).</summary>
+    public bool Accepts(string heard, double seconds = 0)
     {
-        if (Mode != Kind.Commands) return call.Command(heard) is not null;
+        if (Mode != Kind.Commands)
+            return call.Command(heard) is not null
+                   || (refusals >= LenientAfter && seconds is >= 0.4 and <= 8 && Regex.IsMatch(heard, @"\p{L}"));
         static HashSet<string> Words(string s) => Regex.Split(Web.NewsFeed.Fold(s), @"[^\p{L}]+").Where(w => w.Length > 0).ToHashSet();
         var expected = Words(Prompt);
         return expected.Count > 0 && expected.Intersect(Words(heard)).Count() / (double)expected.Count >= 0.5;
@@ -247,7 +255,7 @@ public sealed class VoiceEnrollment
     {
         Message = Mode == Kind.Commands ? (Italian ? "Non ho capito la frase: rileggila." : "I did not get the sentence: read it again.")
                                         : (Italian ? "Non ho sentito la chiamata: ripeti la frase." : "I did not hear the call: say it again.");
-        if (Mode != Kind.Commands) return;
+        if (Mode != Kind.Commands) { refusals++; return; }
         if (++refusals >= 3)
         {
             refusals = 0;

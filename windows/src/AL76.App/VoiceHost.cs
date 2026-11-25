@@ -139,6 +139,18 @@ public sealed class VoiceHost(AppConfig config, Strings s, TierDecision tier, Ma
         await RunFileTestAsync(loop, ct);
 
         mic = new Microphone();
+        // Windows' privacy switch off: the microphone opens but gives only silence (25/11, two testers' laptops).
+        if (MicrophonePrivacy.Blocked() is { } blocked)
+        {
+            Log.Info($"microfono: bloccato dalla privacy di Windows ({blocked}), apro le Impostazioni");
+            MicrophonePrivacy.OpenSettings();
+        }
+        mic.AllSilent += silent =>
+        {
+            string why = s[MicrophonePrivacy.Blocked() is null ? "voice.mic.silent" : "voice.mic.privacy"];
+            window.SetVoiceStatus(silent ? why : s.Format("voice.listening", config.EffectiveWakePhrase(s.Language)));
+            StateChanged?.Invoke(silent ? HudState.Error : HudState.Idle, silent ? why : "");
+        };
         try { mic.Start(); }
         catch (Exception e)
         {
@@ -270,8 +282,9 @@ public sealed class VoiceHost(AppConfig config, Strings s, TierDecision tier, Ma
     {
         if (command is null || embedder is null) return;
         string heard = (await command.TranscribeAsync(phrase, new WakePhrase(config.EffectiveWakePhrase(s.Language)).Hint, ct)).Trim();
-        Log.Info($"impronta vocale: frase {e.Step + 1}, sentito «{heard}»");
-        if (!e.Accepts(heard)) e.Refused();
+        double seconds = phrase.Length / (double)VoiceActivityDetector.SampleRate;
+        Log.Info($"impronta vocale: frase {e.Step + 1}, {seconds:0.0} s, sentito «{heard}»");
+        if (!e.Accepts(heard, seconds)) e.Refused();
         else
         {
             try { e.Accept(await embedder.EmbedAsync(phrase.Length > VoiceCheck.LongestEmbedded ? phrase[..VoiceCheck.LongestEmbedded] : phrase, ct)); }

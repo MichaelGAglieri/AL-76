@@ -1,6 +1,6 @@
 # AL-76 per Linux — piano a fasi
 
-*Scritto il 21 novembre 2026 sulla base della versione Mac 1.30.78 e della versione Windows 0.1.0 (pre-release `windows-v0.1.0`). Stato: **da approvare**. Nessuna riga di codice finché l'utente non approva.*
+*Scritto il 21 novembre 2026 sulla base della versione Mac 1.30.78 e della versione Windows 0.1.0 (pre-release `windows-v0.1.0`). Stato: **approvato dall'utente** (stack A). Per le altre decisioni seguo le raccomandazioni: GNOME come riferimento e KDE come secondo, estensione GNOME facoltativa. La VM grafica si decide con l'utente prima di scaricare l'immagine di Ubuntu.*
 
 ## Il principio
 
@@ -87,7 +87,7 @@ linux/
 **Dati, secondo le regole XDG:**
 - impostazioni in `~/.config/AL-76/`;
 - dati e modelli in `~/.local/share/AL-76/` (modelli in `models/`);
-- log in `~/.local/state/AL-76/`;
+- log (`diagnostica.log`, `sicurezza.log`) nella cartella dati, come su Windows, perché «Esporta diagnostica» del nucleo li cerca lì;
 - socket dell'istanza unica in `$XDG_RUNTIME_DIR/al76.sock`.
 
 Il modello del robottino si legge **solo** dalla cartella dati dell'utente (`~/.local/share/AL-76/companion/`) e non entra mai nel repository né nel pacchetto. Per trovare Documenti, Scrivania e le altre cartelle personali si usa `xdg-user-dir`: su un sistema in italiano si chiamano proprio «Documenti» e «Scrivania».
@@ -151,7 +151,7 @@ La voce Qwen3 del Mac resta fuori, come su Windows, salvo un modulo futuro per N
 
 Ogni fase finisce con test, una prova nella VM e un commit su main con i soli file di `linux/` e di questo piano. Le stime sono in giornate di lavoro.
 
-### Fase 0 — Fondamenta (1–2 giorni)
+### Fase 0 — Fondamenta (1–2 giorni) ✓ fatta il 25/11/2026
 - **VM Ubuntu 26.04 Desktop arm64** sul Mac (vedi «Come si prova»). **OrbStack** con Ubuntu 24.04 e 26.04, in arm64 e in amd64 (con Rosetta), per le prove automatiche: compilazione, test, `apt install` del pacchetto.
 - Soluzione `linux/` che compila il nucleo e la voce di Windows per `linux-x64` e `linux-arm64`, con pubblicazione autonoma dal Mac (`dotnet publish -r linux-arm64 --self-contained`).
 - Verifica che le librerie native di Whisper.net, ONNX Runtime, KokoroSharp e sherpa-onnx ci siano per tutte e due le architetture.
@@ -159,6 +159,33 @@ Ogni fase finisce con test, una prova nella VM e un commit su main con i soli fi
 - Misura del PC, livello, log, percorsi XDG, istanza unica.
 - **Un primo `.deb` già in fase 0**, così il pacchetto viene provato a ogni fase e non solo alla fine.
 - **Finito quando:** nella VM `sudo apt install ./al76_0.0.1_arm64.deb` installa l'app, AL-76 compare tra le app, si apre la sfera, e la finestra «Stato» indica livello, desktop (GNOME/KDE/altro) e sessione (Wayland/X11). In OrbStack i test del nucleo di Windows passano anche su Linux.
+- **Stato al 25/11/2026 (◐, manca solo la VM grafica):**
+  - **Nucleo e voce condivisi** (`linux/src/Shared/`): i progetti compilano i file di `windows/src/AL76.Core` e `AL76.Speech` direttamente da lì, con una cartella `obj` propria. Così la compilazione Linux non tocca quella di Windows. `scripts/build.sh` controlla che le versioni dei pacchetti siano le stesse di Windows. Le librerie native di Whisper, ONNX Runtime e sherpa-onnx ci sono per linux-arm64 e linux-x64.
+  - **Test su Linux vero** (OrbStack, Ubuntu 26.04.1 arm64, `scripts/prova-orb.sh`):
+    - 547 test su 548 del nucleo di Windows passano.
+    - Quello che fallisce riguarda i PDF: il nucleo cerca solo i caratteri di Windows e del Mac, quindi su Linux le lettere accentate si perdono. È la prima richiesta alla sessione Windows (`linux/MAPPA_WINDOWS_LINUX.md`, «Core requests»).
+    - Passano anche i 16 test Linux: percorsi XDG con le cartelle italiane, memoria, schede video, desktop e sessione, livello con Piper, protezione dello schema `al76://` (niente `../`), testi nelle due lingue.
+  - **Guscio GTK3 + WebKitGTK 4.1** con P/Invoke (`App/Native/Gtk.cs`, `GtkLoop.cs`, `WebWindow.cs`):
+    - finestra trasparente, senza bordi, sopra le altre e fuori dalla barra delle app;
+    - pagine servite dallo schema `al76://` (hud, app, companion), con la navigazione bloccata verso qualsiasi altro indirizzo;
+    - **la sfera di Windows gira senza modifiche**: l'adattatore `window.chrome.webview` funziona nei due sensi.
+    - Con Xvfb in OrbStack: WebGL acceso e **18,8 fps** con la geometria completa.
+  - **Finestra «Stato»** (`web/app/stato.html`): livello, memoria, processori, scheda video, sistema e sessione, trasparenza, grafica 3D, modelli, impostazioni e moduli. Si apre al primo avvio, oppure quando si riapre AL-76 dal menu: l'istanza unica passa da un socket Unix.
+  - **Pacchetto** (`packaging/build-deb.sh`, costruito dentro OrbStack con `dpkg-deb`):
+    - `al76_0.0.1_arm64.deb` (113 MB) e `al76_0.0.1_amd64.deb` (129 MB);
+    - contenuto: `/opt/al76`, `/usr/bin/al76`, il file `.desktop` e le icone hicolor (lo stesso disegno di Windows);
+    - dipendenze: GTK3, WebKitGTK 4.1, ICU 72/74/76/78, OpenSSL 3.
+    - `apt install` su Ubuntu 26.04 arm64 risolve le dipendenze e l'app si avvia.
+  - **Provata nella VM grafica il 25/11** (Ubuntu 26.04 arm64, GNOME 50 Wayland, VMware Fusion con il 3D acceso, `scripts/prova-vm.sh`):
+    - `apt install` del `.deb` e avvio nella sessione grafica;
+    - la sfera è una finestra Xwayland trasparente, in alto a destra, sopra le altre e fuori dalla barra delle app; va a **20 fps** (il massimo della pagina in attesa);
+    - il trascinamento funziona, Esc la nasconde, e riaprire AL-76 dal menu la riporta e apre «Stato»;
+    - «Stato» indica livello Base, 8 GB, 4 processori, Arm64, VMware SVGA, Wayland con Xwayland, trasparenza sì e 3D attivo.
+  - **Corretti dopo la prova:**
+    - su Linux `Environment.SetEnvironmentVariable` di .NET non arriva a GTK, quindi `GDK_BACKEND=x11` restava senza effetto: la sfera si apriva in Wayland nativo, al centro e non sopra le altre. Ora si usa `gdk_set_allowed_backends("x11")`;
+    - nella finestra Xwayland il renderer DMA-BUF di WebKit non disegnava nulla: ora l'app imposta `WEBKIT_DISABLE_DMABUF_RENDERER=1` con `setenv` di libc, a meno che l'utente non l'abbia già impostato;
+    - la memoria si legge dai blocchi di `/sys/devices/system/memory` (8,0 GB) invece che da `MemTotal` (7,2 GB, senza la parte riservata al kernel). Prima la VM da 8 GB risultava «sotto i requisiti»;
+    - WebKit non dice la scheda video vera (risponde sempre un nome generico), quindi «Stato» mostra solo «attiva» e gli fps.
 
 ### Fase 1 — Voce (2–3 giorni)
 - Microfono e uscita con PulseAudio/PipeWire; cancellazione dell'eco con PipeWire, quando si può attivare; l'indicazione della modalità usata, come su Windows.
@@ -255,6 +282,18 @@ Un confronto voce per voce con la sezione «Allineamento con il Mac» di Windows
 ## Come si prova
 
 1. **VM grafica (prove vere: voce, sfera, controllo del PC):** Ubuntu 26.04 LTS Desktop **arm64** sul Mac M4, con 8 GB, 4 core e un disco da 40 GB.
+   - **In uso dal 25/11:** la VM che c'era già sull'SSD, «Ubuntu 64-bit Arm 26.04» in `/Volumes/VMs` (VMware Fusion 26), con la ISO in `SSD_Ext/Os`. Prima di riavviarla dallo stato sospeso di settembre (che non aveva più schermo) ho fatto l'istantanea «Prima delle prove AL-76 (2026-11-25)».
+   - **Collegamento dal Mac:** SSH con una chiave fatta solo per questa VM (`~/.ssh/al76_vm`).
+     - Lo script iniziale è stato servito sulla rete interna della VM (`172.16.230.1:8765`) e ha installato `openssh-server` e `open-vm-tools-desktop`.
+     - `sudo` senza password solo in questa VM (`/etc/sudoers.d/al76-prova`). La password di Ubuntu l'ha scritta l'utente.
+     - L'indirizzo della VM cambia a ogni avvio e si legge con `vmrun getGuestIPAddress`.
+     - `linux/scripts/prova-vm.sh install|run|log|ssh` copia il `.deb`, lo installa e avvia AL-76 nella sessione GNOME (unità `systemd --user`).
+   - **Impostazioni cambiate nella VM di prova:**
+     - accesso automatico (`/etc/gdm3/custom.conf`; l'originale è in `custom.conf.al76-backup`);
+     - schermo che non si spegne e non si blocca;
+     - niente notifiche a comparsa;
+     - **3D acceso** (`mks.enable3d = "TRUE"` nel `.vmx`; la copia di prima è nello scratchpad della sessione).
+   - **Tastiera dalla finestra della VM:** si scrive solo tasto per tasto. Con la tastiera italiana della VM: «.» con «:», «:» con Maiusc+«:», «/» con Maiusc+7, «&» con Maiusc+6, «-» con «minus»; il «|» non si ottiene. Ctrl+Alt+T la prende la barra di scrittura di AL-76 sul Mac. Con SSH tutto questo non serve.
    - **VMware Fusion** (raccomandato, perché è già usato per Windows):
      - Linux arm64 ha `open-vm-tools`, quindi ci sono la cartella condivisa (`vmhgfs-fuse`) e l'adattamento della risoluzione;
      - il **3D accelerato** va provato: per Windows ARM il 3D era spento, e su Linux con mesa potrebbe funzionare. Si misura con `glmark2` e con la sfera;
