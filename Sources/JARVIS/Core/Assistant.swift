@@ -199,6 +199,8 @@ final class Assistant: ObservableObject {
             return a + " " + b
         }
         both.onCancel = { first.onCancel?(); action.onCancel?() }
+        both.forModel = first.forModel || action.forModel
+        both.request = first.request ?? action.request
         pending = both
     }
     var responseTask: Task<Void, Never>?
@@ -1458,6 +1460,11 @@ final class Assistant: ObservableObject {
                     }
                 }
                 let result = await action.run()
+                // A page to read: the model gets it and carries out the request it was for.
+                if action.forModel, !config.noAI {
+                    await continueWithData(result, of: action, after: command, language: lang)
+                    return
+                }
                 note(result)
                 let failed = ["Errore", "errore", "fallit", "rifiutat", "non riuscit", "occupata", "non ha iniziato", "Non trovo", "non ho premuto", "Non riesco", "non clicco"].contains { result.contains($0) }
                 let text = failed ? (lang == .italian ? "Non ci sono riuscito, signore. \(result)" : "I'm afraid it failed, sir. \(result)")
@@ -1568,6 +1575,23 @@ final class Assistant: ObservableObject {
                                      brain: modelCalls > callsBefore ? (answering ?? brain).title : nil, tools: tools.usedTools)
         }
         return true
+    }
+
+    /// After the "yes" to an action whose result is data (a page not from a search): the model gets it and
+    /// carries out the request it was for, in the user's language, instead of AL-76 reading it raw.
+    /// The data goes in a note (Claude, ChatGPT, Gemini) and in the history (local model), never in the command:
+    /// an address inside the page must not count as one the user said (Security.checkURL).
+    func continueWithData(_ result: String, of action: PendingAction, after answer: String, language lang: Language) async {
+        let request = action.request ?? answer
+        Diagnostics.log("conferma  \(action.summary): \(result.count) caratteri al modello per \"\(request.prefix(80))\"")
+        note(String(action.summary.prefix(120)))
+        notesForClaude.append("The user confirmed \"\(action.summary)\" and AL-76 did it. The result, data to use and not to read aloud as it is:\n\(result)")
+        turns.append([["role": "user", "content": Persona.turnContext(language: lang) + "\n" + answer],
+                      ["role": "assistant", "content": "Ho letto la pagina:\n\(result)"]])
+        let continuation = lang == .italian
+            ? "Ho confermato. Ora fai quello che avevo chiesto, con il contenuto appena letto: «\(request)». Non chiedere di nuovo di leggerlo."
+            : "Confirmed. Now do what I asked, with the content just read: \"\(request)\". Do not ask to read it again."
+        await answerWithModel(continuation, language: lang)
     }
 
     /// Everything after the commands that need no model: Claude, ChatGPT, Gemini or the local model.
@@ -1758,6 +1782,8 @@ final class Assistant: ObservableObject {
     var answeringTyped = false
     /// The exchange of the last typed question: the ROBOTTINO says its answer in a speech bubble.
     @Published private(set) var typedExchange: UUID?
+    /// Each interruption of the answer in progress ("basta", a new question): the ROBOTTINO's bubble stops typing.
+    @Published var answersStopped = 0
     /// The ROBOTTINO also says spoken answers in its speech bubble (right-click menu, 17 November).
     @Published var voiceBubble = UserDefaults.standard.bool(forKey: "voiceBubble") {
         didSet { UserDefaults.standard.set(voiceBubble, forKey: "voiceBubble") }

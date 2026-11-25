@@ -12,6 +12,11 @@ struct PendingAction {
     let run: () async -> String
     /// To do if the user answers no: for example closing a window left open.
     var onCancel: (() -> Void)?
+    /// The result is data for the model (a page to read): after the "yes" it goes back to the model with the
+    /// request it was for, it is not read aloud. 25 November: the raw English page was read for 2 minutes.
+    var forModel = false
+    /// The user's request the action was prepared for.
+    var request: String?
 }
 
 enum ToolOutcome {
@@ -180,7 +185,8 @@ final class ToolBox {
              ["to": str("Email address or contact name"), "subject": str("Subject"), "body": str("Full body text")],
              required: ["to", "subject", "body"]),
         tool("web_search", "Search the web and get the top results with snippets.", ["query": str("Search query")], required: ["query"]),
-        tool("read_webpage", "Read the text of a web page.", ["url": str("URL")], required: ["url"]),
+        tool("read_webpage", "Read the text of a web page (the article only, up to 24,000 characters at a time). If it says the page goes on, call it again with from to read the rest before translating or summarizing the whole page.",
+             ["url": str("URL"), "from": num("Optional: character to start from, for the rest of a long page")], required: ["url"]),
         tool("open_url", "Open a website in the browser.", ["url": str("URL")], required: ["url"]),
         tool("merge_pdfs", "Combine PDFs (and images) into ONE new PDF in the given order, in under a second. Use this instead of PDF apps like PdfCraft. Find the paths first with search_files.",
              ["files": ["type": "array", "items": ["type": "string"], "description": "Full paths, in order"],
@@ -622,9 +628,14 @@ final class ToolBox {
             case .allowed(let url):
                 return .result(Security.external("pagina web", await WebActions.readPage(["url": url.absoluteString])))
             case .needsConfirmation(let url):
-                return .needsConfirmation(PendingAction(summary: "Leggere la pagina \(url.host ?? url.absoluteString), che non viene da una tua ricerca") {
-                    Security.external("pagina web", await WebActions.readPage(["url": url.absoluteString]))
-                })
+                var read = PendingAction(summary: "Leggere la pagina \(url.host ?? url.absoluteString), che non viene da una tua ricerca") { [weak self] in
+                    // Confirmed once: the rest of the same page (from) and a second read do not ask again.
+                    if let host = url.host?.lowercased() { self?.trustedHosts.insert(host.hasPrefix("www.") ? String(host.dropFirst(4)) : host) }
+                    return Security.external("pagina web", await WebActions.readPage(["url": url.absoluteString, "from": a.number("from") ?? 0]))
+                }
+                read.forModel = true
+                read.request = currentCommand
+                return .needsConfirmation(read)
             }
         case "watch": return .result(WebActions.watch(a))
         case "merge_pdfs": return .result(PDFTools.merge(a))

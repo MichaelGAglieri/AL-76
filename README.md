@@ -1,17 +1,95 @@
 # AL-76
 
-A personal voice assistant for macOS, with companion apps for iPhone and iPad. You call it with **"Ehi Al"**.
+**A personal voice assistant for your computer: macOS and Windows today, Linux on the way.** You call it with
+**"Ehi Al"** (or with a name you choose), ask in Italian or English, and it answers with its voice and acts on the
+computer: apps, files, calendar, mail, study, music, robotics.
 
-> **Why AL-76.** In Isaac Asimov's story *Robot AL-76 Goes Astray* (1942), a robot built to work in the
-> mines on the Moon gets lost on Earth, in the hills of Virginia. There are no proper tools around, so it
-> builds its own from the scrap in a shack, and the device turns out far more powerful than the factory's.
-> Randolph Payne, the man who finds it and keeps it, simply calls it "Al". This assistant is a robot of the
-> same kind, put together at home from what was at hand. Until version 1.30.63 it was called JARVIS.
+> 🚧 **Work in progress.** AL-76 is a hobby project that changes every week. The Mac version is used every day;
+> the Windows version is a **preview** being tested on real PCs; Linux is being planned. Expect rough edges, and
+> please report problems as [issues](../../issues).
 
-It runs locally on the Mac: it listens for the call "Ehi Al", understands Italian and English, answers
-with a neural voice, acts on the Mac (apps, calendar, mail, timers, files…) and knows your robotics
-projects. When more power is needed it switches to Claude through your Claude subscription, with no
-paid API.
+## Which version do I need?
+
+| Platform | Status | How to get it | Guide |
+|---|---|---|---|
+| **Windows 10 and 11** | Preview (0.1.x), tested on real PCs | **Download the installer** `AL-76-Setup-…-x64.exe` from the latest `windows-v…` release on the [Releases page](../../releases) (currently [0.1.2](../../releases/tag/windows-v0.1.2)). No building, no administrator rights. | [`windows/README.md`](windows/README.md) |
+| **macOS** (Apple Silicon) | Used daily, the most complete | Built from the source on your Mac with Xcode (no installer yet) | [Installation guide](INSTALL.md) · [macOS version](#macos-version) below |
+| **iPhone and iPad** | Companion app | A remote for the Mac or the Windows PC: talk to AL-76 and see the computer's screen | [iPhone and iPad app](#iphone-and-ipad-app) |
+| **Linux** | Planned | Not available yet | — |
+
+> **Windows users:** you do not need anything from the rest of this page. Open the
+> [Releases page](../../releases), download the installer from the newest `windows-v…` release and follow
+> [`windows/README.md`](windows/README.md).
+
+## How it started, and where it is going
+
+AL-76 was born on a Mac, simply because its author uses a Mac: the first versions were a personal assistant for
+one person's studies, robotics lab and 3D printer, written in Swift for macOS, with apps for iPhone and iPad.
+
+It is now growing into an assistant for **anyone, on any computer**:
+
+- **Windows**: rewritten from scratch in C# (.NET 10, WPF) and made for everyone, not only for its author: any
+  school, job or city. A guided setup asks your name, what you use it for and which brain to use; the call follows
+  the name you choose; robotics, the phone link and the university portal are optional modules you turn on.
+- **Linux**: coming soon. It will reuse the core of the Windows version, so the same features reach Linux desktops.
+- **macOS** stays the reference version, where new ideas usually appear first and are then brought to Windows.
+
+The versions share ideas and behaviour, not code: each one is written for its own system.
+
+## What it can do
+
+The details differ by platform (see each guide), but the idea is the same everywhere:
+
+- **Voice first.** It listens for the call, transcribes with Whisper on your computer, answers with a neural or
+  system voice, and stops when you say "basta" or "stop". A writing bar is there when you cannot talk.
+- **Your choice of brain.** Simple commands (time, timers, volume, apps, reminders…) run with no AI at all. For
+  the rest it uses the subscription you already have, Claude, ChatGPT (Codex) or Gemini, or a local model through
+  Ollama, with no paid API. A **Without AI** mode turns every model off.
+- **Hands off the computer.** It opens and drives apps, finds and opens files and PDFs, reads the screen, controls
+  music and volume, and asks for confirmation only for what matters (purchases, passwords, sending mail).
+- **Study and work.** Time tracking with breaks and reports, study plan and exams, flashcards, timetable,
+  questions answered from your own notes, a morning briefing; on Windows also university portals (Esse3).
+- **Robotics and making** (optional): ROS 2, Arduino, a Bambu Lab printer, Robot Console.
+- **Private by design.** Audio, transcripts, memory and files stay on your computer; only what a brain or a web
+  search needs leaves it.
+
+## Why "AL-76"
+
+> In Isaac Asimov's story *Robot AL-76 Goes Astray* (1942), a robot built to work in the mines on the Moon gets
+> lost on Earth, in the hills of Virginia. There are no proper tools around, so it builds its own from the scrap
+> in a shack, and the device turns out far more powerful than the factory's. Randolph Payne, the man who finds it
+> and keeps it, simply calls it "Al". This assistant is a robot of the same kind, put together at home from what
+> was at hand.
+
+Until version 1.30.61 the Mac version was published as **JARVIS**, after the AI of Iron Man, and woke up to the
+word "Jarvis". As it grew into something of its own it got its own name and a call that sounds like calling a
+friend, "Ehi Al" (16 November 2026). The repository keeps its old name in the address, `AL-76_ex-JARVIS`.
+
+| Name | Mac versions | Call | Get it |
+|------|----------|------|--------|
+| **JARVIS** | 1.0 – **1.30.61**, the last one published as JARVIS | "Jarvis" | tag [`jarvis-1.30.61`](../../tree/jarvis-1.30.61) · [zip](../../archive/refs/tags/jarvis-1.30.61.zip) · `git checkout jarvis-1.30.61` |
+| **AL-76** | from **1.30.64** on | "Ehi Al" | this branch (`main`) |
+
+Versions 1.30.62 and 1.30.63 (diagrams and the ROBOTTINO) were never published on their own: they are part of
+AL-76 1.30.64. JARVIS and AL-76 share the same internal identifiers on the Mac (bundle id, data folder, Keychain,
+iPhone pairing): moving from one to the other keeps settings, data and macOS permissions, but they are not meant
+to be installed side by side.
+
+## Repository layout
+
+| Folder | What it is |
+|---|---|
+| [`windows/`](windows) | the Windows version (C#, .NET 10, WPF), its tests and installer scripts: see [`windows/README.md`](windows/README.md) |
+| `Sources/`, `Resources/`, `scripts/`, `tests/` | the macOS version (Swift) |
+| `iPhone/` | the iPhone and iPad companion app |
+| [`CHANGELOG.md`](CHANGELOG.md), [`INSTALL.md`](INSTALL.md), [`Manual_AL-76.pdf`](Manual_AL-76.pdf) | history, installation guide and manual of the macOS version |
+
+## macOS version
+
+A personal voice assistant for macOS, with companion apps for iPhone and iPad. It runs locally on the Mac: it
+listens for the call "Ehi Al", understands Italian and English, answers with a neural voice, acts on the Mac
+(apps, calendar, mail, timers, files…) and knows your robotics projects. When more power is needed it switches to
+Claude through your Claude subscription, with no paid API.
 
 - **Local first.** Speech recognition (Whisper on the Neural Engine), the local model (Gemma 4 via
   Ollama) and the neural voices (Qwen3, Kokoro) all run on the Mac.
@@ -25,43 +103,7 @@ paid API.
 > commands and app labels are in Italian. Full manual: [`Manual_AL-76.pdf`](Manual_AL-76.pdf). Version
 > history: [`CHANGELOG.md`](CHANGELOG.md). Installation guide: [`INSTALL.md`](INSTALL.md).
 
-## Windows version (preview)
-
-AL-76 also exists for **Windows 10 and 11**, rewritten from scratch in C# (.NET 10, WPF) and made for everyone,
-not only for the author: any school, job or city, with the robotics, phone and university features as optional
-modules. It has the same features as the Mac version except those that belong to the Apple ecosystem (Shortcuts,
-AirPods, Keychain/iCloud) and the Mac-only private channel of Robot Console.
-
-- **Download:** the installer for ordinary PCs (x64) is on the [Releases page](../../releases), in the latest
-  `windows-v…` release.
-- **Guide, features and privacy:** [`windows/README.md`](windows/README.md).
-- **Source and your own installer:** all the code is in [`windows/`](windows) (C#, MIT licence). On a Windows PC
-  with the .NET 10 SDK and Inno Setup, `windows\scripts\build.ps1` runs the tests, builds the app and makes the
-  installer; with `-AppName`, `-Publisher` and `-AppId` it makes your own version that installs next to the
-  official one. Step by step: [Build it yourself](windows/README.md#build-it-yourself).
-- **Status:** preview. It is covered by automated tests and has run in a Windows virtual machine, but has not
-  been tried on a real PC yet.
-
-## From JARVIS to AL-76
-
-Until version **1.30.61** this project was published as **JARVIS**, after the AI of Iron Man, and it woke up to
-the word "Jarvis". Over time it stopped being an imitation of a film character: it grew around one person's
-studies, robotics lab, 3D printer and daily habits, with its own voice, its own NUCLEUS and a small robot
-companion. So on 16 November 2026 it got a name of its own, a robot that builds what it needs from what is at
-hand, and a call that sounds like calling a friend: **"Ehi Al"**. The features did not change with the name.
-
-| Name | Versions | Call | Get it |
-|------|----------|------|--------|
-| **JARVIS** | 1.0 – **1.30.61**, the last one published as JARVIS | "Jarvis" | tag [`jarvis-1.30.61`](../../tree/jarvis-1.30.61) · [zip](../../archive/refs/tags/jarvis-1.30.61.zip) · `git checkout jarvis-1.30.61` |
-| **AL-76** | from **1.30.64** on | "Ehi Al" | this branch (`main`) |
-
-Versions 1.30.62 and 1.30.63 (diagrams and the ROBOTTINO) were never published on their own: they are part of
-AL-76 1.30.64. What exactly changed with the rename is in [`CHANGELOG.md`](CHANGELOG.md) under 1.30.64.
-JARVIS and AL-76 share the same internal identifiers (bundle id, data folder, Keychain, iPhone pairing):
-moving from one to the other keeps settings, data and macOS permissions, but they are not meant to be installed
-side by side.
-
-## Requirements
+### Requirements
 
 - A Mac with Apple Silicon and macOS 15 or later; 16 GB of RAM is the practical minimum for the
   local model, 24 GB is comfortable.
@@ -72,7 +114,7 @@ side by side.
 - For mail: Full Disk Access for AL-76 (System Settings › Privacy & Security), so it reads Mail's index on
   disk in under a second; without it AL-76 asks Mail through AppleScript, which is slow with a large inbox.
 
-## Installation
+### Installation
 
 The complete guide, from a clean Mac to the app on your phone, is in [`INSTALL.md`](INSTALL.md). In short:
 
@@ -122,7 +164,7 @@ For Claude, log in once:
 claude auth login --claudeai
 ```
 
-## Quick start
+### Quick start
 
 - Say **"Ehi Al"** followed by the command ("Ehi Al, what time is it?"), or just "Ehi Al" and wait for the beep.
 - When you ask it to do something it acknowledges at once ("Right away, sir") and then works. During actions
@@ -141,7 +183,7 @@ claude auth login --claudeai
   AL-76's menu-bar icon (the robot's head) brings it back.
 - AL-76 starts at login (can be turned off in ⚙︎ › System).
 
-## What it can do
+### What it can do on the Mac
 
 | Area | Examples |
 |---|---|
@@ -170,7 +212,7 @@ claude auth login --claudeai
 The first time it uses Calendar, Reminders, Mail, Contacts, Music, the screen or the camera, macOS asks
 for permission once.
 
-## Robotics
+### Robotics
 
 | System | Examples | Notes |
 |---|---|---|
@@ -189,7 +231,7 @@ On the real robot, Robot Console's own approval still applies.
 The ROS 2 bridge (`Resources/ros_bridge.py`) starts on the first request inside the pixi environment of
 `labProject` and closes with AL-76.
 
-## iPhone and iPad app
+### iPhone and iPad app
 
 A second app, in `iPhone/`, with the same neural sphere as the HUD. It is a remote: Whisper, Claude, Gemma and
 the tools stay on the Mac; the phone carries your voice and shows the answers. You can say "Ehi Al" with
@@ -219,7 +261,7 @@ In short: connect the iPhone or iPad with a cable and double-click `Installa su 
 pick your team in Signing & Capabilities and press Run. With a free Apple account the app must be
 reinstalled every 7 days (it warns two days before); pairing and settings are kept.
 
-## HUD and NUCLEUS
+### HUD and NUCLEUS
 
 - **HUD**: the neural sphere alone, in a borderless window that wraps it closely. No buttons and no state label
   around it (only privacy mode and errors are written). Drag it to move it; double-click it to go back to the
@@ -243,7 +285,7 @@ reinstalled every 7 days (it warns two days before); pairing and settings are ke
   display, it shrinks there first).
 - The animation runs at 30 fps while AL-76 works, 12 while waiting, 6 after a minute, and stops when hidden.
 
-## The ROBOTTINO companion (optional 3D model)
+### The ROBOTTINO companion (optional 3D model)
 
 Besides the reactor and the satellite, the NUCLEUS can be a small 3D robot that floats on jet flames, acts out
 AL-76's states, walks along the bottom edge of the screen and answers typed questions in a speech bubble. The
@@ -258,7 +300,7 @@ AL-76's states, walks along the bottom edge of the screen and answers typed ques
 Credit, as the licence requires: this work is based on "Mini Robot" (https://sketchfab.com/3d-models/mini-robot-3454c84d6eff4a9dabbfadbfd1f56524) by Onur (https://sketchfab.com/onurpearl),
 licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/).
 
-## Brains: Gemma and Claude
+### Brains: Gemma and Claude
 
 With internet, **Claude Sonnet** answers through Claude Code (`claude -p`) and your subscription; without
 internet, **Gemma 4 12B** answers locally through Ollama. AL-76 starts a small **MCP server** on 127.0.0.1,
@@ -281,7 +323,7 @@ protected by a token that changes at every launch, so Claude uses the same tools
   instant, direct, model (brain, seconds, tools used) or not done without AI. Plancia › Stato shows today's and the last
   7 days' model-free share (goal 60 %) and the requests that went to the model grouped by the tool it used.
 
-## Confirmations: three levels
+### Confirmations: three levels
 
 AL-76 exists so that you do not have to touch the Mac, so it asks only for three things.
 
@@ -294,7 +336,7 @@ AL-76 exists so that you do not have to touch the Mac, so it asks only for three
 Links suggested by pages or emails also need a "yes" before opening: not a usage confirmation, but a
 defence against content that gives orders. AL-76 never types into password fields.
 
-## App control
+### App control
 
 `Actions/AppControl.swift`, with macOS's **Accessibility** permission: AL-76 reads a window's buttons, fields
 and text (`app_read`), presses (`app_press`), types (`app_type`), uses the keyboard (`app_key`), scrolls the page or
@@ -307,7 +349,7 @@ in code (`Core/ConfirmationPolicy.swift`): the model can add a confirmation, nev
 - Only with Claude, never in privacy mode; it can be turned off in Settings › App control.
 - App content is data, not instructions. "Stop" interrupts a running sequence.
 
-## Voice recognition of the owner
+### Voice recognition of the owner
 
 AL-76 can answer "Ehi Al" only when you say it. Enrolment from Settings (⚙︎): 18 sentences read aloud, about
 2 minutes, with the local `nemo_en_titanet_small` model (39 MB). You can add sentences at other distances and
@@ -316,7 +358,7 @@ and lowers its thresholds. The default mode only measures and logs scores in `vo
 after a few days. ⌃⌥Space always works, and if the check fails AL-76 answers anyway. The voiceprint
 (`voiceprint.json`) stays on the Mac; it is not a security barrier, so sensitive actions still confirm.
 
-## Initiative: AL-76 speaks first
+### Initiative: AL-76 speaks first
 
 `Core/Initiative.swift` checks every 30 seconds:
 
@@ -334,7 +376,7 @@ after a few days. ⌃⌥Space always works, and if the check fails AL-76 answers
 Alerts wait while AL-76 is in privacy mode, in a conversation or waiting for a confirmation, and during
 quiet hours (23–8). Each one can be turned off in Settings › Initiative.
 
-## How it works
+### How it works
 
 1. **Listening**: `AVAudioEngine` reads the microphone at 16 kHz mono; a voice activity detector cuts the
    phrases, so nothing runs while nobody speaks.
@@ -367,7 +409,7 @@ quiet hours (23–8). Each one can be turned off in Settings › Initiative.
    Neurons fire in turn and pulses run along the axons. The sphere turns and breathes slowly; while AL-76
    speaks its surface waves follow the voice. The SATELLITE is a SceneKit model built in code.
 
-## Project structure
+### Project structure
 
 | Part | Technology | Files |
 |---|---|---|
@@ -387,7 +429,7 @@ quiet hours (23–8). Each one can be turned off in Settings › Initiative.
 | Settings | JSON file + ⚙︎ window | `Sources/JARVIS/Core/Config.swift`, `SettingsView.swift` |
 | Manual | ReportLab | `scripts/build_manual.py` → [`Manual_AL-76.pdf`](Manual_AL-76.pdf) |
 
-## Where data lives
+### Where data lives
 
 Everything is in `~/Library/Application Support/JARVIS/`, readable only by your user:
 
@@ -406,7 +448,7 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
 | `diagnostica.log` | the last 400 lines of listening and timing diagnostics |
 | `models/`, `tts/` | Whisper models and neural voices |
 
-## Security and privacy
+### Security and privacy
 
 - **AL-76 does not delete files**: it has no tool for it and no terminal. In Claude mode, Claude can only
   search the web and read files in `~/Projects`. New PDFs never overwrite an existing file; a code file is changed
@@ -421,7 +463,7 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
   (images are never saved). **Leaves the Mac**: web searches (DuckDuckGo), weather (wttr.in), the news sites' public feeds and, in Claude
   mode, the requests to Claude, including screenshots you ask it to look at.
 
-## Troubleshooting
+### Troubleshooting
 
 - **It does not hear "Ehi Al"**: the Stato section of the Plancia must show `"EHI AL" ATTIVA · WHISPER`; check the microphone
   permission in System Settings › Privacy & Security › Microphone, or use ⌃⌥Space. The `wake NO` lines in
@@ -434,7 +476,7 @@ Everything is in `~/Library/Application Support/JARVIS/`, readable only by your 
 - **Apple voice instead of the neural one**: run `./scripts/setup_tts.sh`.
 - **Claude does not answer**: `claude auth status`, then `claude auth login --claudeai` if needed.
 
-## Test mode (for development)
+### Test mode (for development)
 
 With `"developerMode": true` in `config.json`, AL-76 accepts test commands through distributed notifications,
 only if they carry the key in `dev_token` (readable only by your user); the HUD shows "MODALITÀ TEST ATTIVA".
@@ -443,6 +485,8 @@ only if they carry the key in `dev_token` (readable only by your user); the HUD 
 `<bundle id>.debug.wake` with `"<key>|/path/file.wav"` a phrase heard while waiting. Turn it off afterwards.
 
 ## Third-party components
+
+macOS version (the Windows version lists its own in [`windows/README.md`](windows/README.md#licences-of-the-parts)):
 
 WhisperKit (MIT), Kokoro / kokoro-onnx (Apache 2.0), Supertonic 3 (code MIT, model BigScience Open RAIL-M),
 Qwen3-TTS (Apache 2.0) with mlx-audio (MIT), Picovoice Porcupine (Apache 2.0, in `Vendor/porcupine`),

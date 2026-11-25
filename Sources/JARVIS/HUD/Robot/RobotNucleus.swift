@@ -61,6 +61,11 @@ final class RobotNucleusView: NSView {
         addSubview(scnView)
         load()
         assistant.$typedExchange.sink { [weak self] id in self?.typedID = id }.store(in: &watchers)
+        // "Basta" (or a new question over the answer): the bubble stops typing too, not only the voice.
+        assistant.$answersStopped.dropFirst().sink { [weak self] _ in
+            guard let self else { return }
+            self.bubble.stop(at: CGFloat(Date().timeIntervalSince(self.start)))
+        }.store(in: &watchers)
         assistant.$config.map(\.robotFlames).removeDuplicates().sink { [weak self] flames in
             self?.robot?.flames(flames == "ioniche" ? .ion : .fire)
         }.store(in: &watchers)

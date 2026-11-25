@@ -385,5 +385,6 @@ extension Assistant {
         responseTask = nil
         speech.stop()
         pipeline.cancelCapture()
+        answersStopped += 1
     }
 }

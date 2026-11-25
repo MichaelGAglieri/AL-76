@@ -34,16 +34,53 @@ enum WebActions {
         }
     }
 
+    /// The characters of a page given to the model in one read: a whole news article fits.
+    static let pageChunk = 24_000
+
+    /// The text of a page: only the article (<article>, else <main>) when the page has one, without menus,
+    /// banners and newsletters. 25 November: the first 5,000 characters of the whole page were given, a fifth
+    /// of them menus, and the translation of a Scientific American article stopped before its last part.
+    /// `from`: where to go on reading a page longer than one chunk.
     static func readPage(_ args: [String: Any]) async -> String {
         guard let link = args.string("url"), let url = URL(string: link) else { return "URL mancante" }
         do {
-            var html = try await get(url)
-            html = html.replacingOccurrences(of: #"<(script|style|nav|footer|header|svg)[\s\S]*?</\1>"#, with: " ", options: .regularExpression)
-            let text = stripTags(html).replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
-            return String(text.prefix(5000))
+            return pageText(try await get(url), from: Int(args.number("from") ?? 0))
         } catch {
             return "Pagina non raggiungibile: \(error.localizedDescription)"
         }
+    }
+
+    static func pageText(_ page: String, from: Int = 0) -> String {
+        var html = page.replacingOccurrences(of: #"<(script|style|noscript|svg|template)[\s\S]*?</\1>"#, with: " ", options: [.regularExpression, .caseInsensitive])
+        if let body = largestBlock("article", in: html) ?? largestBlock("main", in: html) { html = body }
+        html = html.replacingOccurrences(of: #"<(nav|footer|header|aside|form|button|figure)[\s\S]*?</\1>"#, with: " ", options: [.regularExpression, .caseInsensitive])
+        // Paragraphs and headings stay apart: the model sees where one ends.
+        html = html.replacingOccurrences(of: #"</(p|h[1-6]|li|blockquote)>"#, with: " ¶ ", options: [.regularExpression, .caseInsensitive])
+        let text = stripTags(html)
+            .replacingOccurrences(of: #"(\s*¶\s*)+"#, with: "\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // The page's title, which the article's <header> may have taken away.
+        var title = ""
+        if let r = page.range(of: #"<title[^>]*>[\s\S]*?</title>"#, options: [.regularExpression, .caseInsensitive]) {
+            title = stripTags(String(page[r]))
+        }
+        let start = min(max(0, from), text.count)
+        let chunk = text.dropFirst(start).prefix(pageChunk)
+        let end = start + chunk.count
+        let head = start == 0 && !title.isEmpty ? "Titolo: \(title)\n" : ""
+        guard start > 0 || end < text.count else { return head + chunk }
+        var note = head + "[Caratteri \(start)–\(end) di \(text.count)."
+        note += end < text.count ? " La pagina continua: per il resto richiama read_webpage con from \(end).]" : " Fine della pagina.]"
+        return note + "\n" + chunk
+    }
+
+    /// The longest <tag>…</tag> of the page (an article page may hold small <article> cards of other stories).
+    private static func largestBlock(_ tag: String, in html: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: "<\(tag)[\\s>][\\s\\S]*?</\(tag)>", options: .caseInsensitive) else { return nil }
+        let ns = html as NSString
+        let best = regex.matches(in: html, range: NSRange(location: 0, length: ns.length)).max { $0.range.length < $1.range.length }
+        guard let best, best.range.length > 2000 else { return nil }
+        return ns.substring(with: best.range)
     }
 
     @MainActor
@@ -156,9 +193,23 @@ enum WebActions {
 
     private static func stripTags(_ html: String) -> String {
         var s = html.replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
-        for (entity, char) in ["&amp;": "&", "&quot;": "\"", "&#x27;": "'", "&#39;": "'", "&lt;": "<", "&gt;": ">", "&nbsp;": " "] {
+        for (entity, char) in ["&quot;": "\"", "&#x27;": "'", "&#39;": "'", "&lt;": "<", "&gt;": ">", "&nbsp;": " ",
+                               "&rsquo;": "’", "&lsquo;": "‘", "&ldquo;": "“", "&rdquo;": "”", "&mdash;": "—", "&ndash;": "–", "&hellip;": "…"] {
             s = s.replacingOccurrences(of: entity, with: char)
         }
+        // Numeric entities (&#8217; &#x2014;), the usual ones in articles.
+        if let regex = try? NSRegularExpression(pattern: "&#(x?)([0-9a-fA-F]+);") {
+            let ns = s as NSString
+            var out = "", last = 0
+            for m in regex.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
+                let hex = m.range(at: 1).length > 0
+                guard let code = UInt32(ns.substring(with: m.range(at: 2)), radix: hex ? 16 : 10), let scalar = Unicode.Scalar(code) else { continue }
+                out += ns.substring(with: NSRange(location: last, length: m.range.location - last)) + String(Character(scalar))
+                last = m.range.location + m.range.length
+            }
+            s = out + ns.substring(from: last)
+        }
+        s = s.replacingOccurrences(of: "&amp;", with: "&")
         return s.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
     }
 

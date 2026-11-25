@@ -787,6 +787,9 @@ final class Bubble {
     private var doneID: UUID?, doneText = ""
     /// Closed from the menu: that answer does not come back, not even if it goes on.
     private var dismissedID: UUID?
+    /// Stopped with "basta": the typing stops where it is and the bubble fades soon after (25 November:
+    /// after "basta" the voice stopped but the bubble went on typing the whole page).
+    private var stoppedID: UUID?
     private(set) var lastText = "", lastID: UUID?
 
     var isShown: Bool { panel.isVisible }
@@ -797,7 +800,7 @@ final class Bubble {
     /// a new id starts a new bubble.
     func show(_ text: String, id: UUID, at t: CGFloat) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, id != dismissedID else { return }
+        guard !clean.isEmpty, id != dismissedID, id != stoppedID else { return }
         lastText = clean
         lastID = id
         if id == doneID {
@@ -832,6 +835,18 @@ final class Bubble {
         shownID = nil
     }
 
+    /// The answer was interrupted ("basta", a new question): no more typing; what is written stays 1.5 s, then fades.
+    func stop(at t: CGFloat) {
+        guard let id = shownID, panel.isVisible else { return }
+        stoppedID = id
+        guard typing else { return }   // already all written: it fades 1.5 s after it finished
+        typing = false
+        full = String(full.prefix(typed)).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
+        typed = full.count
+        view.text.string = full
+        finished = t
+    }
+
     /// "Nascondi nuvoletta" from the menu.
     func dismiss() {
         dismissedID = shownID ?? lastID
@@ -842,6 +857,7 @@ final class Bubble {
     func replay(_ text: String? = nil, id: UUID? = nil, at t: CGFloat) {
         guard let id = id ?? lastID, let text = text ?? (lastText.isEmpty ? nil : lastText) else { return }
         dismissedID = nil
+        stoppedID = nil
         doneID = nil
         shownID = nil
         show(text, id: id, at: t)
@@ -860,7 +876,7 @@ final class Bubble {
             if n >= full.count { typing = false; finished = t }
         } else {
             // Stays long enough to read (about 18 characters a second, 3 to 20 s), then fades for good.
-            let hold = min(20, max(3, CGFloat(full.count) / 18))
+            let hold = shownID != nil && shownID == stoppedID ? 1.5 : min(20, max(3, CGFloat(full.count) / 18))
             let fade = (t - finished - hold) / 0.5
             if fade >= 1 {
                 doneID = shownID

@@ -3,6 +3,15 @@
 Every version was built, installed and tested on the Mac (and on the iPhone and iPad app when it was
 involved) before moving to the next one. All dates are in 2026.
 
+## 1.30.89 — 25 November
+
+From the 25 November test with the Scientific American article on the Riemann hypothesis.
+
+- **Whole web pages, the article only.** `read_webpage` gave the model the first 5,000 characters of the whole page, a fifth of them menus and banners: the PDF translation stopped before the article's last six sentences. It now takes only the `<article>` block (or `<main>`), without menus, newsletters, "read also" and footers, with the page title and line breaks between paragraphs, up to 24,000 characters at a time; a longer page is read in parts with `from`. On the real page: 7,574 characters, the whole article.
+- **After the "yes" the page goes to the model, not to the voice.** A page not from a search asks for confirmation; after the "yes" AL-76 read the raw English text aloud, "external content" warning included (2 min 18 s of synthesis). The content now goes back to the model with the request it was prepared for. The page sits in a note for the model, never in the command: an address inside the page does not count as said by the user. A site confirmed once does not ask again for the rest of the page.
+- **"Basta" also stops the robottino's speech bubble.** The voice stopped but the bubble kept typing the whole text. Now on every interruption ("basta", a new question over the answer) it stops where it was, adds "…" and fades after 1.5 s; it does not start again by itself. "Mostra nuvoletta" from the menu shows it whole.
+- Tests: 31 (2 new on web pages, with an invented page).
+
 ## 1.30.88 — 25 November
 
 - **The phrase dictionary learns by itself.** When a short sentence goes to the model and the model answers with one simple tool that a command already does (open or quit an app, "chiudi tutte le app tranne…", reminders, open apps, mail, printer, music, TV, volume, news), AL-76 keeps the sentence with that command: next time it needs no model. Never sentences tied to what came before ("chiudi anche quello", "sì, procedi"), answers to its own questions, sentences over six words, or ones that already are commands. Kept in `dizionario_appreso.json` (Application Support, at most 300).
