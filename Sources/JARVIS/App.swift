@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppIconChoice.apply(assistant.config.appIcon)
         let hud = HUDView(assistant: assistant,
                           onCompact: { [weak self] in self?.showCompact() },
                           onWindowDrag: { [weak self] ended in self?.window?.followMouse(ended: ended) })

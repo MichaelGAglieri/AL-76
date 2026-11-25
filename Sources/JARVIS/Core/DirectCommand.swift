@@ -53,9 +53,17 @@ enum DirectCommand: Equatable {
     /// "Ho passato fisica uno con 28", "ho preso 30 e lode a geometria"; grade nil = "togli il voto di X".
     case recordExam(name: String, grade: String?)
 
-    enum BookletQuestion: Equatable { case passed, missing(year: Int?), average, credits }
+    /// "Dammi le notizie", "altre notizie", "ripetimi le notizie" (1.30.87). Only with the AI off: most
+    /// feeds are in English, and with the AI on the model picks and translates them.
+    case news(NewsRequest)
+    /// "Quali app ho aperte?" (1.30.87).
+    case runningApps
 
-    static func parse(_ raw: String) -> DirectCommand? {
+    enum BookletQuestion: Equatable { case passed, missing(year: Int?), average, credits }
+    enum NewsRequest: Equatable { case latest, more, recap }
+
+    static func parse(_ said: String) -> DirectCommand? {
+        let raw = PhraseDictionary.apply(said)
         switch parseLowercased(raw) {
         // Titles keep the capitals he used ("Chiamare Marco"): the rules work on lowercase text.
         case .reminder(let title, let due): return .reminder(title: capitals(title, from: raw), due: due)
@@ -76,12 +84,15 @@ enum DirectCommand: Equatable {
         if let start = dictation(text) { return start }
         if let incomplete = incomplete(text) { return incomplete }
         if let booklet = booklet(text) { return booklet }
+        if let found = news(text) ?? runningApps(text) { return found }
         return session(text) ?? study(text) ?? mail(text) ?? agenda(text) ?? create(text) ?? weather(text) ?? system(text) ?? arithmetic(text)
             ?? folder(text) ?? song(text)
     }
 
     static func clean(_ raw: String) -> String {
-        var text = raw.lowercased().replacingOccurrences(of: "’", with: "'").replacingOccurrences(of: ",", with: " ")
+        // Commas go, except in decimals: "quanto fa 0,74 diviso 0,5" went to the model (1.30.87).
+        var text = raw.lowercased().replacingOccurrences(of: "’", with: "'")
+            .replacingOccurrences(of: #"(?<!\d),|,(?!\d)"#, with: " ", options: .regularExpression)
         // Whisper puts a full stop or a question mark in the middle ("quanto fa? 781 per 28", "on-mail"):
         // punctuation followed by a space goes away, decimals like "3.5" stay.
         text = text.replacingOccurrences(of: #"[.!?;:]+(\s|$)"#, with: " ", options: .regularExpression)
@@ -412,12 +423,51 @@ enum DirectCommand: Equatable {
         return nil
     }
 
+    // MARK: News and open apps
+
+    private static func news(_ text: String) -> DirectCommand? {
+        let ask = "(?:dammi|dimmi|leggimi|leggi|raccontami|fammi sentire)"
+        if match(text, "(?:ripeti|ripetimi|ridimmi|rileggimi)(?: le)?(?: ultime)? notizie(?: di oggi)?") != nil { return .news(.recap) }
+        if match(text, "(?:sì |si )?(?:voglio )?(?:\(ask) )?(?:altre|ancora) notizie|(?:\(ask) )?(?:le )?notizie (?:oltre quelle|nuove oltre quelle) che mi hai già (?:letto|dato|detto)|(?:altre|più) notizie per favore") != nil { return .news(.more) }
+        if match(text, "notizie|notizia|(?:\(ask) )?(?:le )?(?:ultime )?notizie(?: di oggi)?(?: vai)?|che notizie ci sono(?: oggi)?|quali sono le(?: ultime)? notizie(?: di oggi)?|cosa c'è di nuovo(?: oggi)?|novità di oggi") != nil { return .news(.latest) }
+        return nil
+    }
+
+    private static func runningApps(_ text: String) -> DirectCommand? {
+        let pattern = "(?:quali|che|quale) (?:app|applicazioni|applicazione|programmi) (?:ho|sono|è|e)(?: ancora)? (?:aperte|aperto|aperti|aperta)(?: adesso| ora)?|(?:elenca|dimmi|leggimi)(?: le)? (?:app|applicazioni) aperte|app aperte"
+        return match(text, pattern) != nil ? .runningApps : nil
+    }
+
+    /// The news lines of the tool ("- [ANSA, mer 10:12] Title — summary (link)") said aloud: only the
+    /// Italian feeds, title only, five at most.
+    static func spokenNews(_ text: String, more: Bool) -> String {
+        let italianFeeds: Set<String> = ["Sky TG24", "ANSA", "la Repubblica", "Il Sole 24 Ore", "DDay", "HDblog"]
+        var said: [String] = []
+        for line in text.components(separatedBy: "\n") where line.hasPrefix("- [") {
+            guard let close = line.firstIndex(of: "]") else { continue }
+            let source = line[line.index(line.startIndex, offsetBy: 3)..<close].components(separatedBy: ",").first ?? ""
+            guard italianFeeds.contains(source) else { continue }
+            var title = String(line[line.index(after: close)...]).trimmingCharacters(in: .whitespaces)
+            for cut in [" — ", " (", " ["] { if let r = title.range(of: cut) { title = String(title[..<r.lowerBound]) } }
+            said.append("Da \(source): \(title.trimmingCharacters(in: CharacterSet(charactersIn: ". ")))")
+            if said.count == 5 { break }
+        }
+        let total = text.components(separatedBy: "\n").filter { $0.hasPrefix("- [") }.count
+        guard !said.isEmpty else {
+            if total == 0 { return text.hasPrefix("Nessun") || text.hasPrefix("Oggi") ? text : "Non trovo notizie nuove." }
+            return "Ci sono \(total) notizie, ma tutte da siti in inglese: senza IA non le traduco."
+        }
+        let others = total - said.count
+        return said.joined(separator: ". ") + "." + (others == 1 ? " Un'altra è da un sito in inglese." : others > 1 ? " Altre \(others) sono da siti in inglese." : "") + (more ? "" : " Per altre, dica «altre notizie».")
+    }
+
     // MARK: Arithmetic
+
 
     /// "Quanto fa 7 per 8", "fa 12 x 3", "calcola 150 diviso 4": only numbers and the four operations.
     private static func arithmetic(_ text: String) -> DirectCommand? {
         guard let m = match(text, "(?:quanto fa|quanto fanno|fa|fai|calcola|quanto e|quanto è)(?: il calcolo)? (.+)") else { return nil }
-        var expression = " " + m[1] + " "
+        var expression = " " + m[1].split(separator: " ").map { numberWords[String($0)].map(String.init) ?? String($0) }.joined(separator: " ") + " "
         for (word, symbol) in [(" piu ", " + "), (" più ", " + "), (" meno ", " - "), (" per ", " * "), (" x ", " * "), (" volte ", " * "),
                                (" diviso ", " / "), (" fratto ", " / "), (" × ", " * "), (" ÷ ", " / ")] {
             expression = expression.replacingOccurrences(of: word, with: symbol)
@@ -504,6 +554,11 @@ enum DirectCommand: Equatable {
             if text.hasPrefix("Il piano di studio è vuoto") { return "Il piano di studio è vuoto: mi dica una materia, la data dell'esame e quante ore a settimana." }
             let lines = text.components(separatedBy: "\n").dropFirst().map { $0.hasPrefix("- ") ? String($0.dropFirst(2)) + "." : $0 }
             return lines.joined(separator: " ")
+        case .news(let request): return spokenNews(text, more: request == .more)
+        case .runningApps:
+            let names = text.replacingOccurrences(of: "App aperte: ", with: "").components(separatedBy: ", ").filter { !$0.isEmpty && $0 != "AL-76" }
+            guard let last = names.last else { return "Non ci sono app aperte oltre a me." }
+            return names.count == 1 ? "È aperta solo \(last)." : "Sono aperte \(names.dropLast().joined(separator: ", ")) e \(last)."
         case .mail: return spokenMail(text)
         case .mailCount:
             let total = match(text.components(separatedBy: "\n").first ?? "", #"Non lette in tutto: (\d+).*"#).flatMap { Int($0[1]) }
@@ -653,7 +708,9 @@ enum DirectCommand: Equatable {
         "un": 1, "uno": 1, "una": 1, "due": 2, "tre": 3, "quattro": 4, "cinque": 5, "sei": 6, "sette": 7, "otto": 8, "nove": 9,
         "dieci": 10, "undici": 11, "dodici": 12, "tredici": 13, "quattordici": 14, "quindici": 15, "sedici": 16,
         "diciassette": 17, "diciotto": 18, "diciannove": 19, "venti": 20, "ventuno": 21, "ventidue": 22, "ventitré": 23,
-        "venticinque": 25, "trenta": 30, "quaranta": 40, "quarantacinque": 45, "cinquanta": 50]
+        "venticinque": 25, "trenta": 30, "quaranta": 40, "quarantacinque": 45, "cinquanta": 50,
+        // For sums said in words, "quanto fa dodici per dodici" (1.30.87).
+        "zero": 0, "sessanta": 60, "settanta": 70, "ottanta": 80, "novanta": 90, "cento": 100, "mille": 1000]
 
     private static func number(_ word: String) -> Int? { Int(word) ?? numberWords[word] }
 

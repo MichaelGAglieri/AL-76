@@ -337,6 +337,15 @@ extension Assistant {
         case .askReminder:
             directQuestion = (.reminderText, Date().addingTimeInterval(90))
             result = "Cosa le ricordo, e quando?"
+        case .news(let request):
+            // With the AI on the model picks and translates them (most feeds are in English).
+            guard config.noAI else { return false }
+            switch request {
+            case .latest: result = await tool("news")
+            case .more: result = await tool("news", ["more": true])
+            case .recap: result = await tool("news", ["recap": true])
+            }
+        case .runningApps: result = await tool("list_running_apps")
         case .battery:
             result = Initiative.battery().map { "La batteria è al \($0.percent) per cento, \($0.onBattery ? "senza alimentatore" : "con l'alimentatore collegato")." }
                 ?? "Non riesco a leggere la batteria."

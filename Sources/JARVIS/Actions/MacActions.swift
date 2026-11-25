@@ -205,7 +205,12 @@ enum MacActions {
         let open = NSWorkspace.shared.runningApplications.filter {
             $0.activationPolicy == .regular && !keepOpen.contains($0.bundleIdentifier ?? "")
         }
-        if args.bool("all") == true { return open }
+        if args.bool("all") == true {
+            // "Tutte tranne Musica e Notebook" (1.30.87).
+            guard let except = args.string("except"), !except.isEmpty else { return open }
+            let kept = matchingApps(["name": except])
+            return open.filter { !kept.contains($0) }
+        }
         guard let raw = args.string("name") else { return [] }
         let names = raw.lowercased()
             .replacingOccurrences(of: " e ", with: ",").replacingOccurrences(of: " and ", with: ",")

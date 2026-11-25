@@ -3,6 +3,31 @@
 Every version was built, installed and tested on the Mac (and on the iPhone and iPad app when it was
 involved) before moving to the next one. All dates are in 2026.
 
+## 1.30.88 — 25 November
+
+- **The phrase dictionary learns by itself.** When a short sentence goes to the model and the model answers with one simple tool that a command already does (open or quit an app, "chiudi tutte le app tranne…", reminders, open apps, mail, printer, music, TV, volume, news), AL-76 keeps the sentence with that command: next time it needs no model. Never sentences tied to what came before ("chiudi anche quello", "sì, procedi"), answers to its own questions, sentences over six words, or ones that already are commands. Kept in `dizionario_appreso.json` (Application Support, at most 300).
+- **Impostazioni › Cervello › Frasi imparate**: each sentence, what it now means and how many times it was used, with «Dimentica» for the wrong ones.
+- Tests: 29 (the learning rule on invented sentences). Tried in the app through the writing bar: "Calcolatrice grazie" went to Claude (4.7 s) and was learned as "apri calculator"; the second time it was an instant command (0.06 s). That sentence is still in the list, to try «Dimentica».
+
+## 1.30.87 — 25 November
+
+From every phrase AL-76 had sent to Claude since 2 November (770 different ones, read from the Claude CLI's own sessions): what went to the model only because a word came out wrong, or because a simple command was missing.
+
+- **Phrase dictionary** (`Core/PhraseDictionary.swift`): how Whisper writes the words of the commands, set right before they are read. "Disattiva lia", "Disattiva. Li A." and "disattivali, all" are "disattiva l'IA" (the 25 November 11:47 try went to Claude, which unloaded Gemma instead of switching the AI off); "Sabri", "Adri", "Apli", "Fapri", "Api…" are "apri"; "Q di" is "chiudi"; "per un memoria", "pro memorio", "pramonoria", "mezza memoria" are Promemoria; "calco a triche", "kalendario", "pollama", "WS Code", "spegnete i vu", "che ore sono adesso", "blocca la musica", "carichiamo filamento". An old "Jarvis," left in front no longer sends the command to the model.
+- **"Chiudi tutte le app tranne Musica e Notebook"**: now a command, no model (quit_app has an `except` list, for Claude too).
+- **News without AI**: "dammi le notizie", "che notizie ci sono", "altre notizie", "ripetimi le notizie". Only with the AI off, and only the titles from the Italian feeds (with the AI on the model chooses and translates as before).
+- **"Ripeti"**, **"quali app ho aperte?"**, and fixed answers to "ciao", "come stai?", "chi sei?", "mi senti?", "cosa sai fare?".
+- **Sums**: decimals with a comma ("quanto fa 0,74 diviso 0,5" lost its commas), numbers in words ("dodici per dodici"), "fa i …".
+- "Avvia una sessione di Python" could be taken for an app called "una sessione di python": no longer.
+- New test `ModelPhrasesTests`: copies the phrases sent to the model into `local/` (never published; the CLI deletes old sessions) and says how many would now be done without one: from 21 % to 30 % of all of them, 36 % of those where the model used a tool (many of the rest are questions, chat and tests, where the model is needed). The real-phrase replay writes all its differences to `local/differenze.tsv`; the 203 of this version were checked one by one.
+- Tests: 28. Tried in the app through the writing bar: sum, "Ciao", open apps, "Ripeti", "Disattiva lia" and "riattivali, al" (the AI went off and back on), news. "Tutte tranne…" was not tried live, so as not to close the apps on screen.
+
+## 1.30.86 — 25 November
+
+- **New app icon, the robottino**: its head seen from the front (helmet with stripes, curved visor, fins, black screen with eyes and smile) on a sky-blue tile, in the Dock, Finder, Spotlight and notifications, where the old JARVIS sphere still showed. Traced from an orthographic front render of the 3D model, its outline measured row by row (the first attempts copied a three-quarter view and came out too oval, then too square).
+- **Choice of icon** in Impostazioni › Aspetto: Robottino (the default), Rete neurale (the sphere used until now) or Reattore (the historical one, restored from git). The Dock changes at once; for Finder, Spotlight and notifications the app puts the chosen icon on its own bundle, and puts it back after every install. The signature stays valid and the permissions stay (checked on a copy before the change).
+- `scripts/icone/` draws all three (`make_icon <rete|reattore|robottino> out.png [ios]`); build.sh puts them in Resources as `Icona-<name>.icns`, with the robottino as AppIcon.icns. Replaces `scripts/make_icon.swift`.
+
 ## 1.30.85 — 23 November
 
 First real use without AI (23 November, 16:34–16:36): four requests out of five had gone unanswered.

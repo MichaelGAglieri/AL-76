@@ -212,6 +212,7 @@ struct SettingsView: View {
                 TextField("Modello locale (Ollama)", text: $draft.localModel)
                 TextField("Indirizzo Ollama", text: $draft.ollamaURL)
             }
+            LearnedPhrasesSection()
         case .study:
             Section("Appunti") {
                 TextField("Cartelle, una per riga", text: Binding(
@@ -255,6 +256,26 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
                 Toggle("Disco scuro dietro al SATELLITE", isOn: $draft.nucleusBackdrop)
                 Caption("Spento si fonde con lo sfondo; acceso resta leggibile su sfondi chiari o sopra le finestre.")
+            }
+            Section("Icona dell'app") {
+                HStack(spacing: 16) {
+                    ForEach(AppIconChoice.all, id: \.id) { item in
+                        Button { draft.appIcon = item.id } label: {
+                            VStack(spacing: 4) {
+                                if let icon = AppIconChoice.image(item.id) {
+                                    Image(nsImage: icon).resizable().frame(width: 64, height: 64)
+                                }
+                                Text(item.title).font(.caption)
+                            }
+                            .padding(6)
+                            .background(RoundedRectangle(cornerRadius: 10)
+                                .stroke(draft.appIcon == item.id ? Color.accentColor : .clear, lineWidth: 2))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Caption("Nel Dock, nel Finder, in Spotlight e nelle notifiche. Il Dock cambia subito; le notifiche e Spotlight possono metterci qualche istante.")
             }
             if draft.nucleusStyle == "robottino" {
                 Section("Robottino") {
@@ -507,5 +528,40 @@ struct HUDWindowStyle: NSViewRepresentable {
             window.appearance = NSAppearance(named: .darkAqua)
             window.backgroundColor = NSColor(HUD.background)
             window.toolbar?.showsBaselineSeparator = false
+    }
+}
+
+/// Impostazioni › Cervello: the sentences the phrase dictionary learned from the model (1.30.88), each
+/// with what it now means and a button to forget it when it was learned wrong.
+struct LearnedPhrasesSection: View {
+    @State private var entries: [(key: String, value: PhraseDictionary.Learned)] = []
+
+    var body: some View {
+        Section("Frasi imparate") {
+            if entries.isEmpty {
+                Caption("Ancora nessuna. Quando una frase breve va al modello e lui fa un solo comando semplice (aprire o chiudere un'app, i promemoria, la musica, la TV…), AL-76 se la ricorda: la volta dopo la fa da solo, senza modello.")
+            } else {
+                ForEach(entries, id: \.key) { entry in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("«\(entry.key)»")
+                            Text("= \(entry.value.meant)" + (entry.value.uses > 0 ? " · usata \(entry.value.uses) \(entry.value.uses == 1 ? "volta" : "volte")" : ""))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Dimentica") {
+                            PhraseDictionary.forget(entry.key)
+                            reload()
+                        }
+                    }
+                }
+                Caption("Frasi che prima andavano al modello e che ora AL-76 capisce da solo. Se una è sbagliata, «Dimentica»: tornerà al modello.")
+            }
+        }
+        .onAppear(perform: reload)
+    }
+
+    private func reload() {
+        entries = PhraseDictionary.learned.sorted { $0.value.date > $1.value.date }.map { (key: $0.key, value: $0.value) }
     }
 }

@@ -9,7 +9,7 @@
 #ifndef Arch
   #define Arch "x64"
 #endif
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 ; Your own build (scripts\build.ps1 -AppName -Publisher -AppId): another name and id install next to the official
 ; AL-76 instead of replacing it. AppId is a GUID without braces; keep the same one for your updates.
 #ifndef AppName

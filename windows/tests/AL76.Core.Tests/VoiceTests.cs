@@ -313,6 +313,58 @@ public class BargeInTests
     }
 }
 
+public class ChimeTests
+{
+    private sealed class Fixed(string text) : ITranscriber
+    {
+        public Task<string> TranscribeAsync(float[] samples, string hint, CancellationToken ct = default) => Task.FromResult(text);
+    }
+
+    private sealed class Recorder : IVoice
+    {
+        public readonly List<int> Played = [];
+        public Task<(float[] samples, int rate)> SynthesizeAsync(string text, CancellationToken ct = default) => Task.FromResult((new float[100], 16000));
+        public Task PlayAsync(float[] samples, int rate, CancellationToken ct = default) { Played.Add(samples.Length); return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task TheCallAloneBeepsAndListens()
+    {
+        var voice = new Recorder();
+        var t = new Fixed("Ehi Al.");
+        var loop = new VoiceLoop(t, t, voice, new WakePhrase("Ehi Al"), "it") { Chime = true };
+        var r = await loop.HandleAsync(new float[32000]);
+        Assert.True(r.Called);
+        Assert.Null(r.Reply);                 // no "Dimmi.": just the beep
+        Assert.Single(voice.Played);
+        Assert.Contains("bip", r.Note);
+    }
+
+    [Fact]
+    public async Task ACommandBeepsBeforeTheAnswer()
+    {
+        var voice = new Recorder();
+        var t = new Fixed("Ehi Al, che ore sono?");
+        var r = await new VoiceLoop(t, t, voice, new WakePhrase("Ehi Al"), "it") { Chime = true }.HandleAsync(new float[32000]);
+        Assert.NotNull(r.Reply);
+        Assert.True(voice.Played.Count >= 2);
+    }
+
+    [Fact]
+    public void AShortWordInAQuietSecondIsLoudEnough()
+    {
+        var s = new float[16000];
+        for (int i = 6000; i < 8000; i++) s[i] = 0.05f * MathF.Sin(i * 0.3f);   // 125 ms of voice
+        Assert.True(BargeIn.Rms(s) < 0.02f);
+        Assert.True(BargeIn.PeakRms(s) > 0.02f);
+    }
+
+    [Theory]
+    [InlineData("Basta!")]
+    [InlineData("Vasta.")]
+    public void StopWordsAsWhisperWritesThem(string heard) => Assert.True(StopWords.IsStop(heard, "Oggi a Roma ci sono venti gradi."));
+}
+
 public class SpokenTextTests
 {
     [Theory]

@@ -34,6 +34,8 @@ final class ToolBox {
     var currentSource = "voce"
     /// The tools run since the request began, for the request log (RequestLog).
     var usedTools: [String] = []
+    /// The same with the arguments, for the phrase dictionary to learn from (1.30.88).
+    var usedCalls: [(name: String, arguments: [String: Any])] = []
     private var fromPhone: Bool { currentSource.contains("iphone") }
     /// Everything that moves or heats something real. STOP and reading the state stay allowed.
     private static let notFromPhone: Set<String> = ["robot_connect", "robot_plan", "robot_execute", "robot_enable", "robot_joint", "robot_sequence", "robot_home", "arduino_upload",
@@ -116,7 +118,8 @@ final class ToolBox {
         tool("open_app", "Open a macOS application by name.", ["name": str("App name, e.g. Safari, Visual Studio Code, Arduino IDE")], required: ["name"]),
         tool("quit_app", "Quit one or more running apps (Safari web apps like Netflix are separate apps), or all open apps. Also closes browser tabs when the name is a site open in a tab (YouTube). Call it right away, never ask first: only apps with known unsaved work ask for one confirmation.",
              ["name": str("App name, or several comma-separated, e.g. Safari, Netflix"),
-              "all": bool("Quit every open app except AL-76 (this assistant) and Finder")]),
+              "all": bool("Quit every open app except AL-76 (this assistant) and Finder"),
+              "except": str("With all: apps to keep open, comma-separated, e.g. Musica, Notebook")]),
         tool("list_running_apps", "List the applications currently open.", [:]),
         tool("set_volume", "Set or read the system output volume, or mute/unmute.",
              ["level": num("0-100. Omit to read the current volume"), "mute": bool("true to mute, false to unmute")]),
@@ -348,6 +351,7 @@ final class ToolBox {
     /// Runs a tool and records it in the security log.
     func run(_ call: ToolCall) async -> ToolOutcome {
         usedTools.append(call.name)
+        usedCalls.append((call.name, call.arguments))
         if let ability = Ability.of(tool: call.name), blockedAbilities.contains(ability) {
             Security.audit("rifiutato dai permessi", tool: call.name, arguments: call.arguments, source: currentSource, detail: ability.rawValue)
             return .result(ability.refusal)

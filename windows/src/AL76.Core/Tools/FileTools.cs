@@ -38,6 +38,19 @@ public static class FileTools
         };
         yield return new ToolDef
         {
+            Name = "list_folder",
+            Description = "List what a folder contains (subfolders and files with sizes): \"cosa c'è nella cartella X\", \"che file ho sul desktop\". Give a path or a few words of the folder's name.",
+            Properties = new() { ["folder"] = Prop("string", "Path, or a few words of the folder's name, or desktop / documenti / download / immagini.") },
+            Required = ["folder"],
+            Run = async (a, c, ct) =>
+            {
+                string? folder = await Task.Run(() => search.FindFolder(a.Str("folder"), ct), ct);
+                if (folder is null) return ToolOutcome.Ok(L(c, $"Non trovo una cartella che si chiami {a.Str("folder")}.", $"No folder called {a.Str("folder")}."));
+                return ToolOutcome.Ok(search.List(folder, 80, c.Italian));
+            },
+        };
+        yield return new ToolDef
+        {
             Name = "open_path",
             Description = "Open a file or folder with its usual app, or show it in File Explorer.",
             Properties = new()
@@ -330,6 +343,15 @@ public sealed class FileSearch(Func<IEnumerable<string>> roots, Func<string, boo
         };
         foreach (var v in new[] { "OneDrive", "OneDriveConsumer", "OneDriveCommercial" })
             if (Environment.GetEnvironmentVariable(v) is { Length: > 0 } od) list.Add(od);
+        // The other drives (D:, a USB key): files are often kept there. The system drive is covered by the profile.
+        string system = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) ?? "";
+        try
+        {
+            foreach (var d in DriveInfo.GetDrives())
+                if (d.IsReady && d.DriveType is DriveType.Fixed or DriveType.Removable && !d.Name.Equals(system, StringComparison.OrdinalIgnoreCase))
+                    list.Add(d.RootDirectory.FullName);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         return list.Where(p => p.Length > 0 && Directory.Exists(p)).Distinct(StringComparer.OrdinalIgnoreCase);
     }
 
@@ -369,7 +391,7 @@ public sealed class FileSearch(Func<IEnumerable<string>> roots, Func<string, boo
         int seen = 0;
         var queue = new Queue<(string dir, int depth)>(roots().Select(r => (r, 0)));
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        while (queue.Count > 0 && clock.Elapsed < TimeSpan.FromSeconds(6) && seen < 200_000)
+        while (queue.Count > 0 && clock.Elapsed < TimeSpan.FromSeconds(8) && seen < 300_000)
         {
             ct.ThrowIfCancellationRequested();
             var (dir, depth) = queue.Dequeue();
@@ -385,13 +407,66 @@ public sealed class FileSearch(Func<IEnumerable<string>> roots, Func<string, boo
                 int score = Score(Key(name), words);
                 if (score > 0) found.Add((entry, score - depth));
                 bool folder;
-                try { folder = Directory.Exists(entry) && !File.GetAttributes(entry).HasFlag(FileAttributes.ReparsePoint); }
+                try { folder = Directory.Exists(entry) && !IsLink(entry); }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { continue; }
                 if (folder && depth < 8 && !Skipped.Contains(name)) queue.Enqueue((entry, depth + 1));
             }
         }
         return found.OrderByDescending(f => f.score).ThenBy(f => f.path.Length).Select(f => f.path)
                     .Distinct(StringComparer.OrdinalIgnoreCase).Take(max).ToList();
+    }
+
+    /// <summary>A symbolic link or junction (skipped: loops, other places). OneDrive's folders are reparse points too
+    /// (cloud placeholders), but they are real folders: a tester saw none of the subfolders of a Desktop in OneDrive (23/11).</summary>
+    public static bool IsLink(string path)
+    {
+        var info = new DirectoryInfo(path);
+        return info.Attributes.HasFlag(FileAttributes.ReparsePoint) && info.LinkTarget is not null;
+    }
+
+    /// <summary>A folder by path or by a few words of its name: the path as given, else the best folder found.</summary>
+    public string? FindFolder(string pathOrName, CancellationToken ct = default)
+    {
+        string p = FileTools.Expand(pathOrName);
+        if (p.Length > 0 && Path.IsPathRooted(p) && Directory.Exists(p)) return Path.GetFullPath(p);
+        string spoken = p.ToLowerInvariant() switch
+        {
+            "desktop" or "scrivania" => Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+            "documenti" or "documents" => Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "download" or "downloads" or "scaricati" => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+            "immagini" or "pictures" => Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+            _ => "",
+        };
+        if (spoken.Length > 0 && Directory.Exists(spoken)) return spoken;
+        return Find(Path.GetFileName(p.TrimEnd('\\', '/')), 20, ct).FirstOrDefault(Directory.Exists);
+    }
+
+    /// <summary>What a folder holds: subfolders first, then files with their size; at most <paramref name="max"/> entries.</summary>
+    public string List(string folder, int max, bool it)
+    {
+        if (!Allowed(folder)) return it ? "Questa è una cartella di sistema o con dati privati: non la leggo." : "That is a system or private folder: not reading it.";
+        List<string> dirs, files;
+        try
+        {
+            var all = Directory.EnumerateFileSystemEntries(folder).Where(e => !Path.GetFileName(e).StartsWith('.') && !Path.GetFileName(e).StartsWith('~')
+                                                                            && !Path.GetFileName(e).Equals("desktop.ini", StringComparison.OrdinalIgnoreCase)).ToList();
+            dirs = all.Where(Directory.Exists).OrderBy(e => e, StringComparer.CurrentCultureIgnoreCase).ToList();
+            files = all.Except(dirs).OrderBy(e => e, StringComparer.CurrentCultureIgnoreCase).ToList();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return (it ? "Non riesco a leggere la cartella: " : "Cannot read the folder: ") + e.Message; }
+        var sb = new StringBuilder();
+        sb.Append(it ? $"{folder}: {dirs.Count} cartelle, {files.Count} file.\n" : $"{folder}: {dirs.Count} folders, {files.Count} files.\n");
+        int shown = 0;
+        foreach (var d in dirs.Take(max)) { sb.Append("[cartella] ").Append(Path.GetFileName(d)).Append('\n'); shown++; }
+        foreach (var f in files.Take(Math.Max(0, max - shown)))
+        {
+            long size = 0;
+            try { size = new FileInfo(f).Length; } catch (IOException) { }
+            sb.Append(Path.GetFileName(f)).Append(size >= 1048576 ? $" ({size / 1048576.0:0.0} MB)" : size > 0 ? $" ({Math.Max(1, size / 1024)} KB)" : "").Append('\n');
+            shown++;
+        }
+        if (dirs.Count + files.Count > shown) sb.Append(it ? $"…e altri {dirs.Count + files.Count - shown}." : $"…and {dirs.Count + files.Count - shown} more.");
+        return sb.ToString().TrimEnd();
     }
 
     /// <summary>0 when some word is missing; more for exact words, whole-name matches and fewer extra words.</summary>

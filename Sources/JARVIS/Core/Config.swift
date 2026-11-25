@@ -65,6 +65,9 @@ struct JarvisConfig: Codable, Equatable {
     /// ROBOTTINO: locked in the bottom right corner (19 November, user request): it never walks or strolls,
     /// dragging does not move it. Turned on from its right-click menu, Settings or "Al, stai fermo".
     var robotPinned = false
+    /// App icon (Dock, Finder, Spotlight, notifications): "robottino" (the default since 1.30.86), "rete"
+    /// (the neural sphere) or "reattore" (the historical one). See HUD/AppIconChoice.swift.
+    var appIcon = "robottino"
     /// How JARVIS addresses the user in Italian ("signore" by default); set in config.json.
     var honorific = "signore"
     var whisperModel = "openai_whisper-large-v3-v20240930_turbo_632MB"
@@ -171,6 +174,7 @@ struct JarvisConfig: Codable, Equatable {
         robotFlames = try c.decodeIfPresent(String.self, forKey: .robotFlames) ?? d.robotFlames
         robotWalks = try c.decodeIfPresent(Bool.self, forKey: .robotWalks) ?? d.robotWalks
         robotPinned = try c.decodeIfPresent(Bool.self, forKey: .robotPinned) ?? d.robotPinned
+        appIcon = try c.decodeIfPresent(String.self, forKey: .appIcon) ?? d.appIcon
         honorific = try c.decodeIfPresent(String.self, forKey: .honorific) ?? d.honorific
         whisperModel = try c.decodeIfPresent(String.self, forKey: .whisperModel) ?? d.whisperModel
         localModel = try c.decodeIfPresent(String.self, forKey: .localModel) ?? d.localModel

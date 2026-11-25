@@ -26,6 +26,8 @@ public abstract record DirectCommand
     public sealed record OpenFolder(string Name) : DirectCommand;
     /// <summary>"Elimina la sessione di fisica", "cancella l'ultima sessione" (Mac 1.30.79); null Name = the last one.</summary>
     public sealed record DeleteSession(string? Name) : DirectCommand;
+    /// <summary>"Cosa c'è nella cartella Esercizi", "che file ho sul desktop": what a folder holds.</summary>
+    public sealed record ListFolder(string Name) : DirectCommand;
     /// <summary>"Apri il PDF di fisica", "apri la dispensa di chimica" (Mac 1.30.85): Kind is "pdf", "slide", "word" or "" for any file.</summary>
     public sealed record OpenFile(string Query, string Kind) : DirectCommand;
     public sealed record CreateFolder(string Name, string? Place) : DirectCommand;
@@ -40,7 +42,7 @@ public abstract record DirectCommand
     {
         string text = Clean(raw);
         if (text.Length == 0 || text.Split(' ').Length > 14) return null;
-        return DictationCommand(text) ?? Incomplete(text) ?? Agenda(text) ?? Reminders(text, raw, now) ?? WeatherCommand(text) ?? SystemCommand(text) ?? Arithmetic(text) ?? SessionDelete(text) ?? FileByName(text) ?? Folder(text);
+        return DictationCommand(text) ?? Incomplete(text) ?? Agenda(text) ?? Reminders(text, raw, now) ?? WeatherCommand(text) ?? SystemCommand(text) ?? Arithmetic(text) ?? SessionDelete(text) ?? FolderContents(text) ?? FileByName(text) ?? Folder(text);
     }
 
     /// <summary>Lower case; Whisper's stray full stops and question marks in the middle go away ("quanto fa? 781 per 28").</summary>
@@ -202,6 +204,18 @@ public abstract record DirectCommand
         ["download"] = "downloads", ["downloads"] = "downloads", ["immagini"] = "pictures", ["pictures"] = "pictures",
         ["musica"] = "music", ["music"] = "music", ["video"] = "videos", ["videos"] = "videos",
     };
+
+    private static DirectCommand? FolderContents(string t)
+    {
+        var m = Match(t, "(?:cosa|che cosa|che) (?:c'è|ce|c è|ci sono|contiene|ho)(?: dentro)? (?:nella cartella|nella|nel|sul|sulla|in|dentro|dentro la cartella)(?: cartella)? (.+)"
+                         + "|(?:che|quali) file (?:ci sono|ho|ci sono dentro|contiene) (?:nella cartella|nella|nel|sul|sulla|in)(?: cartella)? (.+)"
+                         + "|(?:elenca|elencami|mostrami|dimmi)(?: i file| il contenuto| cosa c'è)(?: dentro)? (?:della cartella|nella cartella|della|del|di|nella|nel|sul|sulla|in) (.+)"
+                         + "|what(?:'s| is) in (?:the |my )?(?:folder )?(.+)|list (?:the )?files in (?:the |my )?(?:folder )?(.+)");
+        if (m is null) return null;
+        string name = m.Skip(1).FirstOrDefault(g => g.Length > 0) ?? "";
+        name = Regex.Replace(name, "^(?:cartella|folder) ", "");
+        return name.Split(' ').Length is >= 1 and <= 5 ? new ListFolder(name) : null;
+    }
 
     private static DirectCommand? SessionDelete(string t)
     {

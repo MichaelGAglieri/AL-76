@@ -12,7 +12,10 @@ enum KnownCommands {
 
     static let topics: [Topic] = [
         Topic(words: ["app", "apri", "aprire", "chiudi", "chiudere", "programma", "applicazione", "finestra", "finestre", "minimizza"],
-              examples: ["apri Safari", "chiudi Safari", "minimizza Safari"]),
+              examples: ["apri Safari", "chiudi Safari", "minimizza Safari", "chiudi tutte le app tranne Musica", "quali app ho aperte?"]),
+        // 1.30.87: read without AI only from the Italian feeds.
+        Topic(words: ["notizie", "notizia", "novità", "giornale", "news"], examples: ["dammi le notizie", "altre notizie"]),
+        Topic(words: ["ripeti", "ripetere", "detto", "capito"], examples: ["ripeti"]),
         Topic(words: ["volume", "audio", "alza", "abbassa", "muto", "silenzio"], examples: ["volume al 50", "alza il volume"]),
         Topic(words: ["timer", "minuti", "minuto", "sveglia", "conto", "cronometro"], examples: ["metti un timer di 5 minuti"]),
         Topic(words: ["ore", "ora", "orario"], examples: ["che ore sono?"]),

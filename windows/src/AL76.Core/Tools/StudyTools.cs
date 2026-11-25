@@ -367,8 +367,10 @@ public static class StudyTools
             yield return new ToolDef
             {
                 Name = "university",
-                Description = "The user's university portal, read live and read only: agenda, lesson timetable, enrolled lessons, attendance, results to accept, messages. "
-                              + "path is one of: " + string.Join(", ", UniversityPortal.Readable) + ". For lessons prefer the lessons tool.",
+                Description = "The user's university portal, read live and read only: agenda, lesson timetable, enrolled lessons, attendance, results to accept, messages; "
+                              + "with an Esse3 university: carriera (course and ids), libretto (exams, credits, grades), medie (averages), appelli (exam calls), "
+                              + "appello (one exam's calls, params cdsId and adId from appelli or libretto). "
+                              + "path is one of: " + string.Join(", ", UniversityPortal.Readable.Concat(UniversityPortal.Esse3Paths.Keys)) + " (the portal says which kind it is). For lessons prefer the lessons tool.",
                 Properties = new() { ["path"] = Prop("string", "Address to read."), ["params"] = Prop("string", "Its parameters as a JSON object, optional.") },
                 Required = ["path"],
                 Available = portalOn,

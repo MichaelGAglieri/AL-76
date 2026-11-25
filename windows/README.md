@@ -4,9 +4,9 @@ AL-76 is a voice assistant for study, work and the PC. This folder is the Window
 WPF and WebView2, built for everyone (any school, job or city), with optional modules. The Mac version lives in
 the rest of the repository; the two share ideas, not code.
 
-> **Status: preview (0.1.1).** Everything below is written and covered by automated tests, and the app has
-> been run in a Windows 11 virtual machine. It has not yet been tried on a real PC with a real microphone,
-> camera, Windows Hello, Samsung TV, Bambu Lab printer or robot: those parts may need fixes. Reports are welcome
+> **Status: preview (0.1.2).** Everything below is written and covered by automated tests, and the app has
+> been run in a Windows 11 virtual machine and by a first tester on a real PC (voice, apps, files). It has not
+> yet been tried with a real camera, Windows Hello, Samsung TV, Bambu Lab printer or robot: those parts may need fixes. Reports are welcome
 > as GitHub issues (the tray menu's **Export diagnostics** makes a zip without personal data to attach).
 
 ## Download and install
@@ -47,7 +47,7 @@ Download the newer installer and run it: it replaces the program and keeps your 
 
 | Area | What you can ask |
 |---|---|
-| Voice | Say the call ("Hey Al" / "Ehi Al"), then the request. Whisper (whisper.cpp) listens, Windows or Kokoro voices answer. "Stop" / "basta" interrupts. Ctrl+Alt+T opens a writing bar under the nucleus. |
+| Voice | Say the call ("Hey Al" / "Ehi Al"), then the request; the call alone beeps and listens. Whisper (whisper.cpp) listens, Windows or Kokoro voices answer. "Stop" / "basta" interrupts. Ctrl+Alt+T opens a writing bar under the nucleus. |
 | Brains | Claude Code, Codex (ChatGPT) or Gemini CLIs with your own subscription, or a local model through Ollama. Instant commands (time, date, timers, agenda) need no model. |
 | PC control | Open and close apps, volume, media, dark mode, files and PDFs (search, merge, extract, rename), read and use other apps' windows (UI Automation), look at the screen. Password managers, banks, Windows Settings and terminals are off limits. |
 | Notes | An index of your notes (PDF, Word, PowerPoint, text, scanned pages through Windows OCR) answers questions about them. |
@@ -56,7 +56,7 @@ Download the newer installer and run it: it replaces the program and keeps your 
 | Writing and documents | Dictation for brainstorming ("write down everything I say") into a PDF, tidied copy on request; PDFs from text or from a web page; diagrams as a page in the browser; projects and code (read, comment, edit with backup). |
 | News and home | Headlines from RSS feeds you choose, ranked by your topics, never repeated; a Samsung TV on the home network (on, off, keys, apps). |
 | Safety | Optional voiceprint (only your voice can call AL-76), background talk from a TV or film skipped before Whisper, Windows Hello after the spoken "yes" for programs and for forgetting memories. |
-| Modules | **Maker**: Arduino (arduino-cli), Bambu Lab printer (status in LAN mode; filament load/unload and prints through Bambu Studio's buttons, read by OCR, the print only after a "yes"), ROS 2 through rosbridge (topics, the lab's commands and state), Robot Console API ("go home", and "stop" without the call while the arm moves). **Phone**: the iPhone/iPad app talks to the PC as it does with the Mac, finds it on the home network and can show and control the PC screen. **University portal**: read-only lessons and career from a student-app server set in the settings. |
+| Modules | **Maker**: Arduino (arduino-cli), Bambu Lab printer (status in LAN mode; filament load/unload and prints through Bambu Studio's buttons, read by OCR, the print only after a "yes"), ROS 2 through rosbridge (topics, the lab's commands and state), Robot Console API ("go home", and "stop" without the call while the arm moves). **Phone**: the iPhone/iPad app talks to the PC as it does with the Mac, finds it on the home network and can show and control the PC screen. **University portal**: read-only lessons and career from a student-app server set in the settings, or transcript, averages and exam calls from Esse3 (Cineca), the system of most Italian universities ("Test the connection" in Settings). |
 
 ## Requirements
 
@@ -113,7 +113,7 @@ Without Git: **Code › Download ZIP**, extract it, and open PowerShell in the e
 ```
 
 It runs the tests, builds a self-contained app (no .NET needed on the PC that installs it) into
-`windows\out\win-x64` and the installer `windows\out\AL-76-Setup-0.1.1-x64.exe`. If PowerShell refuses to run
+`windows\out\win-x64` and the installer `windows\out\AL-76-Setup-0.1.2-x64.exe`. If PowerShell refuses to run
 scripts, start it once with `powershell -ExecutionPolicy Bypass -File .\windows\scripts\build.ps1`.
 
 | Option | What it does |
@@ -136,7 +136,7 @@ $id = [guid]::NewGuid()          # once: write it down and reuse it for every la
 .\windows\scripts\build.ps1 -AppName "AL-76 Lab" -Publisher "Your name" -AppId $id
 ```
 
-The result is `windows\out\AL-76-Lab-Setup-0.1.1-x64.exe`, installed in `%LOCALAPPDATA%\Programs\AL-76 Lab` with
+The result is `windows\out\AL-76-Lab-Setup-0.1.2-x64.exe`, installed in `%LOCALAPPDATA%\Programs\AL-76 Lab` with
 its own Start menu entry and uninstall entry. The version number is in `windows\Directory.Build.props` and
 `windows\packaging\AL-76.iss` (`AppVersion`). Both versions keep their settings in the same `%APPDATA%\AL-76`
 folder; the installer is not signed, so Windows SmartScreen warns as for the official one (sign it with your own

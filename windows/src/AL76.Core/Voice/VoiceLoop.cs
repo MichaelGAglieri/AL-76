@@ -93,6 +93,36 @@ public sealed class VoiceLoop(ITranscriber wake, ITranscriber command, IVoice? v
 
     private void Show(HudState state) => StateChanged?.Invoke(state);
 
+    /// <summary>A short two-note chime when the call is heard (Mac: speech.playChime); the bare call gets the chime
+    /// instead of "Dimmi." and the next phrase needs no call (a tester missed the beep, 23/11).</summary>
+    public bool Chime { get; set; }
+    private const int ChimeRate = 24000;
+    private static readonly float[] ChimeSound = MakeChime();
+
+    private static float[] MakeChime()
+    {
+        var notes = new (double hz, double seconds)[] { (880, 0.07), (1318.5, 0.11) };
+        var output = new List<float>();
+        foreach (var (hz, seconds) in notes)
+        {
+            int n = (int)(seconds * ChimeRate);
+            for (int i = 0; i < n; i++)
+            {
+                double t = i / (double)ChimeRate;
+                double envelope = Math.Min(1, i / (0.006 * ChimeRate)) * Math.Exp(-t * 18);   // soft start, quick fade
+                output.Add((float)(0.28 * envelope * Math.Sin(2 * Math.PI * hz * t)));
+            }
+        }
+        return [.. output];
+    }
+
+    private async Task BeepAsync(CancellationToken ct)
+    {
+        if (!Chime || Voice is not { } voice) return;
+        try { await voice.PlayAsync(ChimeSound, ChimeRate, ct); }
+        catch (Exception e) when (e is not OperationCanceledException) { }
+    }
+
     /// <summary>When AL-76 was last stopped with "basta"; a bare call within 6 s is ignored (Mac 1.30.78).</summary>
     private DateTime lastStopAt = DateTime.MinValue;
     private static readonly TimeSpan CallPauseAfterStop = TimeSpan.FromSeconds(6);
@@ -175,6 +205,8 @@ public sealed class VoiceLoop(ITranscriber wake, ITranscriber command, IVoice? v
         {
             var v = await OwnerAsync(heard, quick, VoiceUse.Call);
             if (v is { Passed: false }) return Done(heard, null, null, "chiamata: voce non sua · " + v.Note);
+            if (quick.Length == 0) { await BeepAsync(ct); followUntil = DateTime.Now + FollowUpWindow; return Done(heard, "", null, "ok (veloce)" + Noted(v) + " · bip, in ascolto"); }
+            await BeepAsync(ct);
             return await Reply(heard, quick, "ok (veloce)" + Noted(v));
         }
 
@@ -184,7 +216,8 @@ public sealed class VoiceLoop(ITranscriber wake, ITranscriber command, IVoice? v
         if (cmd is null) return Done(full, null, null, "chiamata persa dal modello grande");
         var verdict = await OwnerAsync(full, cmd, VoiceUse.Call);
         if (verdict is { Passed: false }) { Show(HudState.Idle); return Done(full, null, null, "chiamata: voce non sua · " + verdict.Note); }
-
+        if (cmd.Length == 0) { await BeepAsync(ct); followUntil = DateTime.Now + FollowUpWindow; return Done(full, "", null, "ok" + Noted(verdict) + " · bip, in ascolto"); }
+        await BeepAsync(ct);
         return await Reply(full, cmd, "ok" + Noted(verdict));
 
         // The voiceprint (Mac: voiceAccepted): only when enrolled and not "off"; in "observe" it only writes the score.

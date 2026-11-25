@@ -115,10 +115,20 @@ public sealed class VoiceHost(AppConfig config, Strings s, TierDecision tier, Ma
             // While the arm moves, "fermo" or "stop" stops it without the call (Mac: RobotVoiceCommand.isMotionStop).
             RobotMoving = () => assistant.RobotMoving,
             StopRobot = c => assistant.Maker.Robot.StopAsync(c),
+            // A short beep when the call is heard; the call alone beeps and listens.
+            Chime = true,
         };
         active = loop;
         if (print.IsEnrolled && store.Has(SherpaEmbedder.ModelFile)) UseVoicePrint(store.PathFor(SherpaEmbedder.ModelFile));
-        loop.StateChanged += state => { lastState = state; lastStateAt = DateTime.Now; StateChanged?.Invoke(state, ""); };
+        loop.StateChanged += state =>
+        {
+            lastState = state;
+            lastStateAt = DateTime.Now;
+            // Deaf only while answering (its own voice is not a phrase); while a phrase is only being transcribed
+            // the microphone keeps listening, so a call said meanwhile is not lost.
+            if (state is HudState.Thinking or HudState.Speaking && mic is { } m) m.Listening = false;
+            StateChanged?.Invoke(state, "");
+        };
         loop.ReplyGrowing += (id, text) => ReplyChanged?.Invoke(id, text);
 
         // Kokoro replaces the Windows voice once its model is downloaded; in the test mode it is awaited,
@@ -147,21 +157,31 @@ public sealed class VoiceHost(AppConfig config, Strings s, TierDecision tier, Ma
         StateChanged?.Invoke(HudState.Idle, "");
         ShowDetail();
 
+        // A tester had to say the call many times (23/11): the microphone was deaf while each phrase of the talk in
+        // the room was transcribed (seconds on a slow PC) and what was said meanwhile was thrown away. Now it listens
+        // on; only what came while AL-76 answered is dropped, and of a backlog only the last two phrases are kept.
         await foreach (var phrase in phrases.Reader.ReadAllAsync(ct))
         {
-            mic.Listening = false;
+            bool answered = false;
             try
             {
-                if (enrollment is { } enrolling) { await EnrollAsync(enrolling, phrase, ct); continue; }
+                if (enrollment is { } enrolling) { mic.Listening = false; answered = true; await EnrollAsync(enrolling, phrase, ct); continue; }
                 window.SetVoiceStatus(s["voice.thinking"]);
                 var r = await loop.HandleAsync(phrase, ct);
+                answered = r.Called;
                 if (r.Called) CallHeard?.Invoke();
                 if (r.Called) window.SetVoiceLast(s.Format("voice.last", r.Heard, r.Reply ?? r.Note));
             }
             catch (Exception e) when (e is not OperationCanceledException) { Log.Info($"voce: frase fallita: {e.Message}"); }
             finally
             {
-                while (phrases.Reader.TryRead(out _)) { }   // what the mic caught while AL-76 was speaking
+                if (answered) { while (phrases.Reader.TryRead(out _)) { } }   // what the mic caught while AL-76 was speaking
+                else
+                {
+                    int dropped = 0;
+                    while (phrases.Reader.Count > 2 && phrases.Reader.TryRead(out _)) dropped++;
+                    if (dropped > 0) Log.Info($"voce: {dropped} frasi vecchie saltate, il PC trascrive più lento di come si parla");
+                }
                 mic.Listening = true;
                 window.SetVoiceStatus(s.Format("voice.listening", config.EffectiveWakePhrase(s.Language)));
             }

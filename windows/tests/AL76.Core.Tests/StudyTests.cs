@@ -194,7 +194,7 @@ public class StudyTests
         Assert.Contains("Riunione budget", saved);
         await a.Tools.CallFullAsync("log_activity", new() { ["name"] = "Report", ["category"] = "work", ["minutes"] = 60 }, ctx);
         string summary = (await a.Tools.CallFullAsync("day_summary", [], ctx)).Text;
-        Assert.Contains("Report un'ora", summary);
+        Assert.Contains(DateTime.Now.Hour >= 1 ? "Report un'ora" : "Report", summary);   // just after midnight the hour began yesterday
         Assert.Contains("Riunione budget", summary);
     }
 
@@ -205,5 +205,71 @@ public class StudyTests
         Assert.Equal(5, StudyTools.Weekday("friday"));
         Assert.Equal(7, StudyTools.Weekday("7"));
         Assert.Null(StudyTools.Weekday("domani"));
+    }
+}
+
+public class Esse3PortalTests
+{
+    private const string Login = """
+        {"user":{"firstName":"Anna","codFis":"XXXXXX","trattiCarriera":[
+          {"matId":111,"cdsId":9,"cdsDes":"VECCHIO CORSO","matricola":"100","staStuCod":"X"},
+          {"matId":222,"cdsId":42,"cdsDes":"CHIMICA ORGANICA","matricola":"200","staStuCod":"A","dettaglioTratto":{"annoCorso":2}}]}}
+        """;
+
+    private static (UniversityPortal portal, FakeWeb web, MemorySecrets secrets) Make(string server = "ateneo.esse3.cineca.it")
+    {
+        var config = new AppConfig { UniversityServer = server, UniversityName = "Ateneo di prova" };
+        var secrets = new MemorySecrets();
+        var web = new FakeWeb()
+            .On("GET https://ateneo.esse3.cineca.it/e3rest/api/login", (r, _) =>
+                r.Headers.Authorization?.Parameter == Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("s1:pa:ss"))
+                    ? (System.Net.HttpStatusCode.OK, Login) : (System.Net.HttpStatusCode.Unauthorized, "{}"))
+            .On("GET https://ateneo.esse3.cineca.it/e3rest/api/libretto-service-v2/libretti/222/righe/",
+                """[{"adDes":"ANALISI I","peso":9,"annoCorso":1,"statoDes":"Superata","adId":7,"esito":{"voto":30,"lodeFlg":1,"dataEsa":"10/02/2026"}},{"adDes":"FISICA","peso":6,"annoCorso":1,"statoDes":"Frequentata","esito":{}}]""")
+            .On("GET https://ateneo.esse3.cineca.it/e3rest/api/calesa-service-v1/appelli/42/7",
+                """[{"adDes":"ANALISI I","desApp":"Appello di giugno","dataInizioApp":"15/06/2026"}]""");
+        return (new UniversityPortal(config, secrets, new HttpClient(web)), web, secrets);
+    }
+
+    [Fact]
+    public void AnEsse3AddressIsCompleted()
+    {
+        var (portal, _, _) = Make();
+        Assert.True(portal.IsEsse3);
+        Assert.Contains("libretto", portal.Paths);
+        Assert.False(new UniversityPortal(new AppConfig { UniversityServer = "https://uni.test/api" }, new MemorySecrets(), new HttpClient()).IsEsse3);
+    }
+
+    [Fact]
+    public async Task ReadsTheTranscriptOfTheActiveCareerWithBasicAuth()
+    {
+        var (portal, web, _) = Make();
+        portal.SaveCredentials("s1", "pa:ss");
+        var rows = (await portal.GetAsync("libretto", null, CancellationToken.None))!.AsArray();
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("ANALISI I", rows[0]!["esame"]!.ToString());
+        Assert.Equal("30 e lode", rows[0]!["voto"]!.ToString());
+        Assert.Null(rows[1]!["voto"]);
+        Assert.All(web.Requests, r => Assert.Equal("GET", r.method));
+        var one = await portal.GetAsync("appello", new() { ["adId"] = "7" }, CancellationToken.None);
+        Assert.Contains("giugno", one!.ToJsonString());
+        var career = (await portal.GetAsync("carriera", null, CancellationToken.None))!.ToJsonString();
+        Assert.Contains("CHIMICA ORGANICA", career);
+        Assert.DoesNotContain("XXXXXX", career);   // no tax code
+        Assert.Equal(1, web.Requests.Count(r => r.url.EndsWith("/login")));   // the login is read once
+    }
+
+    [Fact]
+    public async Task WrongCredentialsAndUnknownReadsSayWhy()
+    {
+        var (portal, _, _) = Make("https://ateneo.esse3.cineca.it/e3rest/api/");
+        portal.SaveCredentials("s1", "sbagliata");
+        Assert.Contains("SSO", await portal.CheckAsync(CancellationToken.None));
+        portal.SaveCredentials("s1", "pa:ss");
+        Assert.Contains("Chimica organica", await portal.CheckAsync(CancellationToken.None));
+        var e = await Assert.ThrowsAsync<AccountException>(() => portal.GetAsync("tasse/paga", null, CancellationToken.None));
+        Assert.Contains("libretto", e.Message);
+        await Assert.ThrowsAsync<AccountException>(() => portal.GetAsync("appello", new() { ["adId"] = "../x" }, CancellationToken.None));
+        Assert.Empty(await portal.LessonsAsync(DateTime.Today, 7, CancellationToken.None));
     }
 }

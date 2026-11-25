@@ -21,36 +21,92 @@ public sealed class WindowsPcActions : IPcActions
     private List<(string name, string id)>? apps;
     private DateTime appsAt;
 
-    /// <summary>Name and AppUserModelID of every app in the Start menu, refreshed every 10 minutes.</summary>
-    public IReadOnlyList<(string name, string id)> Apps()
+    private bool refreshing;
+
+    /// <summary>The Start menu is read once at start, in the background: reading it takes seconds on a real PC,
+    /// and a tester waited that long for "apri Word" (23/11).</summary>
+    public WindowsPcActions() => _ = Task.Run(() => Apps());
+
+    /// <summary>Name and AppUserModelID of every app in the Start menu. After 10 minutes the old list still answers
+    /// while a new one is read in the background; <paramref name="fresh"/> (an app not found) reads it again
+    /// now, at most once a minute.</summary>
+    public IReadOnlyList<(string name, string id)> Apps(bool fresh = false)
     {
         lock (gate)
         {
-            if (apps is not null && DateTime.Now - appsAt < TimeSpan.FromMinutes(10)) return apps;
-            var list = new List<(string, string)>();
-            try
+            var age = DateTime.Now - appsAt;
+            if (apps is not null && (!fresh || age < TimeSpan.FromMinutes(1)))
             {
-                var type = Type.GetTypeFromProgID("Shell.Application");
-                dynamic shell = Activator.CreateInstance(type!)!;
-                dynamic folder = shell.NameSpace("shell:AppsFolder");
-                foreach (dynamic item in folder.Items())
+                if (age > TimeSpan.FromMinutes(10) && !refreshing)
                 {
-                    string name = item.Name;
-                    string id = item.Path;
-                    if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(id)) list.Add((name, id));
+                    refreshing = true;
+                    _ = Task.Run(() => { try { Read(); } finally { lock (gate) refreshing = false; } });
                 }
+                return apps;
             }
-            catch (Exception e) { Log.Info($"app: elenco del menu Start non letto: {e.Message}"); }
-            apps = list;
-            appsAt = DateTime.Now;
-            Log.Info($"app: {list.Count} nel menu Start");
-            return list;
         }
+        return Read();
+    }
+
+    private List<(string name, string id)> Read()
+    {
+        var clock = Stopwatch.StartNew();
+        var list = new List<(string, string)>();
+        try
+        {
+            var type = Type.GetTypeFromProgID("Shell.Application");
+            dynamic shell = Activator.CreateInstance(type!)!;
+            dynamic folder = shell.NameSpace("shell:AppsFolder");
+            foreach (dynamic item in folder.Items())
+            {
+                string name = item.Name;
+                string id = item.Path;
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(id)) list.Add((name, id));
+            }
+        }
+        catch (Exception e) { Log.Info($"app: elenco del menu Start non letto: {e.Message}"); }
+        lock (gate)
+        {
+            if (list.Count > 0 || apps is null) apps = list;
+            appsAt = DateTime.Now;
+        }
+        Log.Info($"app: {list.Count} nel menu Start, letti in {clock.Elapsed.TotalSeconds:0.0} s");
+        return list;
     }
 
     public IReadOnlyList<string> InstalledApps() => Apps().Select(a => a.name).Distinct().OrderBy(n => n).ToList();
 
-    public string? FindApp(string spoken) => Best(spoken, Apps().Select(a => a.name))?.ToString();
+    /// <summary>Names Whisper writes for an app said in Italian (a tester could not open WhatsApp, 23/11), squashed:
+    /// lower case, no spaces or apostrophes.</summary>
+    private static readonly Dictionary<string, string> Spoken = new()
+    {
+        ["whatsapp"] = "WhatsApp", ["whatsap"] = "WhatsApp", ["whatsup"] = "WhatsApp", ["watsapp"] = "WhatsApp", ["watsap"] = "WhatsApp",
+        ["wasap"] = "WhatsApp", ["wasapp"] = "WhatsApp", ["wazap"] = "WhatsApp", ["uozap"] = "WhatsApp", ["uotsap"] = "WhatsApp",
+        ["uotsapp"] = "WhatsApp", ["whatsappweb"] = "WhatsApp", ["telegramweb"] = "Telegram", ["iutub"] = "YouTube", ["youtub"] = "YouTube",
+        ["spotifai"] = "Spotify", ["ciatgpt"] = "ChatGPT", ["chatgpt"] = "ChatGPT",
+    };
+
+    /// <summary>Apps that also live in the browser: opened there when they are not installed.</summary>
+    private static readonly Dictionary<string, string> Web = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["WhatsApp"] = "https://web.whatsapp.com", ["Telegram"] = "https://web.telegram.org", ["YouTube"] = "https://www.youtube.com",
+        ["Gmail"] = "https://mail.google.com", ["Spotify"] = "https://open.spotify.com", ["ChatGPT"] = "https://chatgpt.com",
+        ["Instagram"] = "https://www.instagram.com", ["Netflix"] = "https://www.netflix.com",
+    };
+
+    /// <summary>The app's own name for what Whisper wrote ("what's up" → WhatsApp), or the words as they are.</summary>
+    public static string Canonical(string spoken)
+    {
+        string squashed = TextTools.NormalizePhrase(spoken.Replace('\'', ' ').Replace('’', ' ')).Replace(" ", "");
+        return Spoken.TryGetValue(squashed, out var name) ? name : spoken;
+    }
+
+    public string? FindApp(string spoken)
+    {
+        string wanted = Canonical(spoken);
+        return Best(wanted, Apps().Select(a => a.name)) ?? Best(wanted, Apps(fresh: true).Select(a => a.name))
+               ?? (Web.ContainsKey(wanted) ? wanted : null);
+    }
 
     /// <summary>
     /// The closest name: equal, then starting with or containing the spoken words, then a small spelling
@@ -72,19 +128,42 @@ public sealed class WindowsPcActions : IPcActions
                                    .Where(x => x.d <= Math.Max(1, s.Length / 4)).OrderBy(x => x.d).FirstOrDefault().n : null);
     }
 
-    public Task<PcResult> OpenAppAsync(string name, CancellationToken ct = default)
+    public async Task<PcResult> OpenAppAsync(string name, CancellationToken ct = default)
     {
+        name = Canonical(name);
         var all = Apps();
-        if (Best(name, all.Select(a => a.name)) is not string found)
-            return Task.FromResult(new PcResult(false, $"No installed app called {name}.", NotFound: true));
+        string? found = Best(name, all.Select(a => a.name));
+        // Installed since the list was read (it is kept 10 minutes): read it again once.
+        if (found is null) found = Best(name, (all = Apps(fresh: true)).Select(a => a.name));
+        if (found is null)
+        {
+            if (Web.TryGetValue(name, out var site))
+            {
+                Log.Info($"app: «{name}» non installata, apro {site}");
+                var opened = await OpenUrlAsync(new Uri(site), ct);
+                return opened.Ok ? new PcResult(true, $"{name} is not installed as an app: opened {name} Web in the browser.") : opened;
+            }
+            Log.Info($"app: «{name}» non trovata tra le {all.Count} del menu Start");
+            return new PcResult(false, $"No installed app called {name}.", NotFound: true);
+        }
+        return OpenFound(found, all);
+    }
+
+    private static PcResult OpenFound(string found, IReadOnlyList<(string name, string id)> all)
+    {
         string id = all.First(a => a.name == found).id;
         try
         {
             Process.Start(new ProcessStartInfo("explorer.exe", $"shell:AppsFolder\\{id}") { UseShellExecute = false });
             Log.Audit("app aperta", found);
-            return Task.FromResult(new PcResult(true, $"{found} opened."));
+            Log.Info($"app: aperta {found} ({id})");
+            return new PcResult(true, $"{found} opened.");
         }
-        catch (Exception e) { return Task.FromResult(new PcResult(false, $"{found} did not open: {e.Message}")); }
+        catch (Exception e)
+        {
+            Log.Info($"app: {found} non aperta: {e.Message}");
+            return new PcResult(false, $"{found} did not open: {e.Message}");
+        }
     }
 
     private static List<Process> Windows()

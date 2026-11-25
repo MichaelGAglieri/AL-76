@@ -14,8 +14,9 @@ enum InstantCommand: Equatable {
     case time
     case music(MusicAction)
     case tv(on: Bool)
-    /// "Chiudi tutte le applicazioni (tranne il Finder)": every app except JARVIS and Finder.
-    case closeAll
+    /// "Chiudi tutte le applicazioni (tranne il Finder)": every app except AL-76 and Finder, and except the
+    /// apps named after "tranne" ("tranne Musica e Notebook", 1.30.87: it went to the model).
+    case closeAll(except: [String])
     /// "Minimizza Netflix": the app's windows go to the Dock.
     case minimize(String)
     /// "Minimizza la finestra Chimica Organica": a Finder window by its name.
@@ -24,13 +25,20 @@ enum InstantCommand: Equatable {
     case robotPin(Bool)
     /// "Disattiva l'IA" / "riattiva l'IA" (1.30.84): the "Senza IA" switch of Impostazioni › Cervello.
     case artificialIntelligence(on: Bool)
+    /// "Ripeti", "cosa hai detto?" (1.30.87): the last answer again, word for word.
+    case repeatLast
+    /// "Ciao", "come stai?", "chi sei?", "mi senti?", "cosa sai fare?" (1.30.87): a fixed answer, no model.
+    case smallTalk(Talk)
+
+    enum Talk: Equatable { case greeting, howAreYou, whoAreYou, hearMe, whatCanYouDo }
 
     enum MusicAction: String { case pause, play, next, previous, status }
 
     static func parse(_ raw: String) -> InstantCommand? {
-        let text = clean(raw)
+        let text = clean(PhraseDictionary.apply(raw))
         guard !text.isEmpty else { return nil }
         if let found = aiSwitch(text) ?? robotPin(text) ?? time(text) ?? music(text) ?? television(text) ?? filament(text) ?? printer(text) { return found }
+        if let found = repeatRequest(text) ?? smallTalk(text) { return found }
         return volume(text) ?? timer(text) ?? closeAllCommand(text) ?? minimizeCommand(text) ?? app(text)
     }
 
@@ -177,6 +185,8 @@ enum InstantCommand: Equatable {
         "and", "then", "on", "with", "for", "from", "to", "of", "at",
         "file", "dispensa", "dispense", "slide", "presentazione", "cartella", "progetto", "sito", "pagina", "documento", "link", "video", "scheda", "schede", "finestra", "finestre",
         "tutto", "tutte", "tutti", "questa", "questo", "quella", "quello", "mia", "mio", "ultima", "ultimo",
+        // "Avvia una sessione di Python" is a study session, not an app (1.30.87).
+        "sessione", "sezione", "una", "un", "di",
         "all", "everything", "this", "that", "my", "tab", "window", "folder", "project", "page",
     ]
 
@@ -201,10 +211,39 @@ enum InstantCommand: Equatable {
     }
 
     /// 13 November, from voce.log: six requests in a week went to the model for this.
-    /// "chiudi tutte le hop" is how Whisper wrote "app".
+    /// "chiudi tutte le hop" is how Whisper wrote "app". 1.30.87: "tranne Musica e Notebook" too.
     private static func closeAllCommand(_ text: String) -> InstantCommand? {
-        let pattern = #"^(?:chiudi|chiudimi|chiudere|close|quit)(?: le applicazioni)? (?:tutte|tutti)(?: le| i)? (?:applicazioni|app|hop|programmi|finestre e app)(?: aperte| che sono aperte)?(?: (?:tranne|eccetto|a parte|meno|except)(?: il| the)? finder)?$|^close all(?: the)? (?:apps|applications)(?: except finder)?$"#
-        return text.range(of: pattern, options: .regularExpression) != nil ? .closeAll : nil
+        let pattern = #"^(?:chiudi|chiudimi|chiudere|close|quit)(?: le applicazioni)? (?:tutte|tutti)(?: le| i)? (?:applicazioni|app|hop|programmi|finestre e app)(?: aperte| che sono aperte)?(?: (?:tranne|eccetto|a parte|meno|except|tranne che|fuorché)(?: per)? (.+))?$|^close all(?: the)? (?:apps|applications)(?: except (.+))?$"#
+        guard let m = captures(text, pattern) else { return nil }
+        let rest = m.first { !$0.isEmpty } ?? ""
+        let names = rest.replacingOccurrences(of: " e ", with: ",").replacingOccurrences(of: " ed ", with: ",").replacingOccurrences(of: " and ", with: ",")
+            .split(separator: ",").map { withoutArticle(String($0).trimmingCharacters(in: .whitespaces)) }
+            .filter { !$0.isEmpty && $0 != "finder" }
+            .map { appAliases[$0] ?? $0 }
+        guard names.allSatisfy({ $0.split(separator: " ").count <= 4 }) else { return nil }
+        return .closeAll(except: names)
+    }
+
+    // MARK: Repeat and small talk
+
+    private static func repeatRequest(_ text: String) -> InstantCommand? {
+        let phrases: Set<String> = ["ripeti", "ripetimi", "ripetilo", "ridimmelo", "ripeti per favore", "puoi ripetere", "può ripetere", "mi ripeti",
+                                    "ripeti l'ultima frase", "ripeti quello che hai detto", "ripeti le ultime parole", "ripeti le ultime parole che hai detto",
+                                    "cosa hai detto", "che hai detto", "come hai detto", "non ho capito ripeti", "non ho sentito ripeti",
+                                    "repeat", "repeat that", "say that again", "what did you say"]
+        return phrases.contains(text) ? .repeatLast : nil
+    }
+
+    private static func smallTalk(_ text: String) -> InstantCommand? {
+        let talks: [Talk: Set<String>] = [
+            .greeting: ["ciao", "ciao al", "buonasera", "salve", "hey", "ehi", "hello", "hi", "ciao a te"],
+            .howAreYou: ["come stai", "come va", "tutto bene", "come ti senti", "how are you"],
+            .whoAreYou: ["chi sei", "chi sei tu", "presentati", "come ti chiami", "who are you", "what's your name"],
+            .hearMe: ["mi senti", "ci sei", "pronto", "mi sente", "sei sveglio", "can you hear me", "are you there"],
+            .whatCanYouDo: ["cosa sai fare", "che cosa sai fare", "cosa puoi fare", "quali sono le tue funzionalità", "quali sono le tue funzioni",
+                            "quali sono le tue funzionalità più potenti", "what can you do"],
+        ]
+        return talks.first { $0.value.contains(text) }.map { .smallTalk($0.key) }
     }
 
     private static func minimizeCommand(_ text: String) -> InstantCommand? {

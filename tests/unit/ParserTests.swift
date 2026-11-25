@@ -31,6 +31,28 @@ struct ParserTests {
         // An app whose name has "PDF" in it: not a file to look for (1.30.85).
         ("Apri PDF Craft", .open("pdf craft")),
         ("apri Word", .open("word")),
+        // The phrase dictionary (1.30.87): how Whisper writes the words of the commands.
+        ("Disattiva lia.", .artificialIntelligence(on: false)),
+        ("Ehi, all, disattivali, all.", .artificialIntelligence(on: false)),
+        ("Riattiva. Li A.", .artificialIntelligence(on: true)),
+        ("Sabri, Safari", .open("safari")),
+        ("Apicalcolatrice", .open("calcolatrice")),
+        ("Q di Safari", .close("safari")),
+        ("abri per un memoria", .open("promemoria")),
+        ("chiudi l'applicazione pro-memorio", .close("promemoria")),
+        ("apri calco a triche", .open("calcolatrice")),
+        ("Spegnete i vu", .tv(on: false)),
+        ("Che ore sono adesso?", .time),
+        ("blocca la musica", .music(.pause)),
+        ("Carichiamo filamento.", .filament(load: true)),
+        ("Chiudi tutte le opere", .closeAll(except: [])),
+        ("Chiudi tutte le applicazioni tranne Musica e Notebook", .closeAll(except: ["musica", "notebook"])),
+        ("chiudi tutte le app eccetto Safari", .closeAll(except: ["safari"])),
+        ("Ripeti.", .repeatLast),
+        ("ripeti le ultime parole che hai detto", .repeatLast),
+        ("Ciao", .smallTalk(.greeting)),
+        ("Chi sei tu?", .smallTalk(.whoAreYou)),
+        ("Mi senti?", .smallTalk(.hearMe)),
     ])
     func instant(_ phrase: String, _ expected: InstantCommand) {
         #expect(InstantCommand.parse(phrase) == expected)
@@ -60,10 +82,54 @@ struct ParserTests {
         ("attiva la modalità scura", .darkMode(true)),
         ("che lezioni ho domani?", .lessons(offset: 1, days: 1)),
         ("qual è la mia media?", .booklet(.average)),
+        // 1.30.87
+        ("Dammi le notizie di oggi.", .news(.latest)),
+        ("Notizie", .news(.latest)),
+        ("che notizie ci sono?", .news(.latest)),
+        ("Dammi altre notizie.", .news(.more)),
+        ("ripetimi le notizie", .news(.recap)),
+        ("quali app ho aperte?", .runningApps),
+        ("quanto fa 0,74 diviso 0,5", .math("0.74 / 0.5")),
+        ("Fa i 14,715 diviso 1,5", .math("14.715 / 1.5")),
+        ("fai 2x9,81x0,75", .math("2 * 9.81 * 0.75")),
+        ("quanto fa dodici per dodici", .math("12 * 12")),
+        ("avvia una sessione di Python", .startSession(name: "Python", category: "study")),
     ])
     func direct(_ phrase: String, _ expected: DirectCommand) {
         #expect(InstantCommand.parse(phrase) == nil, "un comando istantaneo lo prenderebbe prima")
         #expect(DirectCommand.parse(phrase) == expected)
+    }
+
+    @Test("Notizie senza IA: solo i titoli dei siti italiani (1.30.87)")
+    func newsWithoutAI() {
+        let tool = """
+            - [ANSA, mer 10:12] Nuovo robot umanoide presentato a Torino — Il prototipo cammina da solo (https://example.org/1)
+            - [The Verge, mer 09:40] A new phone was announced — Details (https://example.org/2)
+            - [Sky TG24, mer 08:05] Satelliti italiani in orbita [confermata anche da ANSA] (https://example.org/3)
+            """
+        #expect(DirectCommand.spokenNews(tool, more: false)
+                == "Da ANSA: Nuovo robot umanoide presentato a Torino. Da Sky TG24: Satelliti italiani in orbita. Un'altra è da un sito in inglese. Per altre, dica «altre notizie».")
+        #expect(DirectCommand.spokenNews("- [The Verge, mer 09:40] A new phone (https://example.org/2)", more: true).contains("inglese"))
+        #expect(DirectCommand.spoken(.runningApps, result: "App aperte: Finder, Safari, AL-76, Musica") == "Sono aperte Finder, Safari e Musica.")
+    }
+
+    @Test("Il dizionario impara dal modello solo frasi brevi e a sé (1.30.88)")
+    func learning() {
+        let understood: (String) -> Bool = { InstantCommand.parse($0) != nil || DirectCommand.parse($0) != nil }
+        func learnable(_ said: String, _ tool: String, _ arguments: [String: Any] = [:]) -> String? {
+            PhraseDictionary.learnable(said, calls: [(tool, arguments)], understood: understood)?.meant
+        }
+        // A name heard wrong, opened by the model: learned.
+        #expect(learnable("Svegli Firefoz", "open_app", ["name": "Firefox"]) == "apri firefox")
+        #expect(learnable("Musica stop", "music", ["action": "pause"]) == "metti in pausa la musica")
+        // Tied to what came before, an answer, too long, or already a command: not learned.
+        #expect(learnable("chiudi anche quello", "quit_app", ["name": "Safari"]) == nil)
+        #expect(learnable("Sì, procedi", "quit_app", ["name": "Safari"]) == nil)
+        #expect(learnable("apri Safari e cerca le ricette della pasta al forno", "open_app", ["name": "Safari"]) == nil)
+        #expect(learnable("apri Safari", "open_app", ["name": "Safari"]) == nil)
+        // More than one tool, or a tool with no command: not learned.
+        #expect(PhraseDictionary.learnable("Firefoz e meteo", calls: [("open_app", ["name": "Firefox"]), ("get_weather", [:])], understood: understood) == nil)
+        #expect(learnable("guarda lo schermo", "look_at_screen") == nil)
     }
 
     @Test("Promemoria con data")
@@ -85,6 +151,8 @@ struct ParserTests {
 
     @Test("Domande libere: vanno al modello", arguments: [
         "raccontami una barzelletta", "spiegami la legge di Ohm", "ok grazie",
+        // Not "apri l'app example com" (1.30.87: the dictionary keeps the dots inside words).
+        "apri il sito example.com", "cos'è la memoria di lavoro?", "raccontami una curiosità sulle api",
     ])
     func toTheModel(_ phrase: String) {
         #expect(InstantCommand.parse(phrase) == nil)

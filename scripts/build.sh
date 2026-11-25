@@ -16,16 +16,22 @@ echo "▸ Compilazione (release)…"
 swift build -c release --arch arm64
 BIN="$(swift build -c release --arch arm64 --show-bin-path)"
 
-echo "▸ Icona…"
+echo "▸ Icone…"
+# Three app icons, chosen in Impostazioni › Aspetto (1.30.86): the robottino is the bundle's own
+# (AppIcon.icns), the app puts the others on its bundle when chosen (Icona-<name>.icns).
 ICON_DIR="$ROOT/build/icon"
-if [[ ! -f "$ROOT/build/AppIcon.icns" || "$ROOT/scripts/make_icon.swift" -nt "$ROOT/build/AppIcon.icns" ]]; then
-    rm -rf "$ICON_DIR" && mkdir -p "$ICON_DIR/AppIcon.iconset"
-    swift "$ROOT/scripts/make_icon.swift" "$ICON_DIR/icon_1024.png" >/dev/null
-    for s in 16 32 128 256 512; do
-        sips -z $s $s "$ICON_DIR/icon_1024.png" --out "$ICON_DIR/AppIcon.iconset/icon_${s}x${s}.png" >/dev/null
-        sips -z $((s*2)) $((s*2)) "$ICON_DIR/icon_1024.png" --out "$ICON_DIR/AppIcon.iconset/icon_${s}x${s}@2x.png" >/dev/null
+if [[ ! -f "$ICON_DIR/robottino.icns" || -n "$(find "$ROOT/scripts/icone" -type f -newer "$ICON_DIR/robottino.icns")" ]]; then
+    rm -rf "$ICON_DIR" && mkdir -p "$ICON_DIR"
+    swiftc -O "$ROOT"/scripts/icone/*.swift -o "$ICON_DIR/make_icon"
+    for name in rete reattore robottino; do
+        mkdir -p "$ICON_DIR/$name.iconset"
+        "$ICON_DIR/make_icon" "$name" "$ICON_DIR/$name.png"
+        for s in 16 32 128 256 512; do
+            sips -z $s $s "$ICON_DIR/$name.png" --out "$ICON_DIR/$name.iconset/icon_${s}x${s}.png" >/dev/null
+            sips -z $((s*2)) $((s*2)) "$ICON_DIR/$name.png" --out "$ICON_DIR/$name.iconset/icon_${s}x${s}@2x.png" >/dev/null
+        done
+        iconutil -c icns "$ICON_DIR/$name.iconset" -o "$ICON_DIR/$name.icns"
     done
-    iconutil -c icns "$ICON_DIR/AppIcon.iconset" -o "$ROOT/build/AppIcon.icns"
 fi
 
 echo "▸ Pacchetto .app…"
@@ -34,7 +40,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/porcupine"
 cp "$BIN/JARVIS" "$APP/Contents/MacOS/JARVIS"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
-cp "$ROOT/build/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+cp "$ICON_DIR/robottino.icns" "$APP/Contents/Resources/AppIcon.icns"
+for name in rete reattore robottino; do cp "$ICON_DIR/$name.icns" "$APP/Contents/Resources/Icona-$name.icns"; done
 cp "$ROOT"/Vendor/porcupine/{libpv_porcupine.dylib,porcupine_params.pv,jarvis_mac.ppn} "$APP/Contents/Resources/porcupine/"
 cp "$ROOT/Resources/tts_server.py" "$APP/Contents/Resources/tts_server.py"
 cp "$ROOT/Resources/voce_jarvis.wav" "$APP/Contents/Resources/voce_jarvis.wav"

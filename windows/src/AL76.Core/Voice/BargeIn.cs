@@ -1,10 +1,12 @@
+using AL76.Core.Diagnostics;
+
 namespace AL76.Core.Voice;
 
 /// <summary>The words that stop AL-76 while it speaks ("basta", "stop", "zitto"...), in Italian and English.</summary>
 public static class StopWords
 {
     private static readonly string[] Words =
-        ["basta", "stop", "fermati", "ferma", "zitto", "zitta", "silenzio", "smettila", "enough", "quiet", "shush", "halt"];
+        ["basta", "stop", "fermati", "vasta", "basti", "ferma", "zitto", "zitta", "silenzio", "smettila", "enough", "quiet", "shush", "halt"];
     private static readonly string[] Phrases = ["stai zitto", "stai zitta", "shut up", "be quiet", "that s enough", "thats enough", "stop it", "stop talking"];
 
     /// <summary>True if <paramref name="heard"/> asks to stop, unless the same word is in what AL-76 itself is
@@ -32,7 +34,9 @@ public sealed class BargeIn(ITranscriber transcriber, Func<double, float[]> rece
     // over it; with 1 s it stopped on all 5 test clips (it + en) and never on the echo alone (Mac, 16/11).
     public TimeSpan Every { get; init; } = TimeSpan.FromMilliseconds(400);
     public double WindowSeconds { get; init; } = 1.0;
-    /// <summary>Below this loudness (RMS) the window is skipped: nobody is talking.</summary>
+    /// <summary>The window never grows past this, so Whisper does not follow AL-76's own sentence.</summary>
+    public double MaxWindowSeconds { get; init; } = 2.0;
+    /// <summary>Below this loudness (RMS of the loudest 100 ms) the window is skipped: nobody is talking.</summary>
     public float MinLevel { get; init; } = 0.01f;
 
     /// <summary>Watches until <paramref name="ct"/> ends (the answer finished). Returns what was heard when it stopped, or null.</summary>
@@ -44,19 +48,45 @@ public sealed class BargeIn(ITranscriber transcriber, Func<double, float[]> rece
         // No hint: telling Whisper to expect "Basta" would make it hear one in AL-76's own voice.
         string hint = "";
         _ = language;
+        // On a slow PC one transcription takes longer than the pause between two: a fixed 1 s window then left
+        // holes where a short "basta" fell unheard (a tester, 23/11). The window covers the time since the last
+        // one, up to MaxWindowSeconds.
+        double window = WindowSeconds, slowest = 0;
+        int checks = 0, loud = 0;
         try
         {
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(Every, ct);
-                var window = recent(WindowSeconds);
-                if (window.Length == 0 || Rms(window) < MinLevel) continue;
-                string heard = await transcriber.TranscribeAsync(window, hint, ct);
+                checks++;
+                var audio = recent(window);
+                if (audio.Length == 0 || PeakRms(audio) < MinLevel) { window = WindowSeconds; continue; }
+                loud++;
+                var took = System.Diagnostics.Stopwatch.StartNew();
+                string heard = await transcriber.TranscribeAsync(audio, hint, ct);
+                slowest = Math.Max(slowest, took.Elapsed.TotalSeconds);
+                window = Math.Clamp(took.Elapsed.TotalSeconds + Every.TotalSeconds + 0.4, WindowSeconds, MaxWindowSeconds);
                 if (StopWords.IsStop(heard, speakingText())) return heard;
             }
         }
         catch (OperationCanceledException) { }
+        if (checks > 2) Log.Info($"basta: {checks} controlli, {loud} con voce, trascrizione più lenta {slowest:0.00} s");
         return null;
+    }
+
+    /// <summary>The RMS of the loudest 100 ms: a short word in a quiet second still counts.</summary>
+    public static float PeakRms(float[] s)
+    {
+        const int frame = 1600;
+        if (s.Length <= frame) return Rms(s);
+        float best = 0;
+        for (int start = 0; start + frame <= s.Length; start += frame / 2)
+        {
+            double sum = 0;
+            for (int i = start; i < start + frame; i++) sum += s[i] * s[i];
+            best = Math.Max(best, (float)Math.Sqrt(sum / frame));
+        }
+        return best;
     }
 
     public static float Rms(float[] s)

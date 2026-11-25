@@ -737,7 +737,12 @@ public static class Pages
                 Ui.Field(s["university.agent"], d.UniversityAgent, v => { d.UniversityAgent = v.Trim(); c.Changed(); }),
                 Ui.Label(s["university.user"]), user,
                 Ui.Label(s["university.password"]), password,
-                Ui.Row(save), note,
+                Ui.Row(save, Ui.Button(s["university.check"], async () =>
+                {
+                    c.Flush();
+                    note.Text = s["university.checking"];
+                    note.Text = await portal.CheckAsync(CancellationToken.None);
+                })), note,
                 Ui.Caption(s["university.note"], 12, new Thickness(0, 10, 0, 0))));
         }
         return page;

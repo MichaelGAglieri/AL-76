@@ -30,6 +30,26 @@ extension Assistant {
         }
     }
 
+    /// Fixed answers to "ciao", "come stai?", "chi sei?" (1.30.87): before, Claude answered them in 4 seconds.
+    static func smallTalkAnswer(_ talk: InstantCommand.Talk, italian: Bool) -> String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch talk {
+        case .greeting:
+            return italian ? (hour >= 18 ? "Buonasera! Dimmi pure." : hour >= 5 && hour < 13 ? "Buongiorno! Dimmi pure." : "Ciao! Dimmi pure.") : "Hello! How can I help?"
+        case .howAreYou:
+            return italian ? "Bene, grazie: tutti i sistemi funzionano. Cosa facciamo?" : "Fine, thanks: all systems running. What shall we do?"
+        case .whoAreYou:
+            return italian ? "Sono AL-76, il tuo assistente sul Mac: apro le app, seguo lo studio, leggo mail, promemoria e notizie e parlo con il robot."
+                : "I'm AL-76, your assistant on this Mac: apps, study, mail, reminders, news and the robot."
+        case .hearMe:
+            return italian ? "Sì, ti sento." : "Yes, I can hear you."
+        case .whatCanYouDo:
+            let examples = KnownCommands.general.prefix(4).map { "«\($0)»" }.joined(separator: ", ")
+            return italian ? "Apro e chiudo le app, seguo le sessioni di studio, leggo mail, promemoria, agenda e notizie, calcolo, controllo stampante, TV e robot. Prova con \(examples)."
+                : "I open and close apps, track study sessions, read mail, reminders and news, and drive the printer, TV and robot."
+        }
+    }
+
     func runInstantCommand(_ command: String, language lang: Language) async -> Bool {
         guard let instant = InstantCommand.parse(command) else { return false }
         // "Pausa" alone during a study or work session is a break, not the music.
@@ -92,10 +112,14 @@ extension Assistant {
             case .image:
                 return false
             }
-        case .closeAll:
-            switch await run("quit_app", ["all": true]) {
+        case .closeAll(let except):
+            var arguments: [String: Any] = ["all": true]
+            if !except.isEmpty { arguments["except"] = except.joined(separator: ",") }
+            switch await run("quit_app", arguments) {
             case .result(let result):
-                text = result.hasPrefix("Chiuse") ? (italian ? "Chiudo tutte le applicazioni, tranne il Finder, \(sir)." : "Closing every app except Finder, \(sir).") : result
+                let kept = except.isEmpty ? (italian ? "il Finder" : "Finder")
+                    : except.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: italian ? " e " : " and ")
+                text = result.hasPrefix("Chiuse") ? (italian ? "Chiudo tutte le applicazioni, tranne \(kept), \(sir)." : "Closing every app except \(kept), \(sir).") : result
             case .needsConfirmation(let action):
                 pending = action
                 text = action.summary + (italian ? ". Procedo, \(sir)?" : ". Shall I go ahead, \(sir)?")
@@ -139,6 +163,14 @@ extension Assistant {
                                           : "AI off: from now on I only use the commands I know. Say \"riattiva l'IA\" to turn it back on.")
                 noAIHintGiven = true
             }
+        case .repeatLast:
+            // The current exchange ("ripeti") has no reply yet: the one before is the last thing said.
+            mustSayText = true
+            text = conversation.last(where: { !$0.reply.isEmpty })?.reply
+                ?? (italian ? "Non ho ancora detto niente." : "I haven't said anything yet.")
+        case .smallTalk(let talk):
+            mustSayText = true
+            text = Self.smallTalkAnswer(talk, italian: italian)
         case .robotPin(let pinned):
             // Only with the ROBOTTINO on screen; with the satellite or the reactor the model hears the sentence.
             guard config.nucleusStyle == "robottino", RobotNucleusView.modelAvailable else { return false }

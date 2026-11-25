@@ -121,7 +121,7 @@ public class DirectAssistantTests
         var (a, _, reminders) = Make();
         Assert.Equal("Cosa ti ricordo?", (await a.HandleAsync("imposta un promemoria", "it")).Text);
         var r = await a.HandleAsync("di chiamare il dentista tra 20 minuti", "it");
-        Assert.StartsWith("Promemoria creato: Chiamare il dentista, oggi alle", r.Text);
+        Assert.Matches("^Promemoria creato: Chiamare il dentista, (oggi|domani) alle", r.Text);   // domani just before midnight
         var said = new List<string>();
         a.Announcement += said.Add;
         a.AnnounceDue(DateTime.Now.AddMinutes(21));
@@ -189,5 +189,42 @@ public class WebTests
         Assert.Contains("EXTERNAL CONTENT", WebActions.FormatResults("manzoni", results));
         string ad = """<a class="result__a" href="https://duckduckgo.com/y.js?ad_domain=amazon.it&u3=x">Compra</a>""";
         Assert.Empty(WebActions.ParseSearch(ad));
+    }
+}
+
+public class FolderContentsTests
+{
+    [Theory]
+    [InlineData("Cosa c'è nella cartella Progetti?", "progetti")]
+    [InlineData("che file ci sono nella cartella chimica organica", "chimica organica")]
+    [InlineData("elencami il contenuto della cartella download", "download")]
+    [InlineData("what's in my folder Projects", "projects")]
+    public void AsksWhatAFolderHolds(string said, string name) =>
+        Assert.Equal(new DirectCommand.ListFolder(name), DirectCommand.Parse(said, new DateTime(2026, 11, 17, 14, 0, 0)));
+
+    [Fact]
+    public void OpeningAFolderIsNotListingIt() =>
+        Assert.IsNotType<DirectCommand.ListFolder>(DirectCommand.Parse("apri la cartella Download", new DateTime(2026, 11, 17, 14, 0, 0)));
+
+    [Fact]
+    public void FindsANestedFolderAndListsIt()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "al76-cartelle-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            string deep = Path.Combine(root, "Università", "Secondo anno", "Chimica Organica");
+            Directory.CreateDirectory(Path.Combine(deep, "Esercizi"));
+            File.WriteAllText(Path.Combine(deep, "appunti.txt"), "x");
+            Directory.CreateSymbolicLink(Path.Combine(root, "giro"), root);   // a loop: never followed
+            var search = new FileSearch(() => [root]);
+            Assert.Equal(deep, search.FindFolder("chimica organica"));
+            Assert.True(FileSearch.IsLink(Path.Combine(root, "giro")));
+            Assert.False(FileSearch.IsLink(deep));
+            string list = search.List(deep, 10, true);
+            Assert.Contains("1 cartelle, 1 file", list);
+            Assert.Contains("[cartella] Esercizi", list);
+            Assert.Contains("appunti.txt", list);
+        }
+        finally { Directory.Delete(root, true); }
     }
 }

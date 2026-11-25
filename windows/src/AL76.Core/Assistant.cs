@@ -884,6 +884,19 @@ public sealed class Assistant : IAsyncDisposable
                 if (error) return null;
                 return new(it ? $"Apro {f.Name}." : $"Opening {f.Name}.", "diretto");
             }
+            case DirectCommand.ListFolder lf:
+            {
+                var (listing, failed) = await Call("list_folder", new() { ["folder"] = lf.Name });
+                if (failed) return config.NoAI ? new(listing, "diretto") : null;
+                var lines = listing.Split('\n');
+                if (lines.Length < 2) return config.NoAI ? new(listing, "diretto") : null;   // not found: the brain may know better
+                // Said short: how many, and the first names.
+                string head = lines[0][(lines[0].LastIndexOf(':') + 1)..].Trim().TrimEnd('.');
+                var names = lines.Skip(1).Where(l => !l.StartsWith('…')).Select(l => l.Replace("[cartella] ", "")).Take(8).ToList();
+                string folderName = System.IO.Path.GetFileName(lines[0][..lines[0].LastIndexOf(':')].TrimEnd('\\'));
+                return new((it ? $"In {folderName}: {head}. " : $"In {folderName}: {head}. ") + string.Join(", ", names)
+                           + (lines.Length - 1 > names.Count ? (it ? " e altri." : " and more.") : "."), "diretto");
+            }
             case DirectCommand.DeleteSession ds:
                 return new((await Call("delete_activity", new() { ["name"] = ds.Name ?? "" })).text, "diretto");
             case DirectCommand.OpenFile f:

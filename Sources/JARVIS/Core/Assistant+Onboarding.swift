@@ -82,6 +82,7 @@ extension Assistant {
         applyAbilities(newConfig)
         if old.phoneBridge != newConfig.phoneBridge { updatePhoneBridge() }
         if old.noAI != newConfig.noAI { aiSwitched(!newConfig.noAI) }
+        if old.appIcon != newConfig.appIcon { AppIconChoice.apply(newConfig.appIcon) }
         speech.rate = newConfig.speechRate
         speech.englishVoiceName = newConfig.englishVoice
         speech.italianVoiceName = newConfig.italianVoice

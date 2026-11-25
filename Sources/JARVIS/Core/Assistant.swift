@@ -1522,6 +1522,7 @@ final class Assistant: ObservableObject {
         var command = command
         let said = command
         tools.usedTools = []
+        tools.usedCalls = []
         switch await answerDirectQuestion(command, language: lang) {
         case .handled:
             RequestLog.shared.record(said, .direct)
@@ -1535,10 +1536,17 @@ final class Assistant: ObservableObject {
             return
         }
         let modelStarted = Date()
+        let pendingBefore = pending == nil && directQuestion == nil
         await answerWithModel(command, language: lang)
         if !Task.isCancelled {
             RequestLog.shared.record(said, .model, brain: (answering ?? brain).title,
                                      seconds: Date().timeIntervalSince(modelStarted), tools: tools.usedTools)
+            // A sentence on its own (no question of AL-76's pending) that the model turned into one simple
+            // command: next time the dictionary knows it.
+            if command == said, pendingBefore, lang == .italian,
+               let meant = PhraseDictionary.learn(said, calls: tools.usedCalls, understood: { InstantCommand.parse($0) != nil || DirectCommand.parse($0) != nil }) {
+                Diagnostics.log("dizionario imparato: \"\(said)\" = \"\(meant)\"")
+            }
         }
     }
 

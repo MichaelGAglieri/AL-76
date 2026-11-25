@@ -36,6 +36,9 @@ struct ReplayTests {
             """)
 
         let accept = ProcessInfo.processInfo.environment["AL76_ACCETTA"] == "1"
+        // The whole list, for reading them all (the message shows 40).
+        let differences = changed.map { "\($0)\t\(before[$0]!)\t\(now[$0]!)" }.joined(separator: "\n")
+        try? (differences + "\n").write(to: Self.snapshot.deletingLastPathComponent().appendingPathComponent("differenze.tsv"), atomically: true, encoding: .utf8)
         if !changed.isEmpty && !accept {
             let list = changed.prefix(40).map { "  «\($0)»: prima \(before[$0]!) → ora \(now[$0]!)" }.joined(separator: "\n")
             Issue.record("""

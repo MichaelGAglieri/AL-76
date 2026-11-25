@@ -64,7 +64,7 @@ struct NoAITests {
 struct NoAISuggestionTests {
     @Test("Il tema conta più del verbo")
     func topicOverVerb() {
-        let examples = KnownCommands.suggestions(for: "apri il sito del meteo e dimmi le notizie")
+        let examples = KnownCommands.suggestions(for: "apri il sito del meteo e dimmi se piove")
         #expect(examples.first == "che tempo fa domani?")
     }
 }
