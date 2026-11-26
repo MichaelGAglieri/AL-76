@@ -50,9 +50,16 @@ public sealed class UniversityPortal(AppConfig config, ISecretStore secrets, Htt
             // "unito.esse3.cineca.it" is enough: the REST API is always under /e3rest/api.
             if (s.Contains("esse3", StringComparison.OrdinalIgnoreCase) && !s.Contains("/e3rest", StringComparison.OrdinalIgnoreCase))
                 s += "/e3rest/api";
-            return s;
+            // A name or a sentence instead of an address ("Invalid URI" reached a tester's brain, 23/11): none.
+            return s.Length == 0 || Uri.TryCreate(s, UriKind.Absolute, out var u) && u.Host.Contains('.') && !s.Contains(' ') ? s : "";
         }
     }
+
+    /// <summary>Something is written in the settings, but it is not a web address.</summary>
+    public bool BadAddress => config.UniversityServer.Trim().Length > 0 && Server.Length == 0;
+    private string MissingServer => BadAddress
+        ? $"L'indirizzo del server {Of} scritto nelle Impostazioni › Moduli non è un indirizzo web valido (per esempio unixyz.esse3.cineca.it)."
+        : $"Manca l'indirizzo del server {Of}: va scritto nelle Impostazioni › Moduli.";
 
     /// <summary>An Esse3 address (Cineca): its REST API instead of the student app's.</summary>
     public bool IsEsse3 => Server.Contains("/e3rest", StringComparison.OrdinalIgnoreCase);
@@ -85,7 +92,7 @@ public sealed class UniversityPortal(AppConfig config, ISecretStore secrets, Htt
     private async Task<string> TokenAsync(bool renew, CancellationToken ct)
     {
         if (!renew && secrets.Read("university.token") is { Length: > 0 } saved) return saved;
-        if (Server.Length == 0) throw new AccountException($"Manca l'indirizzo del server {Of}: va scritto nelle Impostazioni › Moduli.");
+        if (Server.Length == 0) throw new AccountException(MissingServer);
         if (!HasCredentials) throw new AccountException($"Mancano le credenziali {Of}: vanno inserite nelle Impostazioni › Moduli.");
         using var r = Request(HttpMethod.Post, Server + "/user/login?lingua=ITA");
         r.Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["username"] = secrets.Read("university.user")!, ["password"] = secrets.Read("university.password")! });
@@ -251,7 +258,7 @@ public sealed class UniversityPortal(AppConfig config, ISecretStore secrets, Htt
     /// <summary>The check behind Settings' button: logs in and says which career it found.</summary>
     public async Task<string> CheckAsync(CancellationToken ct)
     {
-        if (!Configured) return $"Manca l'indirizzo del server {Of}.";
+        if (!Configured) return MissingServer;
         try
         {
             if (IsEsse3)

@@ -33,6 +33,8 @@ public sealed class StudyDesk(ActivityTracker activity, StudyPlan plan, Flashcar
             try { list.AddRange(await portal.LessonsAsync(from, days, ct)); }
             catch (AccountException e) { problems.Add(e.Message); }
         }
+        else if (withPortal && portal is { BadAddress: true })
+            problems.Add("L'indirizzo del portale dell'università nelle Impostazioni › Moduli non è un indirizzo web valido.");
         return (list.OrderBy(l => l.Start).ToList(), problems);
     }
 }

@@ -1,7 +1,7 @@
 # Draft winget manifest (version file). Before sending it to microsoft/winget-pkgs: real publisher name,
 # version, and the installer's address and SHA256 in AL76.Assistant.installer.yaml. Check with: winget validate .
 PackageIdentifier: AL76.Assistant
-PackageVersion: 0.1.4
+PackageVersion: 0.1.5
 DefaultLocale: en-US
 ManifestType: version
 ManifestVersion: 1.9.0

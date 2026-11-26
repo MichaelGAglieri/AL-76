@@ -161,7 +161,7 @@ public sealed class Microphone : IDisposable
             if ((flags & AudioClientBufferFlags.Silent) != 0) { OnSamples(new float[buffer.Length / Math.Max(1, format.BlockAlign) * format.Channels], format); return; }
             OnSamples(Decode(buffer, format), format);
         };
-        recorder.RecordingStopped += (_, e) => { if (e.Exception is not null) Log.Info($"microfono fermato: {e.Exception.Message}"); };
+        recorder.RecordingStopped += (_, e) => { if (e.Exception is not null) Lost(e.Exception); };
         recorder.StartRecording();
         Mode = recorder.AcousticEchoCancellationControl is not null ? "aec" : "comm";
         var f = recorder.WaveFormat;
@@ -175,7 +175,7 @@ public sealed class Microphone : IDisposable
         Mode = "plain";
         Log.Info($"microfono: {DeviceName}, modalità normale, {format.SampleRate} Hz, {format.Channels} canali, {format.BitsPerSample} bit, {format.Encoding}");
         capture.DataAvailable += (_, e) => OnSamples(Decode(e.Buffer.AsSpan(0, e.BytesRecorded), format), format);
-        capture.RecordingStopped += (_, e) => { if (e.Exception is not null) Log.Info($"microfono fermato: {e.Exception.Message}"); };
+        capture.RecordingStopped += (_, e) => { if (e.Exception is not null) Lost(e.Exception); };
         capture.StartRecording();
     }
 
@@ -248,6 +248,40 @@ public sealed class Microphone : IDisposable
         return copy;
     }
 
+    private volatile bool disposed;
+
+    /// <summary>The input went away (a controller's headset switched off, a USB microphone pulled out): a tester's
+    /// AL-76 stayed deaf until restarted (23/11). The ways are looked for again, every few seconds until one opens.</summary>
+    private void Lost(Exception e)
+    {
+        Log.Info($"microfono fermato: {e.Message}");
+        if (disposed || Interlocked.Exchange(ref switching, 1) == 1) return;
+        Task.Run(async () =>
+        {
+            try
+            {
+                for (int attempt = 1; !disposed; attempt++)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt == 1 ? 2 : 5));
+                    if (disposed) return;
+                    try
+                    {
+                        Close();
+                        plan.Clear();
+                        Start();
+                        Log.Info($"microfono: riaperto dopo la disconnessione ({DeviceName})");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (attempt == 1 || attempt % 12 == 0) Log.Info($"microfono: ancora nessun ingresso ({ex.Message}), riprovo");
+                    }
+                }
+            }
+            finally { Interlocked.Exchange(ref switching, 0); }
+        });
+    }
+
     public void Stop()
     {
         capture?.StopRecording();
@@ -256,6 +290,7 @@ public sealed class Microphone : IDisposable
 
     public void Dispose()
     {
+        disposed = true;
         Stop();
         Close();
     }

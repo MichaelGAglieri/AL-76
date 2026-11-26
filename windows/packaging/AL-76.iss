@@ -9,7 +9,7 @@
 #ifndef Arch
   #define Arch "x64"
 #endif
-#define AppVersion "0.1.4"
+#define AppVersion "0.1.5"
 ; Your own build (scripts\build.ps1 -AppName -Publisher -AppId): another name and id install next to the official
 ; AL-76 instead of replacing it. AppId is a GUID without braces; keep the same one for your updates.
 #ifndef AppName
@@ -83,12 +83,29 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Code]
 // AL-76 (and the voice, sphere and model helpers it starts) may be running in the tray: closed before the files are
 // replaced or removed, otherwise they stay locked.
-procedure CloseAL76;
+// Waits until no AL-76.exe is left (up to 15 s): on a slow PC a fixed pause was too short and the uninstaller found
+// half the files still locked (VM, 26/11).
+function AL76Running: Boolean;
 var
   code: Integer;
 begin
+  Result := Exec(ExpandConstant('{cmd}'), '/c tasklist /nh /fi "imagename eq AL-76.exe" | find /i "AL-76.exe" >nul',
+                 '', SW_HIDE, ewWaitUntilTerminated, code) and (code = 0);
+end;
+
+procedure CloseAL76;
+var
+  code, i: Integer;
+begin
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /t /im AL-76.exe', '', SW_HIDE, ewWaitUntilTerminated, code);
-  Sleep(800);
+  i := 0;
+  while AL76Running and (i < 30) do
+  begin
+    Sleep(500);
+    i := i + 1;
+  end;
+  // The files are let go a moment after the process ends.
+  Sleep(2000);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -101,6 +118,24 @@ function InitializeUninstall(): Boolean;
 begin
   CloseAL76;
   Result := True;
+end;
+
+// Windows lets go of the files of a process that ended (the voice models are large) a few seconds after it leaves
+// the task list: whatever was still locked is removed again here, for up to 15 s (VM, 26/11).
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  i: Integer;
+begin
+  if CurUninstallStep <> usPostUninstall then Exit;
+  i := 0;
+  while DirExists(ExpandConstant('{app}\runtimes')) or FileExists(ExpandConstant('{app}\AL76.Core.dll')) do
+  begin
+    if i >= 30 then Exit;
+    Sleep(500);
+    DelTree(ExpandConstant('{app}\runtimes'), True, True, True);
+    DelTree(ExpandConstant('{app}\*.dll'), False, True, False);
+    i := i + 1;
+  end;
 end;
 
 function NeedsVcRuntime: Boolean;

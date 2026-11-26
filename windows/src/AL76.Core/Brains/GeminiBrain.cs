@@ -32,6 +32,36 @@ public sealed class GeminiBrain : BrainBase
     /// <summary>No terminal, no edits, no web pages or browser: the same limits as Claude and ChatGPT.</summary>
     public static readonly string[] DenyRules = ["command(*)", "write_file(*)", "read_url(*)", "execute_url(*)"];
 
+    /// <summary>AL-76's own data (settings, memory, logs, accounts): Gemini read its config.json on a tester's PC
+    /// looking for the diagnostics (26/11). agy's read_file denied for that folder, as both separators. Its working
+    /// folder inside stays usable (Mac test, 26/11: AGENTS.md still read, the folder's files refused).</summary>
+    public static IReadOnlyList<string> PrivateRules(string dataDir)
+    {
+        string full = Path.GetFullPath(dataDir).TrimEnd('\\', '/');
+        return new[] { $"read_file({full})", $"read_file({full.Replace('\\', '/')})" }.Distinct().ToList();
+    }
+
+    /// <summary>Adds the rules that keep AL-76's data folder closed when they are missing. Only ever more restrictive,
+    /// so it needs no question: false when agy's settings cannot be read or written.</summary>
+    public static bool ClosePrivateFolder(string dataDir)
+    {
+        try
+        {
+            if (!File.Exists(SettingsFile) || JsonNode.Parse(File.ReadAllText(SettingsFile)) is not JsonObject json) return false;
+            var permissions = json["permissions"] as JsonObject ?? [];
+            var deny = permissions["deny"] as JsonArray ?? [];
+            var missing = PrivateRules(dataDir).Where(r => !deny.Any(n => n?.ToString() == r)).ToList();
+            if (missing.Count == 0) return true;
+            foreach (var rule in missing) deny.Add(rule);
+            permissions["deny"] = deny.DeepClone();
+            json["permissions"] = permissions.DeepClone();
+            File.WriteAllText(SettingsFile, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            Diagnostics.Log.Info("gemini: la cartella dei dati di AL-76 è chiusa alla lettura di Antigravity");
+            return true;
+        }
+        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { return false; }
+    }
+
     public override async Task<BrainStatus> StatusAsync(CancellationToken ct = default)
     {
         // Installed while AL-76 was running (the guided setup): look again.
@@ -99,6 +129,7 @@ public sealed class GeminiBrain : BrainBase
         if (setup.Mcp is null) throw new BrainException(Name, BrainFailure.Failed, "server degli strumenti spento");
         // Never without the deny rules: agy would run commands and write files by itself.
         if (!ToolsAllowed()) throw new BrainException(Name, BrainFailure.NotPrepared, "Antigravity non è ancora preparato per AL-76 (Impostazioni › Cervello)");
+        ClosePrivateFolder(setup.DataDir);
 
         // MCP server and instructions, rewritten before every question: port and token change at every launch.
         string folder = Path.Combine(setup.DataDir, "antigravity");

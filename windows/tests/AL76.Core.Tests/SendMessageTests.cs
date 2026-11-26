@@ -306,3 +306,29 @@ public class DiagnosticsScrubTests
         Assert.Equal(@"2026-11-26 10:00:00 app: aperta C:\Users\…\Desktop\…",
                      Diagnostics.DiagnosticsExport.Scrub(@"2026-11-26 10:00:00 app: aperta C:\Users\pinco\Desktop\UNI\Esame.pdf", new AppConfig()));
 }
+
+public class MoreScrubAndGeminiTests
+{
+    [Fact]
+    public void FilesOnOtherDrivesKeepOnlyTheDrive()
+    {
+        string s = Diagnostics.DiagnosticsExport.Scrub(@"2026-11-26 10:51:52 cervello: ← File trovati (il primo è il più simile): Z:\Giochi\Prova\sfondi Z:\Altro", new AppConfig());
+        Assert.Equal("2026-11-26 10:51:52 cervello: ← File trovati (il primo è il più simile): Z:\\…", s);
+    }
+
+    [Fact]
+    public void GeminiRulesCloseTheDataFolderBothWays()
+    {
+        var rules = Brains.GeminiBrain.PrivateRules("/tmp/AL-76/");
+        Assert.Contains("read_file(/tmp/AL-76)", rules);
+    }
+
+    [Fact]
+    public void ABadPortalAddressIsSaidPlainly()
+    {
+        var c = new AppConfig { UniversityServer = "Università di prova" };
+        var portal = new Portals.UniversityPortal(c, new Accounts.MemorySecrets(), new HttpClient());
+        Assert.True(portal.BadAddress);
+        Assert.False(portal.Configured);
+    }
+}

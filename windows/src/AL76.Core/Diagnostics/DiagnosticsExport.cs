@@ -94,6 +94,7 @@ public static partial class DiagnosticsExport
     [GeneratedRegex(@"(\w+)=.*?(?=\s\w+=|$)")] private static partial Regex ToolArgument();
     /// <summary>A tool's answer: only its first words (a folder listing, a message, a contact are the user's).</summary>
     [GeneratedRegex(@"^(\S+ \S+ cervello: [←✕] )(.*)$")] private static partial Regex ToolAnswer();
+    [GeneratedRegex(@"(?i)\b([a-z]:[\\/]+)(?!Users[\\/])[^\s\\/]+[^\n]*")] private static partial Regex OtherDrivePath();
     [GeneratedRegex(@"(?i)(/Users/|/home/)[^/\s]+")] private static partial Regex UnixHome();
     [GeneratedRegex(@"\b(?!127\.)(\d{1,3}\.){3}\d{1,3}\b")] private static partial Regex Ipv4();
     [GeneratedRegex(@"(?i)\b(Bearer|token|code|password|access_token|refresh_token)([=: ]+)\S+")] private static partial Regex Secret();
@@ -110,7 +111,12 @@ public static partial class DiagnosticsExport
         s = DoubleQuoted().Replace(s, "\"…\"");
         s = Email().Replace(s, "…@…");
         s = ToolCall().Replace(s, m => m.Groups[1].Value + ToolArgument().Replace(m.Groups[2].Value, "$1=…"));
-        s = ToolAnswer().Replace(s, m => m.Groups[1].Value + (m.Groups[2].Value.Length > 60 ? m.Groups[2].Value[..60] + "…" : m.Groups[2].Value));
+        s = ToolAnswer().Replace(s, m =>
+        {
+            // Files found on other drives ("Z:\Giochi\…"): only the drive stays; the user's folder is handled below.
+            string answer = OtherDrivePath().Replace(m.Groups[2].Value, "$1…");
+            return m.Groups[1].Value + (answer.Length > 60 ? answer[..60] + "…" : answer);
+        });
         s = UserFolder().Replace(s, "$1…");
         s = UserFolderTail().Replace(s, "$1\\…");
         s = UnixHome().Replace(s, "$1…");
