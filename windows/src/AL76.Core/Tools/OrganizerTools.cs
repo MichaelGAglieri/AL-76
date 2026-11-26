@@ -208,6 +208,35 @@ public static class OrganizerTools
         bool HasMail() => mail() is not null;
         yield return new ToolDef
         {
+            Name = "set_mail_sender",
+            Description = "Remember how to treat a sender's mail (\"le mail di Rossi sono importanti\", \"ignora le mail di Booking\", \"le mail di X tornano normali\").",
+            Properties = new()
+            {
+                ["sender"] = Prop("string", "Part of the sender's name or address, e.g. Rossi, booking.com."),
+                ["importance"] = Prop("string", "important, ignore or normal.", "important", "ignore", "normal"),
+            },
+            Required = ["sender", "importance"],
+            Available = HasMail,
+            Run = (a, c, ct) =>
+            {
+                string key = a.Str("sender").Trim();
+                if (key.Length < 3) return Task.FromResult(ToolOutcome.Ok(L(c, "Dimmi il mittente: un nome o un indirizzo.", "Tell me the sender: a name or an address.")));
+                config.MailImportant.RemoveAll(s => s.Equals(key, StringComparison.OrdinalIgnoreCase));
+                config.MailIgnored.RemoveAll(s => s.Equals(key, StringComparison.OrdinalIgnoreCase));
+                string importance = a.Str("importance");
+                if (importance == "important") config.MailImportant.Add(key);
+                else if (importance == "ignore") config.MailIgnored.Add(key);
+                saveConfig();
+                return Task.FromResult(ToolOutcome.Ok(importance switch
+                {
+                    "important" => L(c, $"Le mail di {key} ora sono sempre tra le importanti.", $"Mail from {key} is now always among the important ones."),
+                    "ignore" => L(c, $"Le mail di {key} non verranno più lette tra le novità.", $"Mail from {key} will no longer be read among the new ones."),
+                    _ => L(c, $"Le mail di {key} tornano alla regola normale.", $"Mail from {key} is back to the normal rule."),
+                }));
+            },
+        };
+        yield return new ToolDef
+        {
             Name = "list_unread_emails",
             Description = "Unread mail of the last week sorted by importance: people first, then account and payment notices; advertising and lists are only counted. For \"ho mail nuove?\", \"mail importanti?\".",
             Properties = new() { ["limit"] = Prop("integer", "Max mails, default 10."), ["all"] = Prop("boolean", "true: the latest unread whatever they are, advertising included.") },

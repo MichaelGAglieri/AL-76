@@ -3,6 +3,20 @@
 Every version was built, installed and tested on the Mac (and on the iPhone and iPad app when it was
 involved) before moving to the next one. All dates are in 2026.
 
+## 1.30.90 — 26 November
+
+The robottino's extras (user request: "chicche fighe"), each with its own switch in the new **Settings › Robottino** page.
+
+- **Passed exam = party.** "Ho preso 28 a Fisica" (or the model recording a grade) makes the robot spin up, cheer and shoot confetti from its jets; the answer starts with "Complimenti!" and already says the new average.
+- **Focus mode.** During a study session (not on a break) it wears headphones, stays still (no strolls, waves or pirouettes) and a cyan ring round its waist fills over the two-hour block, up to the break AL-76 proposes. At the break (session paused, or a block completed) it stretches: arms up, head back, eyes closed.
+- **Study levels.** All the hours of study ever recorded give a level (1 at 0 h; 2, 5, 10, 15, 20, 25, 35, 50… hours). The golden antenna unlocks at 10 h, the cape at 25 h, the coloured trails at 50 h; a new level is a party and AL-76 says it with what it unlocked (the levels already earned are not celebrated). Settings shows the level, the progress to the next one and a switch per accessory.
+- **Expressions and gaze.** Wider eyes while listening, three dots going round on the screen while thinking (the mouth already followed the real voice level). The eyes and the head follow the mouse pointer while it moves and for 8 s after.
+- **Sleep.** It yawns now and then from 23 to 5, and falls asleep when the Mac has had no key or mouse for 10 minutes (adjustable); "Ehi Al" wakes it with a start, the mouse wakes it gently.
+- **Dressed for the weather.** An umbrella hat if tomorrow's chance of rain is at least 60% (blue and white, wide and flat, raised over the head on a short stem clamped to the side of the cap so the golden antenna stays free under it; chosen by the user over a striped umbrella in the hand and three other models), sunglasses with a clear sky by day, a striped scarf under 10 °C (wttr.in, every two hours).
+- **It carries the alerts.** When a reminder or a timer goes off it flies up, crosses the screen holding a cardboard sign with the text on two poles, and flies back to its place.
+- New files `HUD/Robot/RobotExtras.swift` (wardrobe, ring, confetti, sign) and `RobotLife.swift` (focus, weather, sleep, levels). "Prova la festa" and "Prova il cartello" buttons in Settings.
+- Tests: 34 (3 new on levels, unlocks and the shows' timing). Checked in the app: antenna and umbrella (79% rain tomorrow) on the real robot, a 4-second timer carried across the screen on the sign. Not yet seen live: confetti for a real exam, focus with a real session, sleep, yawn and gaze.
+
 ## 1.30.89 — 25 November
 
 From the 25 November test with the Scientific American article on the Riemann hypothesis.

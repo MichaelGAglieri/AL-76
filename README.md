@@ -12,7 +12,7 @@ computer: apps, files, calendar, mail, study, music, robotics.
 
 | Platform | Status | How to get it | Guide |
 |---|---|---|---|
-| **Windows 10 and 11** | Preview (0.1.x), tested on real PCs | **Download the installer** `AL-76-Setup-…-x64.exe` from the latest `windows-v…` release on the [Releases page](../../releases) (currently [0.1.3](../../releases/tag/windows-v0.1.3)). No building, no administrator rights. | [`windows/README.md`](windows/README.md) |
+| **Windows 10 and 11** | Preview (0.1.x), tested on real PCs | **Download the installer** `AL-76-Setup-…-x64.exe` from the latest `windows-v…` release on the [Releases page](../../releases) (currently [0.1.4](../../releases/tag/windows-v0.1.4)). No building, no administrator rights. | [`windows/README.md`](windows/README.md) |
 | **macOS** (Apple Silicon) | Used daily, the most complete | Built from the source on your Mac with Xcode (no installer yet) | [Installation guide](INSTALL.md) · [macOS version](#macos-version) below |
 | **iPhone and iPad** | Companion app | A remote for the Mac or the Windows PC: talk to AL-76 and see the computer's screen | [iPhone and iPad app](#iphone-and-ipad-app) |
 | **Linux** | Planned | Not available yet | — |

@@ -96,7 +96,15 @@ public interface IAppDriver
     Task<Capture?> ScreenAsync(bool wholeScreen, CancellationToken ct);
     /// <summary>Closes the browser tabs whose title contains the words; how many.</summary>
     Task<int> CloseBrowserTabsAsync(string words, CancellationToken ct);
+    /// <summary>Types where the keyboard focus is in that window, for apps whose fields UI Automation does not show
+    /// (WhatsApp for Windows, web views). Null when done, otherwise why not (another window in front, a password field).</summary>
+    Task<string?> TypeFocusedAsync(AppWindow window, string text, bool submit, CancellationToken ct) => Task.FromResult<string?>("Typing at the cursor is not available here.");
+    /// <summary>The window's lines of text as Windows' OCR reads them (screen pixels) and the window's frame; null without OCR.</summary>
+    Task<WindowText?> ReadTextAsync(AppWindow window, CancellationToken ct) => Task.FromResult<WindowText?>(null);
 }
+
+/// <summary>What the OCR read in a window: one entry per line of text, and where the window was.</summary>
+public sealed record WindowText(IReadOnlyList<Maker.ScreenWord> Lines, Area Frame);
 
 /// <summary>
 /// App control (Mac AppControl): reads a window's buttons and fields, presses them, types, uses the keyboard; for
@@ -106,7 +114,7 @@ public interface IAppDriver
 /// a request or by text that was read. Buying, passwords and sending email ask for the yes (sending a message,
 /// deleting too at the Prudente level).</para>
 /// </summary>
-public sealed class AppControl(IAppDriver driver, Func<bool> enabled, Func<bool> careful)
+public sealed partial class AppControl(IAppDriver driver, Func<bool> enabled, Func<bool> careful)
 {
     private readonly Dictionary<int, UiNode> elements = [];
     private int elementsPid = -1;
@@ -300,8 +308,10 @@ public sealed class AppControl(IAppDriver driver, Func<bool> enabled, Func<bool>
     {
         var (w, problem) = Target(a.Str("app"), c);
         if (w is null) return ToolOutcome.Ok(problem!);
+        if (a["element"] is null) return await TypeAtCursorAsync(w, a, c, ct);
         if (Element(a, w) is not { } node) return ToolOutcome.Ok(Stale(c));
-        if (!node.IsField) return ToolOutcome.Ok(L(c, "L'elemento scelto non è un campo di testo.", "That element is not a text field."));
+        if (!node.IsField) return ToolOutcome.Ok(L(c, "L'elemento scelto non è un campo di testo: se l'app non mostra i suoi campi, clicca il campo con app_click_at e chiama app_type senza element.",
+                                                    "That element is not a text field: if the app shows no fields, click the field with app_click_at and call app_type without element."));
         if (node.Password) return ToolOutcome.Ok(L(c, "È un campo password: non scrivo.", "It is a password field: not typing."));
         string text = a.Str("text");
         if (text.Length == 0) return ToolOutcome.Ok(L(c, "Testo mancante.", "Text missing."));
@@ -319,6 +329,25 @@ public sealed class AppControl(IAppDriver driver, Func<bool> enabled, Func<bool>
                 Log.Audit("app: scritto", $"{text.Length} caratteri in {Clip(label, 40)} di {w.Name}{(submit ? " + Invio" : "")}");
                 return L(c, $"Scritto{(submit ? " e dato Invio" : "")}. Rileggi con app_read per vedere il risultato.",
                             $"Typed{(submit ? " and pressed Enter" : "")}. Read again with app_read to see the result.");
+            }, ct);
+    }
+
+    /// <summary>app_type without element: where the cursor is, in apps whose fields UI Automation does not show
+    /// (WhatsApp for Windows and other web views: a tester's "L'elemento scelto non è un campo di testo", 26/11).
+    /// Same rules: the driver refuses a password field and a window that is not in front.</summary>
+    private async Task<ToolOutcome> TypeAtCursorAsync(AppWindow w, JsonObject a, ToolContext c, CancellationToken ct)
+    {
+        string text = a.Str("text");
+        if (text.Length == 0) return ToolOutcome.Ok(L(c, "Testo mancante.", "Text missing."));
+        bool submit = a.Bool("submit") == true;
+        var risk = submit && ConfirmationPolicy.IsMail(w.Identity) ? Risk.SendEmail : Risk.None;
+        return await Guard(w, "", risk, a.Bool("consequential") == true,
+            L(c, $"Scrivere \"{Clip(text, 80)}\" in {w.Name}{(submit ? " e dare Invio" : "")}", $"Type \"{Clip(text, 80)}\" in {w.Name}{(submit ? " and press Enter" : "")}"), async ct2 =>
+            {
+                if (Halted) return L(c, "Interrotto dall'utente.", "Stopped by the user.");
+                if (await driver.TypeFocusedAsync(w, text, submit, ct2) is string why) return why;
+                Log.Audit("app: scritto", $"{text.Length} caratteri dove c'è il cursore in {w.Name}{(submit ? " + Invio" : "")}");
+                return L(c, $"Scritto{(submit ? " e dato Invio" : "")}. Guarda il risultato con app_look.", $"Typed{(submit ? " and pressed Enter" : "")}. Check the result with app_look.");
             }, ct);
     }
 

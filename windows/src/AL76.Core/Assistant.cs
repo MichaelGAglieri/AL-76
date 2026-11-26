@@ -307,6 +307,7 @@ public sealed class Assistant : IAsyncDisposable
                               new Timetable(Path.Combine(dataDir, "orario.json"), () => config.TimetableUrl),
                               secrets is null ? null : new Portals.UniversityPortal(config, secrets, new HttpClient { Timeout = TimeSpan.FromSeconds(20) }),
                               Path.Combine(workDir, "AL-76", "Riunioni"));
+        MailRank.Senders = () => (config.MailImportant, config.MailIgnored);
         Tools.AddRange(OrganizerTools.Create(config, saveConfig, Organizer, () => accounts?.Mail(), StudyBriefingAsync));
         Tools.AddRange(StudyTools.Create(config, Study, PortalOn));
         // Phase 7: the "maker" module (Arduino, printer, ROS 2, Robot Console), its tools only when it is on.
@@ -323,7 +324,7 @@ public sealed class Assistant : IAsyncDisposable
         Tools.AddRange(MakerTools.Create(Maker, MakerOn));
         Maker.Robot.Notice += text => Announcement?.Invoke(text);
         Study.Activity.BreakOver += name => Announcement?.Invoke(announceLanguage == "it" ? $"La pausa è finita. Riprendiamo {name}?" : $"The break is over. Back to {name}?");
-        if (Apps is not null) Tools.AddRange(AppTools.Create(Apps));
+        if (Apps is not null) Tools.AddRange(AppTools.Create(Apps, (name, ct) => pc.OpenAppAsync(name, ct)));
         var search = files ?? new FileSearch(FileSearch.UserRoots);
         Tools.AddRange(FileTools.Create(pc, search));
         // Ported from the Mac (19/11): documents written by AL-76, web pages as PDF, films and series.
@@ -996,6 +997,21 @@ public sealed class Assistant : IAsyncDisposable
             ? (it ? $"{pending.Summary}: confermi?" : $"{pending.Summary}: shall I go ahead?")
             : (it ? "Confermi?" : "Shall I?");
 
+    private IReadOnlyList<string>? appNames;
+    private DateTime appNamesAt;
+
+    /// <summary>The installed apps for the instructions, read again every 30 minutes (the same list keeps the local
+    /// model's cache).</summary>
+    private IReadOnlyList<string> AppNames()
+    {
+        if (appNames is null || DateTime.UtcNow - appNamesAt > TimeSpan.FromMinutes(30))
+        {
+            try { appNames = pc.InstalledApps(); } catch (Exception e) { Log.Info($"app installate non lette: {e.Message}"); appNames ??= []; }
+            appNamesAt = DateTime.UtcNow;
+        }
+        return appNames;
+    }
+
     /// <summary>Tools that only read: before or after them the brain's words are still worth saying.</summary>
     private static readonly HashSet<string> ReadOnlyTools = ["list_memories", "list_running_apps", "WebSearch", "web_search", "Read", "Glob", "Grep",
                                                              "app_read", "app_look", "look_at_screen", "search_files", "pdf_info", "search_notes"];
@@ -1039,7 +1055,7 @@ public sealed class Assistant : IAsyncDisposable
             prompt.Append("Recent conversation, for context only:\n").Append(recap).Append("\n\n");
         if (notes.Count > 0) prompt.Append("[Since your last reply: ").Append(string.Join(" ", notes)).Append("]\n");
         prompt.Append(Persona.TurnContext(language, DateTime.Now, config.ActiveArea)).Append('\n').Append(command);
-        var setup = new BrainSetup(Persona.SystemPrompt(config, Memory.ForPrompt(), brain.Id == "local"), Mcp, Tools, current, workDir, dataDir);
+        var setup = new BrainSetup(Persona.SystemPrompt(config, Memory.ForPrompt(), brain.Id == "local", Tools.Visible.Select(t => t.Name).ToHashSet(), AppNames()), Mcp, Tools, current, workDir, dataDir);
 
         // An action is told in one sentence at the end, not narrated: what the brain writes before an action
         // tool is held, then dropped when the tool runs (Mac, "brief").

@@ -37,6 +37,20 @@ final class RobotNucleusView: NSView {
     private var lastOrigin = NSPoint.zero
     private var wasWalking = false
 
+    // 1.30.90 extras: its own life (focus, weather, sleep, levels) and the alert's sign.
+    private let life: RobotLife
+    private let sign = RobotKit.SignPanel()
+    private struct SignFlight {
+        var home: NSPoint
+        var phase = 0          // 0 up to cruising height, 1 across the screen with the sign, 2 back home
+        var y: CGFloat, left: CGFloat
+    }
+    private var flight: SignFlight?
+    private var pendingSigns: [String] = []
+    private var lastMood: RobotKit.Mood = .idle
+    private var outfitChecked: CGFloat = -10
+    private var gazeMouse = NSPoint(x: -1, y: -1), gazeMoved: CGFloat = -100
+
     // Mouse.
     private var press: (mouse: NSPoint, origin: NSPoint)?
     private var dragging = false
@@ -47,6 +61,7 @@ final class RobotNucleusView: NSView {
 
     init(assistant: Assistant) {
         self.assistant = assistant
+        life = RobotLife(assistant: assistant)
         super.init(frame: NSRect(origin: .zero, size: Self.size(large: assistant.config.robotLarge)))
         Self.main = self
         wantsLayer = true
@@ -65,6 +80,15 @@ final class RobotNucleusView: NSView {
         assistant.$answersStopped.dropFirst().sink { [weak self] _ in
             guard let self else { return }
             self.bubble.stop(at: CGFloat(Date().timeIntervalSince(self.start)))
+        }.store(in: &watchers)
+        // A passed exam: confetti. A reminder or a timer: the sign across the screen.
+        NotificationCenter.default.publisher(for: .robotCelebrate).receive(on: RunLoop.main).sink { [weak self] _ in
+            guard let self, self.assistant?.config.robotExamParty == true else { return }
+            self.robot?.celebrate(at: CGFloat(Date().timeIntervalSince(self.start)))
+        }.store(in: &watchers)
+        NotificationCenter.default.publisher(for: .robotSign).receive(on: RunLoop.main).sink { [weak self] note in
+            guard let self, self.assistant?.config.robotSign == true, let text = note.object as? String, self.pendingSigns.count < 3 else { return }
+            self.pendingSigns.append(text)
         }.store(in: &watchers)
         assistant.$config.map(\.robotFlames).removeDuplicates().sink { [weak self] flames in
             self?.robot?.flames(flames == "ioniche" ? .ion : .fire)
@@ -105,6 +129,7 @@ final class RobotNucleusView: NSView {
         timer = nil
         guard window != nil else {
             bubble.hide()
+            sign.hide()
             return
         }
         let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
@@ -128,8 +153,10 @@ final class RobotNucleusView: NSView {
         scnView.preferredFramesPerSecond = assistant.state == .idle && !(robot.walk != 0) ? 24 : 30
         guard shown else {
             bubble.hide()
+            sign.hide()
             return
         }
+        let c = assistant.config
 
         // JARVIS's state.
         let mood: RobotKit.Mood
@@ -139,8 +166,23 @@ final class RobotNucleusView: NSView {
         case .speaking: mood = .speak
         case .error: mood = .error
         // Waiting it stays awake (user request, 16 November): no sleep in JARVIS's deep idle.
-        case .idle: mood = bubble.typing ? .speak : .idle
+        // 1.30.90 (user request): asleep when the Mac is left alone, if the user wants it.
+        case .idle: mood = bubble.typing ? .speak : c.robotSleepy && flight == nil && life.macIdle(minutes: c.robotSleepMinutes) ? .sleep : .idle
         }
+        // Woken by «Ehi Al»: a start. Late in the evening: a yawn now and then.
+        if lastMood == .sleep, mood == .listen, c.robotSleepy { robot.startle(at: t) }   // a mouse move wakes it gently
+        lastMood = mood
+        if c.robotSleepy, mood == .idle, flight == nil, life.yawnNow() { robot.yawn(at: t) }
+        // Studying: headphones and the ring; at the break, a stretch.
+        robot.focus = c.robotFocus ? life.studying.map(RobotLife.blockProgress) : nil
+        if life.breakArrived(), c.robotFocus { robot.stretch(at: t) }
+        if life.checkLevel(config: c) { robot.celebrate(at: t) }
+        if t - outfitChecked > 1 {
+            outfitChecked = t
+            robot.outfit = life.outfit(config: c)
+        }
+        robot.expressive = c.robotExpressions
+        followMouse(robot, t: t, enabled: c.robotFollowsMouse)
         let raw = CGFloat(min(1, max(0, (assistant.levels.voice) * 1.8)))
         voice += (raw - voice) * (1 - exp(-dt * 18))
         let level = mood == .speak ? (assistant.state == .speaking ? voice : RobotKit.voiceLevel(t)) : 0
@@ -150,7 +192,33 @@ final class RobotNucleusView: NSView {
         // takes a stroll along the edge and comes back, only while JARVIS waits (16 November).
         // Locked (19 November, user request): it lives in the corner and never walks.
         let pinned = assistant.config.robotPinned
-        if assistant.config.robotWalks || pinned, !dragging, let screen = panel.ownScreen?.visibleFrame {
+        if flight == nil, !pendingSigns.isEmpty, !dragging, let screen = panel.ownScreen?.visibleFrame {
+            // An alert: up, across the screen holding the sign, and back to where it was.
+            sign.text = pendingSigns.removeFirst()
+            flight = SignFlight(home: panel.frame.origin, y: screen.minY + screen.height * 0.5, left: screen.minX + 10)
+            Diagnostics.log("robottino cartello: \(sign.text.replacingOccurrences(of: "\n", with: " "))")
+        }
+        if var trip = flight, !dragging {
+            robot.grounded = false
+            robot.walk = 0
+            target = nil
+            var f = panel.frame
+            let goal = trip.phase == 0 ? NSPoint(x: f.origin.x, y: trip.y) : trip.phase == 1 ? NSPoint(x: trip.left, y: trip.y) : trip.home
+            let speed: CGFloat = trip.phase == 1 ? 210 : 380
+            let dx = goal.x - f.origin.x, dy = goal.y - f.origin.y, d = hypot(dx, dy)
+            if d <= speed * dt {
+                f.origin = goal
+                trip.phase += 1
+            } else {
+                f.origin.x += dx / d * speed * dt
+                f.origin.y += dy / d * speed * dt
+            }
+            panel.setFrameOrigin(f.origin)
+            exact = f.origin
+            robot.holdingSign = trip.phase < 2
+            flight = trip.phase > 2 ? nil : trip
+            if flight == nil { exact = nil; robot.holdingSign = false }
+        } else if assistant.config.robotWalks || pinned, !dragging, let screen = panel.ownScreen?.visibleFrame {
             var f = panel.frame
             if let e = exact, abs(e.x - f.origin.x) < 2, abs(e.y - f.origin.y) < 2 { f.origin = e }   // else it was moved
             let ground = screen.minY - feetFraction * f.height + 1
@@ -183,7 +251,7 @@ final class RobotNucleusView: NSView {
                 f.origin.y = ground
                 // Where it is going: home, or the end of a stroll. A stroll starts every minute or so
                 // (every few minutes in JARVIS's deep idle) and ends with a look around before coming back.
-                if mood == .idle {
+                if mood == .idle, robot.focus == nil, !robot.busyShow(at: t) {
                     if target == nil, t > nextStroll {
                         let reach = screen.width * CGFloat.random(in: 0.18...0.45)
                         target = max(screen.minX + 10, home - reach)
@@ -194,7 +262,7 @@ final class RobotNucleusView: NSView {
                 }
                 let goal = target ?? home
                 let distance = goal - f.origin.x
-                if mood != .idle || t < strollUntil {
+                if mood != .idle || t < strollUntil || (target == nil && robot.busyShow(at: t)) {
                     robot.walk = 0
                 } else if abs(distance) < 2 {
                     robot.walk = 0
@@ -244,7 +312,24 @@ final class RobotNucleusView: NSView {
             _ = bubble.update(t: t, mouth: mouth, left: xs.min() ?? mouth.x, right: xs.max() ?? mouth.x, screen: screen)
         }
 
+        // The sign on the tops of its poles.
+        if let tops = robot.wardrobe.poleTops, let screen = panel.ownScreen?.frame {
+            let ends = tops.map { toScreen(scnView.projectPoint($0)) }.sorted { $0.x < $1.x }
+            sign.update(left: ends[0], right: ends[1], screen: screen)
+        } else {
+            sign.hide()
+        }
+
         updateMouseCatching(panel)
+    }
+
+    /// The eyes follow the pointer while it moves, and for a few seconds after (1.30.90, user request).
+    private func followMouse(_ robot: RobotKit.Robot, t: CGFloat, enabled: Bool) {
+        let mouse = NSEvent.mouseLocation
+        if mouse != gazeMouse { gazeMouse = mouse; gazeMoved = t }
+        guard enabled, t - gazeMoved < 8, window != nil else { robot.gaze = nil; return }
+        let head = toScreen(scnView.projectPoint(robot.mouthMark.presentation.worldPosition))
+        robot.gaze = CGPoint(x: mouse.x - head.x, y: mouse.y - head.y - 15)
     }
 
     private func toScreen(_ p: SCNVector3) -> NSPoint {

@@ -277,7 +277,9 @@ extension Assistant {
             }
             result = await tool("university", ["action": "libretto", "domanda": ask])
         case .recordExam(let name, let grade):
-            result = await tool("university", ["action": "segna_esame", "exam": name, "grade": grade ?? ""])
+            let said = await tool("university", ["action": "segna_esame", "exam": name, "grade": grade ?? ""])
+            // 1.30.90: a passed exam is a party; the answer already says the new average.
+            result = grade != nil && config.robotExamParty && said?.hasPrefix("Segnato") == true ? "Complimenti! " + said! : said
         case .weather(let place, _): result = await tool("get_weather", place.isEmpty ? [:] : ["location": place])
         case .temperature: result = await tool("system_status")
         case .music(let query): result = await tool("music", ["action": "play", "query": query])

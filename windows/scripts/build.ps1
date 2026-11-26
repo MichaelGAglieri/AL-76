@@ -12,7 +12,7 @@
 
 .EXAMPLE
   .\windows\scripts\build.ps1
-  Tests, app for x64 and installer AL-76-Setup-0.1.3-x64.exe.
+  Tests, app for x64 and installer AL-76-Setup-0.1.4-x64.exe.
 
 .EXAMPLE
   .\windows\scripts\build.ps1 -AppName "AL-76 Lab" -Publisher "Your name" -AppId ([guid]::NewGuid())

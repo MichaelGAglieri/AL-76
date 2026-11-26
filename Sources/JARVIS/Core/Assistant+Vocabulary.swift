@@ -294,6 +294,7 @@ extension Assistant {
         speech.playChime(rising: false)
         // Without a name the label is "timer": "il timer timer è scaduto" (13 November).
         let named = label.lowercased() != "timer" && !label.isEmpty
+        NotificationCenter.default.post(name: .robotSign, object: named ? "Timer finito:\n\(label)" : "Timer finito!")
         let text = lang == .italian ? (named ? "Signore, il timer per \(label) è scaduto." : "Signore, il timer è scaduto.")
             : (named ? "Sir, your timer for \(label) is done." : "Sir, your timer is done.")
         if state == .idle {

@@ -146,6 +146,10 @@ public sealed class AppConfig
     public List<AreaSource> AreaSources { get; set; } = [];
     /// <summary>The account whose mail AL-76 reads and sends: "", "microsoft" or "google".</summary>
     public string MailAccount { get; set; } = "";
+    /// <summary>Senders whose mail is always among the important ones, and those never read among the new ones
+    /// ("le mail di Rossi sono importanti", "ignora le mail di Booking": Mac set_mail_sender). Part of a name or address.</summary>
+    public List<string> MailImportant { get; set; } = [];
+    public List<string> MailIgnored { get; set; } = [];
     /// <summary>The app registrations the user made (guide in the Accounts page): Microsoft needs only the ID,
     /// Google a "desktop app" ID and its secret. Empty = that account cannot be connected yet.</summary>
     public string MicrosoftClientId { get; set; } = "";

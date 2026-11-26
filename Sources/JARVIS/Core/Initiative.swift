@@ -17,6 +17,8 @@ final class Initiative {
         let id: String
         let text: String
         let expires: Date
+        /// What the robottino writes on its sign for this alert (reminders only, 1.30.90).
+        var sign: String? = nil
     }
 
     /// Current settings, whether JARVIS can speak now, how to announce.
@@ -130,10 +132,10 @@ final class Initiative {
         deliver()
     }
 
-    private func enqueue(_ id: String, _ text: String, expires: Date, forget: Date? = nil) {
+    private func enqueue(_ id: String, _ text: String, expires: Date, forget: Date? = nil, sign: String? = nil) {
         guard seen[id] == nil else { return }
         seen[id] = forget ?? expires.addingTimeInterval(3600)
-        queue.append(Alert(id: id, text: text, expires: expires))
+        queue.append(Alert(id: id, text: text, expires: expires, sign: sign))
         Diagnostics.log("iniziativa in coda: \(text)")
     }
 
@@ -167,7 +169,7 @@ final class Initiative {
         }
         for item in due {
             enqueue("promemoria/\(item.id)", "Signore, promemoria: \(item.title).",
-                    expires: now.addingTimeInterval(15 * 60), forget: now.addingTimeInterval(12 * 3600))
+                    expires: now.addingTimeInterval(15 * 60), forget: now.addingTimeInterval(12 * 3600), sign: "Promemoria:\n\(item.title)")
         }
     }
 
@@ -310,7 +312,9 @@ final class Initiative {
         if !queue.isEmpty {
             // Several alerts together become one sentence, the most urgent first.
             let text = queue.sorted { $0.expires < $1.expires }.map(\.text).joined(separator: " ")
+            let signs = queue.sorted { $0.expires < $1.expires }.compactMap(\.sign)
             queue.removeAll()
+            if !signs.isEmpty { NotificationCenter.default.post(name: .robotSign, object: signs.joined(separator: "\n")) }
             Diagnostics.log("iniziativa detta: \(text)")
             announce(text)
         } else if briefingPending, !privacy() {

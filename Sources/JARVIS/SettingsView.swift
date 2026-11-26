@@ -13,7 +13,7 @@ struct SettingsView: View {
 
     /// The pages of the window, in the style of the first-run setup (v1.30.67, user request).
     enum Page: String, CaseIterable, Identifiable {
-        case profile, activation, voice, brain, study, permissions, apps, initiative, look, phone, printer, system
+        case profile, activation, voice, brain, study, permissions, apps, initiative, look, robot, phone, printer, system
 
         var id: Self { self }
 
@@ -28,6 +28,7 @@ struct SettingsView: View {
             case .apps: return "Controllo delle app"
             case .initiative: return "Iniziativa"
             case .look: return "Aspetto"
+            case .robot: return "Robottino"
             case .phone: return "iPhone"
             case .printer: return "Stampante"
             case .system: return "Sistema"
@@ -45,6 +46,7 @@ struct SettingsView: View {
             case .apps: return "hand.tap"
             case .initiative: return "bell"
             case .look: return "sparkles"
+            case .robot: return "figure.wave"
             case .phone: return "iphone"
             case .printer: return "printer"
             case .system: return "gearshape"
@@ -62,6 +64,7 @@ struct SettingsView: View {
             case .apps: return "Pulsanti e campi delle altre app, e il Touch ID per le azioni delicate."
             case .initiative: return "Quando parlo per primo, e quando sto zitto."
             case .look: return "Come mi vedi sullo schermo."
+            case .robot: return "Le cose che il robottino fa da solo. Ognuna si accende e si spegne qui."
             case .phone: return "Il collegamento con l'app per iPhone e iPad."
             case .printer: return "Lo stato della stampante Bambu sulla rete di casa."
             case .system: return "Avvio e saluto."
@@ -294,6 +297,8 @@ struct SettingsView: View {
                     }
                 }
             }
+        case .robot:
+            RobotExtrasSection(assistant: assistant, draft: $draft)
         case .phone:
             PhoneSection(bridge: assistant.phoneBridge, draft: $draft)
         case .printer:
@@ -563,5 +568,75 @@ struct LearnedPhrasesSection: View {
 
     private func reload() {
         entries = PhraseDictionary.learned.sorted { $0.value.date > $1.value.date }.map { (key: $0.key, value: $0.value) }
+    }
+}
+
+/// Impostazioni › Robottino (1.30.90): every extra of the robottino with its own switch, the study level and
+/// two buttons to see the party and the sign right away.
+struct RobotExtrasSection: View {
+    let assistant: Assistant
+    @Binding var draft: JarvisConfig
+
+    var body: some View {
+        if draft.nucleusStyle != "robottino" || !RobotNucleusView.modelAvailable {
+            Section {
+                Caption("Si vedono solo con l'aspetto Robottino (Impostazioni › Aspetto) e il modello 3D installato.")
+            }
+        }
+        let hours = StudyLevel.hours(assistant.activity)
+        let level = StudyLevel.level(hours: hours)
+        Section("Studio") {
+            Toggle("Esame passato = festa: coriandoli e la nuova media", isOn: $draft.robotExamParty)
+            Toggle("Concentrazione: cuffie, anello fino alla pausa, stiracchiata", isOn: $draft.robotFocus)
+            Caption("Durante una sessione di studio sta zitto e fermo; l'anello si riempie nelle due ore fino alla pausa che ti propongo.")
+            Toggle("Livelli di studio", isOn: $draft.robotLevels)
+            if draft.robotLevels {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Livello \(level)").font(.headline).foregroundStyle(HUD.cyan)
+                        Spacer()
+                        Text(String(format: "%.1f ore di studio", hours)).foregroundStyle(.secondary)
+                    }
+                    if let next = StudyLevel.hoursFor(level: level + 1), let now = StudyLevel.hoursFor(level: level) {
+                        ProgressView(value: min(1, (hours - now) / (next - now)))
+                        Text(String(format: "Livello %d a %.0f ore", level + 1, next)).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(StudyLevel.Unlock.allCases, id: \.self) { item in
+                    let open = StudyLevel.unlocked(item, hours: hours)
+                    Toggle(open ? item.name : "\(item.name) · si sblocca a \(Int(item.hours)) ore", isOn: binding(item))
+                        .disabled(!open)
+                }
+            }
+        }
+        Section("Espressioni e sguardo") {
+            Toggle("Occhi spalancati quando ascolta, puntini che girano quando pensa", isOn: $draft.robotExpressions)
+            Toggle("Segue il puntatore del mouse con gli occhi", isOn: $draft.robotFollowsMouse)
+            Toggle("Sbadiglia a tarda sera, dorme quando il Mac è fermo", isOn: $draft.robotSleepy)
+            if draft.robotSleepy {
+                Stepper("Si addormenta dopo \(draft.robotSleepMinutes) minuti senza tastiera né mouse", value: $draft.robotSleepMinutes, in: 2...60)
+            }
+            Caption("La bocca si muove sempre col volume vero della voce. «Ehi Al» lo sveglia di scatto; il mouse lo sveglia piano.")
+        }
+        Section("Meteo e avvisi") {
+            Toggle("Si veste col meteo: ombrello, occhiali da sole, sciarpa", isOn: $draft.robotWeather)
+            Caption("Ombrello se domani la pioggia è probabile almeno al 60%, occhiali col sereno di giorno, sciarpa sotto i 10 gradi. Il meteo è quello di wttr.in, ogni due ore.")
+            Toggle("Promemoria e timer: attraversa lo schermo col cartello", isOn: $draft.robotSign)
+            HStack {
+                Button("Prova la festa") { NotificationCenter.default.post(name: .robotCelebrate, object: nil) }
+                    .disabled(!assistant.config.robotExamParty)
+                Button("Prova il cartello") { NotificationCenter.default.post(name: .robotSign, object: "Prova:\nil cartello di AL-76") }
+                    .disabled(!assistant.config.robotSign)
+            }
+            Caption("Le prove usano le impostazioni salvate.")
+        }
+    }
+
+    private func binding(_ item: StudyLevel.Unlock) -> Binding<Bool> {
+        switch item {
+        case .antenna: return $draft.robotAntenna
+        case .cape: return $draft.robotCape
+        case .trails: return $draft.robotTrails
+        }
     }
 }

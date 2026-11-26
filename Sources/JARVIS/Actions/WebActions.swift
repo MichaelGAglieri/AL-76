@@ -156,6 +156,19 @@ enum WebActions {
             + (readme.map { " C'è un \($0): leggilo con read_code se chiede cosa contiene o come si usa." } ?? "") + " Nothing was installed or run."
     }
 
+    /// For the robottino's clothes (1.30.90): tomorrow's highest chance of rain, the temperature now and whether
+    /// the sky is clear now (wttr.in code 113), from the same service and place as `weather`. nil if it fails.
+    static func robotWeather() async -> (rainTomorrow: Int, tempNow: Int, clear: Bool)? {
+        guard let url = URL(string: "https://wttr.in/?format=j1"),
+              let text = try? await get(url),
+              let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
+              let current = (json["current_condition"] as? [[String: Any]])?.first,
+              let temp = Int(current["temp_C"] as? String ?? "") else { return nil }
+        let days = json["weather"] as? [[String: Any]] ?? []
+        let rain = days.count > 1 ? ((days[1]["hourly"] as? [[String: Any]])?.compactMap { Int($0["chanceofrain"] as? String ?? "") }.max() ?? 0) : 0
+        return (rain, temp, (current["weatherCode"] as? String) == "113")
+    }
+
     static func weather(_ args: [String: Any]) async -> String {
         let place = args.string("location") ?? ""
         let encoded = place.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""

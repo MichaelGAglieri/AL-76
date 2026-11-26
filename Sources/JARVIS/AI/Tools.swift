@@ -539,6 +539,8 @@ final class ToolBox {
                         if !given.isEmpty && grade == nil { return .result("Voto non valido: \(given).") }
                         let answer = booklet.record(exam, grade: grade)
                         if answer.hasPrefix("Segnato") || answer.hasPrefix("Tolto") { try booklet.save() }
+                        // A passed exam: the robottino throws a party (Impostazioni › Robottino).
+                        if answer.hasPrefix("Segnato"), grade != nil { NotificationCenter.default.post(name: .robotCelebrate, object: nil) }
                         return .result(answer)
                     }
                     switch a.string("domanda") ?? "" {

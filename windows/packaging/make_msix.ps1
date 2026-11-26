@@ -4,7 +4,7 @@
 # Input: ..\out\<rid> made by scripts/build.sh on the Mac (copied to the PC). Output: ..\out\AL-76_<version>_<arch>.msix
 param(
     [ValidateSet("win-x64", "win-arm64")] [string]$Rid = "win-x64",
-    [string]$Version = "0.1.3.0",
+    [string]$Version = "0.1.4.0",
     [string]$Publisher = "CN=AL-76 Test",
     [string]$PublisherName = "AL-76",
     [switch]$TestCertificate

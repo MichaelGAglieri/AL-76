@@ -84,7 +84,16 @@ public static partial class DiagnosticsExport
     [GeneratedRegex(@"«[^»]*»")] private static partial Regex Quoted();
     [GeneratedRegex("\"[^\"]{2,}\"")] private static partial Regex DoubleQuoted();
     [GeneratedRegex(@"[\w.+-]+@[\w-]+(\.[\w-]+)+")] private static partial Regex Email();
-    [GeneratedRegex(@"(?i)([a-z]:\\Users\\)[^\\\s]+")] private static partial Regex UserFolder();
+    /// <summary>"C:\Users\name" and, inside JSON or quoted command lines, "C:\\Users\\name" (a tester's log, 26/11).</summary>
+    [GeneratedRegex(@"(?i)([a-z]:(?:\\{1,2})Users(?:\\{1,2}))[^\\\s""]+")] private static partial Regex UserFolder();
+    /// <summary>Below the user's folder only its first part stays ("Desktop", "AppData"): the names of the user's own
+    /// folders and files are not for the zip.</summary>
+    [GeneratedRegex(@"(?i)(Users(?:\\{1,2})…(?:\\{1,2})[^\\\s""]+)(?:\\{1,2})[^\n""]*")] private static partial Regex UserFolderTail();
+    /// <summary>A brain's tool call: "cervello: $ app_type app=WhatsApp text=…" keeps the tool and the argument names.</summary>
+    [GeneratedRegex(@"^(\S+ \S+ cervello: \$ \S+)(.*)$")] private static partial Regex ToolCall();
+    [GeneratedRegex(@"(\w+)=.*?(?=\s\w+=|$)")] private static partial Regex ToolArgument();
+    /// <summary>A tool's answer: only its first words (a folder listing, a message, a contact are the user's).</summary>
+    [GeneratedRegex(@"^(\S+ \S+ cervello: [←✕] )(.*)$")] private static partial Regex ToolAnswer();
     [GeneratedRegex(@"(?i)(/Users/|/home/)[^/\s]+")] private static partial Regex UnixHome();
     [GeneratedRegex(@"\b(?!127\.)(\d{1,3}\.){3}\d{1,3}\b")] private static partial Regex Ipv4();
     [GeneratedRegex(@"(?i)\b(Bearer|token|code|password|access_token|refresh_token)([=: ]+)\S+")] private static partial Regex Secret();
@@ -100,7 +109,10 @@ public static partial class DiagnosticsExport
         s = Quoted().Replace(s, "«…»");
         s = DoubleQuoted().Replace(s, "\"…\"");
         s = Email().Replace(s, "…@…");
+        s = ToolCall().Replace(s, m => m.Groups[1].Value + ToolArgument().Replace(m.Groups[2].Value, "$1=…"));
+        s = ToolAnswer().Replace(s, m => m.Groups[1].Value + (m.Groups[2].Value.Length > 60 ? m.Groups[2].Value[..60] + "…" : m.Groups[2].Value));
         s = UserFolder().Replace(s, "$1…");
+        s = UserFolderTail().Replace(s, "$1\\…");
         s = UnixHome().Replace(s, "$1…");
         s = Ipv4().Replace(s, "x.x.x.x");
         s = Secret().Replace(s, "$1$2…");

@@ -58,16 +58,30 @@ public static class MailRank
         return hint == MailKind.Notice || Automated.Any(a.Contains) ? MailKind.Notice : MailKind.Person;
     }
 
-    /// <summary>What a brain gets for "ho mail nuove?": people, then notices, the advertising only counted.</summary>
+    /// <summary>The user's own rules on senders (AppConfig.MailImportant and MailIgnored), set by the assistant.</summary>
+    public static Func<(IReadOnlyCollection<string> important, IReadOnlyCollection<string> ignored)> Senders { get; set; } = () => ([], []);
+
+    private static bool From(MailItem m, IReadOnlyCollection<string> senders) =>
+        senders.Any(s => s.Length > 0 && ($"{m.From} {m.Address}").Contains(s, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>What a brain gets for "ho mail nuove?": the senders the user marked important, people, then notices,
+    /// the advertising (and the senders the user ignores) only counted.</summary>
     public static string Spoken(List<MailItem> mails, int limit, bool all, bool italian)
     {
         if (mails.Count == 0) return italian ? "Nessuna mail non letta nell'ultima settimana." : "No unread mail in the last week.";
+        var (important, ignored) = Senders();
+        bool Chosen(MailItem m) => From(m, important);
+        mails = mails.Select(m => Chosen(m) ? m with { Kind = MailKind.Person } : From(m, ignored) ? m with { Kind = MailKind.Promotion } : m).ToList();
         var shown = all ? mails.OrderByDescending(m => m.Received).Take(limit).ToList()
-                        : mails.Where(m => m.Kind != MailKind.Promotion).OrderBy(m => m.Kind).ThenByDescending(m => m.Received).Take(limit).ToList();
+                        : mails.Where(m => m.Kind != MailKind.Promotion).OrderBy(m => Chosen(m) ? -1 : (int)m.Kind).ThenByDescending(m => m.Received).Take(limit).ToList();
         int ads = mails.Count(m => m.Kind == MailKind.Promotion);
         var sb = new StringBuilder();
         foreach (var m in shown)
-            sb.Append($"- [id {m.Id}] {(m.Kind == MailKind.Notice ? (italian ? "(avviso) " : "(notice) ") : "")}{m.From} <{m.Address}>, {m.Received:dd/MM HH:mm}: {m.Subject} — {Trim(m.Preview, 160)}\n");
+        {
+            string tag = Chosen(m) ? (italian ? "(importante, scelto da te) " : "(important, your choice) ")
+                       : m.Kind == MailKind.Notice ? (italian ? "(avviso) " : "(notice) ") : "";
+            sb.Append($"- [id {m.Id}] {tag}{m.From} <{m.Address}>, {m.Received:dd/MM HH:mm}: {m.Subject} — {Trim(m.Preview, 160)}\n");
+        }
         if (!all && ads > 0) sb.Append(italian ? $"Più {ads} di pubblicità o newsletter, non elencate.\n" : $"Plus {ads} advertising or newsletters, not listed.\n");
         return sb.ToString().TrimEnd();
     }

@@ -21,8 +21,25 @@ public static class AppTools
             finally { queue.Release(); }
         };
 
-    public static IEnumerable<ToolDef> Create(AppControl apps)
+    /// <param name="open">Opens an app by name (open_app), for send_message when the chat app is not open yet.</param>
+    public static IEnumerable<ToolDef> Create(AppControl apps, Func<string, CancellationToken, Task<PcResult>>? open = null)
     {
+        if (open is not null)
+            yield return new ToolDef
+            {
+                Name = "send_message",
+                Description = "Send a chat message in WhatsApp (default) or another chat app open on the PC, in one step: opens the app if needed, finds the chat by name, writes the text and sends it. "
+                              + "Use it for any \"manda / scrivi un messaggio a…\". Sent at once (asks only at the careful level). If it fails, do it step by step with the app_ tools.",
+                Properties = new()
+                {
+                    ["to"] = Prop("string", "The contact or group as the user said it (\"Marco\", \"mamma\", \"Gruppo calcetto\")."),
+                    ["text"] = Prop("string", "The message, in the user's words, written as a message (\"arrivo tra dieci minuti\" → \"Arrivo tra 10 minuti\")."),
+                    ["app"] = Prop("string", "The chat app: WhatsApp (default), Telegram, Messenger, Teams…"),
+                    ["consequential"] = Consequential(),
+                },
+                Required = ["to", "text"],
+                Run = InOrder((a, c, ct) => apps.SendMessageAsync(a, c, open, ct)),
+            };
         yield return new ToolDef
         {
             Name = "look_at_screen",
@@ -49,13 +66,13 @@ public static class AppTools
         yield return new ToolDef
         {
             Name = "app_type",
-            Description = "Type text into a field from the latest app_read. Password fields are never allowed. submit presses Enter (asks confirmation only when it sends an email).",
+            Description = "Type text into a field from the latest app_read. In apps whose fields app_read does not show (WhatsApp, web views), click the field with app_click_at, then call app_type without element: it types where the cursor is. Password fields are never allowed. submit presses Enter (asks confirmation only when it sends an email).",
             Properties = new()
             {
-                ["app"] = Prop("string", "App name."), ["element"] = Prop("integer", "Field number."), ["text"] = Prop("string", "Text to type."),
+                ["app"] = Prop("string", "App name."), ["element"] = Prop("integer", "Field number from app_read; leave it out to type where the cursor is."), ["text"] = Prop("string", "Text to type."),
                 ["submit"] = Prop("boolean", "Press Enter afterwards."), ["consequential"] = Consequential(),
             },
-            Required = ["app", "element", "text"],
+            Required = ["app", "text"],
             Run = InOrder(apps.TypeAsync),
         };
         yield return new ToolDef

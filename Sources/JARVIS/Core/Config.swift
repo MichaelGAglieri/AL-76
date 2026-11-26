@@ -65,6 +65,31 @@ struct JarvisConfig: Codable, Equatable {
     /// ROBOTTINO: locked in the bottom right corner (19 November, user request): it never walks or strolls,
     /// dragging does not move it. Turned on from its right-click menu, Settings or "Al, stai fermo".
     var robotPinned = false
+    /// ROBOTTINO extras (1.30.90, Impostazioni › Robottino), all on by default.
+    /// Coriandoli dai propulsori e la nuova media quando segna un esame passato.
+    var robotExamParty = true
+    /// Studiando: cuffie, niente passeggiate, l'anello che si riempie fino alla pausa e la stiracchiata.
+    var robotFocus = true
+    /// Livelli di studio: con le ore sale di livello e sblocca gli accessori (sotto, uno per uno).
+    var robotLevels = true
+    /// Accessorio sbloccato: antenna dorata.
+    var robotAntenna = true
+    /// Accessorio sbloccato: mantello.
+    var robotCape = true
+    /// Accessorio sbloccato: scie colorate.
+    var robotTrails = true
+    /// Occhi spalancati mentre ascolta, puntini che girano mentre pensa.
+    var robotExpressions = true
+    /// Gli occhi seguono il puntatore del mouse.
+    var robotFollowsMouse = true
+    /// Sbadiglia a tarda sera e si addormenta quando il Mac è fermo; «Ehi Al» lo sveglia di scatto.
+    var robotSleepy = true
+    /// Si veste col meteo: ombrello se domani piove, occhiali col sereno, sciarpa sotto i 10 gradi.
+    var robotWeather = true
+    /// Promemoria e timer: attraversa lo schermo con un cartello.
+    var robotSign = true
+    /// Minutes without keyboard or mouse before the robot falls asleep.
+    var robotSleepMinutes = 10
     /// App icon (Dock, Finder, Spotlight, notifications): "robottino" (the default since 1.30.86), "rete"
     /// (the neural sphere) or "reattore" (the historical one). See HUD/AppIconChoice.swift.
     var appIcon = "robottino"
@@ -175,6 +200,18 @@ struct JarvisConfig: Codable, Equatable {
         robotWalks = try c.decodeIfPresent(Bool.self, forKey: .robotWalks) ?? d.robotWalks
         robotPinned = try c.decodeIfPresent(Bool.self, forKey: .robotPinned) ?? d.robotPinned
         appIcon = try c.decodeIfPresent(String.self, forKey: .appIcon) ?? d.appIcon
+        robotExamParty = try c.decodeIfPresent(Bool.self, forKey: .robotExamParty) ?? d.robotExamParty
+        robotFocus = try c.decodeIfPresent(Bool.self, forKey: .robotFocus) ?? d.robotFocus
+        robotLevels = try c.decodeIfPresent(Bool.self, forKey: .robotLevels) ?? d.robotLevels
+        robotAntenna = try c.decodeIfPresent(Bool.self, forKey: .robotAntenna) ?? d.robotAntenna
+        robotCape = try c.decodeIfPresent(Bool.self, forKey: .robotCape) ?? d.robotCape
+        robotTrails = try c.decodeIfPresent(Bool.self, forKey: .robotTrails) ?? d.robotTrails
+        robotExpressions = try c.decodeIfPresent(Bool.self, forKey: .robotExpressions) ?? d.robotExpressions
+        robotFollowsMouse = try c.decodeIfPresent(Bool.self, forKey: .robotFollowsMouse) ?? d.robotFollowsMouse
+        robotSleepy = try c.decodeIfPresent(Bool.self, forKey: .robotSleepy) ?? d.robotSleepy
+        robotWeather = try c.decodeIfPresent(Bool.self, forKey: .robotWeather) ?? d.robotWeather
+        robotSign = try c.decodeIfPresent(Bool.self, forKey: .robotSign) ?? d.robotSign
+        robotSleepMinutes = try c.decodeIfPresent(Int.self, forKey: .robotSleepMinutes) ?? d.robotSleepMinutes
         honorific = try c.decodeIfPresent(String.self, forKey: .honorific) ?? d.honorific
         whisperModel = try c.decodeIfPresent(String.self, forKey: .whisperModel) ?? d.whisperModel
         localModel = try c.decodeIfPresent(String.self, forKey: .localModel) ?? d.localModel

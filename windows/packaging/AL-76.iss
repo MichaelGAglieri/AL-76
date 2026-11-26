@@ -9,7 +9,7 @@
 #ifndef Arch
   #define Arch "x64"
 #endif
-#define AppVersion "0.1.3"
+#define AppVersion "0.1.4"
 ; Your own build (scripts\build.ps1 -AppName -Publisher -AppId): another name and id install next to the official
 ; AL-76 instead of replacing it. AppId is a GUID without braces; keep the same one for your updates.
 #ifndef AppName
@@ -46,6 +46,8 @@ SolidCompression=yes
 ArchitecturesAllowed={#Archs}
 ArchitecturesInstallIn64BitMode={#Archs}
 WizardStyle=modern
+; AL-76 runs in the tray: setup and uninstall close it first (a tester's uninstall failed, 26/11), see [Code].
+CloseApplications=force
 
 [Languages]
 Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"
@@ -70,8 +72,37 @@ Filename: "{app}\AL-76.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags
 [UninstallDelete]
 ; Settings, memory and models stay (in %APPDATA%\AL-76 and %LOCALAPPDATA%\AL-76): removing them is the user's choice.
 Type: filesandordirs; Name: "{app}"
+; The shortcuts AL-76 itself makes (tray menu "desktop shortcut", setup): they would point to nothing.
+Type: files; Name: "{userdesktop}\{#AppName}.lnk"
+Type: files; Name: "{userprograms}\{#AppName}.lnk"
+
+[Registry]
+; Start with Windows, switched on from AL-76's settings: gone with the app.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "AL-76"; Flags: uninsdeletevalue dontcreatekey
 
 [Code]
+// AL-76 (and the voice, sphere and model helpers it starts) may be running in the tray: closed before the files are
+// replaced or removed, otherwise they stay locked.
+procedure CloseAL76;
+var
+  code: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /t /im AL-76.exe', '', SW_HIDE, ewWaitUntilTerminated, code);
+  Sleep(800);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  CloseAL76;
+  Result := '';
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  CloseAL76;
+  Result := True;
+end;
+
 function NeedsVcRuntime: Boolean;
 var
   installed: Cardinal;

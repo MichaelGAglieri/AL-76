@@ -104,6 +104,7 @@ public sealed class RequestLog
         "look_at_screen" => "guardare lo schermo",
         "look_at_camera" => "guardare con la fotocamera",
         "app_look" or "app_press" or "app_click_at" or "app_type" or "app_key" or "app_read" or "app_scroll" => "clic e testo nelle app",
+        "send_message" => "messaggi",
         "web_search" => "ricerca sul web",
         "read_webpage" => "pagine web",
         "open_url" => "aprire siti",

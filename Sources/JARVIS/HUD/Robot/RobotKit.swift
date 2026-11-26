@@ -177,10 +177,15 @@ struct Face {
     var blink: CGFloat = 1, look = CGPoint.zero, eyeScale: CGFloat = 1, mouth: CGFloat = 0, t: CGFloat = 0
     var happyEyes = false
     var privacy = false
+    /// 1.30.90: three dots going round instead of the "hmm" while thinking; the mouth wide open for a yawn
+    /// (0...1); a small "o" while stretching.
+    var spinner = false
+    var yawn: CGFloat = 0
+    var stretch = false
     /// What the face looks like now, rounded: the texture is redrawn only when this changes.
     var key: String {
-        String(format: "%@%d%d %.2f %.3f %.3f %.2f %.2f", mood.rawValue, happyEyes ? 1 : 0, privacy ? 1 : 0,
-               blink, look.x, look.y, eyeScale, mouth)
+        String(format: "%@%d%d%d%d %.2f %.3f %.3f %.2f %.2f %.2f %d", mood.rawValue, happyEyes ? 1 : 0, privacy ? 1 : 0, spinner ? 1 : 0, stretch ? 1 : 0,
+               blink, look.x, look.y, eyeScale, mouth, yawn, spinner && mood == .think ? Int(t * 20) : 0)
     }
 
     func draw() -> CGImage {
@@ -235,6 +240,28 @@ struct Face {
             }
             let m = mouthAt, k = r * 0.55
             c.setLineWidth(r * 0.4)
+            if yawn > 0.05 {
+                // A big yawn: a tall oval, wider as it opens.
+                let h = r * (0.3 + 1.5 * yawn), w = r * (0.7 + 0.35 * yawn)
+                c.fillEllipse(in: CGRect(x: m.x - w, y: m.y - h * 0.8, width: w * 2, height: h * 2))
+                return
+            }
+            if stretch {
+                c.strokeEllipse(in: CGRect(x: m.x - k * 0.55, y: m.y - k * 0.6, width: k * 1.1, height: k * 1.2))
+                return
+            }
+            if spinner && mood == .think {
+                // Three dots going round where the mouth is, the first one brighter.
+                for i in 0..<3 {
+                    let a = -t * 5 - CGFloat(i) * 0.75
+                    let p = CGPoint(x: m.x + cos(a) * k * 1.1, y: m.y + sin(a) * k * 0.8)
+                    c.setAlpha(1 - CGFloat(i) * 0.3)
+                    let d = k * (0.55 - CGFloat(i) * 0.1)
+                    c.fillEllipse(in: CGRect(x: p.x - d / 2, y: p.y - d / 2, width: d, height: d))
+                }
+                c.setAlpha(1)
+                return
+            }
             switch mood {
             case .speak:
                 let h = max(r * 0.15, r * 1.4 * mouth), w = r * (0.9 + 0.3 * mouth)
@@ -273,11 +300,12 @@ struct Face {
 
 final class Robot {
     let root = SCNNode()
-    private let spin = SCNNode(), tilt = SCNNode(), body = SCNNode()
-    private let head = SCNNode(), armNeg = SCNNode(), armPos = SCNNode(), legNeg = SCNNode(), legPos = SCNNode()
-    private let earNeg = SCNNode(), earPos = SCNNode()
+    // Internal, not private: the wardrobe (RobotExtras.swift) hangs its things on them.
+    let spin = SCNNode(), tilt = SCNNode(), body = SCNNode()
+    let head = SCNNode(), armNeg = SCNNode(), armPos = SCNNode(), legNeg = SCNNode(), legPos = SCNNode()
+    let earNeg = SCNNode(), earPos = SCNNode()
     private let screen: SCNMaterial
-    private var thrusters: [Thruster] = [], feet: [Thruster] = []
+    private(set) var thrusters: [Thruster] = [], feet: [Thruster] = []
     private let zs = SCNNode()
     private let sparkles = SCNParticleSystem(), smoke = SCNParticleSystem(), sparks = SCNParticleSystem()
     private let effects = SCNNode()
@@ -288,6 +316,26 @@ final class Robot {
     var grounded = false      // standing on the bottom edge of the screen, engines off
     var walk: CGFloat = 0     // -1 walking left, 1 right, 0 standing
     let mouthMark = SCNNode() // where the speech bubble points
+
+    // 1.30.90 extras (RobotExtras.swift), set by the nucleus view.
+    var outfit = Outfit()
+    /// The study block's progress (0...1): the ring round the waist. nil: no ring.
+    var focus: CGFloat?
+    /// Holding up the alert's sign on two poles (and facing the screen).
+    var holdingSign = false
+    /// Where the mouse pointer is from the head, on screen in points (x right, y up); nil: it looks around by itself.
+    var gaze: CGPoint?
+    /// Wide eyes while listening and the dots while thinking (Impostazioni › Robottino › Espressioni).
+    var expressive = true
+    private(set) lazy var wardrobe = Wardrobe(robot: self)
+    private var stretchAt: CGFloat = -100, yawnAt: CGFloat = -100, startleAt: CGFloat = -100, partyAt: CGFloat = -100
+    /// The little shows: arms up and a big stretch (the study break), a yawn (late in the evening), a start when
+    /// woken by the call, and confetti from the jets (a passed exam, a new level).
+    func stretch(at t: CGFloat) { stretchAt = t }
+    func yawn(at t: CGFloat) { yawnAt = t }
+    func startle(at t: CGFloat) { startleAt = t }
+    func celebrate(at t: CGFloat) { partyAt = t }
+    func busyShow(at t: CGFloat) -> Bool { t - stretchAt < 3.4 || t - yawnAt < 2.8 || t - partyAt < 3.6 }
     private var solids: [SCNNode] = [], armSamples: [(SCNNode, [SCNVector3])] = []
 
     /// How many sample points of the hands and forearms are inside the head or the body (boxes shrunk by 12%).
@@ -525,8 +573,14 @@ final class Robot {
     func update(t: CGFloat, mood: Mood, level: CGFloat) {
         let idle = mood == .idle, listen = mood == .listen, think = mood == .think, speak = mood == .speak
         let sleep = mood == .sleep, error = mood == .error
+        let party = RobotKit.envelope(t - partyAt, length: 3.6, rise: 0.3)
         let poked = t - poke < 2.4
-        let happy = mood == .happy || poked
+        let happy = mood == .happy || poked || party > 0
+        let stretchK = RobotKit.envelope(t - stretchAt, length: 3.4, rise: 0.7, fall: 0.8)
+        let yawnK = RobotKit.envelope(t - yawnAt, length: 2.8, rise: 0.6, fall: 0.7)
+        let startleK = RobotKit.envelope(t - startleAt, length: 0.9, rise: 0.08, fall: 0.5)
+        let signK = ease("sign", holdingSign ? 1 : 0, 0.12)
+        let show = max(stretchK, yawnK, signK)   // a show in progress: the routines wait
         // Little routines while waiting: a wave every 14 s, a look around, a pirouette every 26 s.
         let waveT = t.truncatingRemainder(dividingBy: 14)
         let g = ease("ground", grounded ? 1 : 0, 0.1)            // 1 on the ground
@@ -535,31 +589,39 @@ final class Robot {
         // so it dips a little at each step, sways onto the stance leg and leans into the walk.
         let phase = t * Self.stepRate
         let legSwing = Self.stepSwing * sin(phase) * w
-        let waving = (idle && waveT > 10 && waveT < 12.4 && w < 0.1) || poked
+        let waving = ((idle && waveT > 10 && waveT < 12.4 && w < 0.1) || poked) && show < 0.05 && (focus == nil || poked)
         let spinT = t.truncatingRemainder(dividingBy: 26)
-        let pirouette = idle && spinT > 20 && spinT < 21.4 && !grounded
+        let pirouette = idle && spinT > 20 && spinT < 21.4 && !grounded && show < 0.05 && focus == nil
         // Thinking: head and eyes drift slowly from side to side, as if following a thought.
         let gx = sin(t * 0.55)
         let glance = ease("glance", w > 0.5 && t.truncatingRemainder(dividingBy: 7) > 5.2 ? 1 : 0, 0.08)
-        let happySpin = mood == .happy && t.truncatingRemainder(dividingBy: 4) < 1.1
+        let happySpin = (mood == .happy && t.truncatingRemainder(dividingBy: 4) < 1.1 && !holdingSign) || (t - partyAt > 0.2 && t - partyAt < 1.3)
 
         // Floating: a slow bob; lower and calmer asleep; jittery on error.
         let bob = (sin(t * 1.7) * (sleep ? 0.02 : 0.045)) * (1 - g) + (happy ? abs(sin(t * 6)) * 0.06 : 0) + Self.legLength * (cos(legSwing) - 1)
         let shake = error ? sin(t * 37) * 0.012 : 0
-        root.position = SCNVector3(shake, ease("base", sleep && !grounded ? -0.12 : 0, 0.04) + bob, 0)
+        root.position = SCNVector3(shake, ease("base", sleep && !grounded ? -0.12 : 0, 0.04) + bob + party * 0.22 + startleK * 0.16, 0)
         // Spins.
         var yaw = ease("yaw", walk > 0 && grounded ? 1.15 : walk < 0 && grounded ? -1.15 : 0, 0.08)
         if pirouette { yaw += (spinT - 20) / 1.4 * 2 * .pi }
-        if happySpin { yaw += t.truncatingRemainder(dividingBy: 4) / 1.1 * 2 * .pi }
+        if happySpin { yaw += t - partyAt > 0.2 && t - partyAt < 1.3 ? (t - partyAt - 0.2) / 1.1 * 2 * .pi : t.truncatingRemainder(dividingBy: 4) / 1.1 * 2 * .pi }
+        yaw *= 1 - signK   // the sign faces the screen
         spin.eulerAngles.y = yaw
-        tilt.eulerAngles = SCNVector3(ease("lean", listen ? 0.14 : sleep ? 0.08 : speak ? 0.05 : 0) + sin(t * 0.9) * 0.025 * (1 - w) + 0.06 * w,
+        tilt.eulerAngles = SCNVector3(ease("lean", listen ? 0.14 : sleep ? 0.08 : speak ? 0.05 : 0) + sin(t * 0.9) * 0.025 * (1 - w) + 0.06 * w - stretchK * 0.1 - yawnK * 0.05,
                                       0, ease("side", -lean * 0.6, 0.08) + sin(t * 0.7) * 0.03 * (1 - g) + (think ? sin(t * 0.55 + 0.6) * 0.05 : 0)
                                           + sin(phase) * 0.035 * w)
         // Head.
         let lookT = t.truncatingRemainder(dividingBy: 9)
-        let lookAround: CGFloat = idle ? (lookT > 5 && lookT < 6.8 ? 0.45 : lookT > 6.8 && lookT < 8 ? -0.35 : 0) : 0
-        head.eulerAngles = SCNVector3(ease("hp", sleep ? 0.3 : think ? -0.15 : speak ? sin(t * 4.5) * 0.05 + level * 0.06 : listen ? 0.05 + max(0, sin(t * 3.2)) * 0.07 * (sin(t * 0.7) > 0.3 ? 1 : 0) : sin(t * 0.6) * 0.04),
-                                      ease("hy", lookAround + (think ? gx * 0.22 : 0) - walk * 0.75 * glance, 0.08),
+        // Following the pointer (1.30.90): the eyes go towards it, the head turns a little; far away it saturates.
+        let follow = gaze.map { g -> CGPoint in
+            let d = max(1, hypot(g.x, g.y)), k = min(1, d / 260) / d
+            return CGPoint(x: g.x * k, y: g.y * k)
+        }
+        let following = follow != nil && (idle || listen) && w < 0.5 && show < 0.05
+        let lookAround: CGFloat = idle && !following ? (lookT > 5 && lookT < 6.8 ? 0.45 : lookT > 6.8 && lookT < 8 ? -0.35 : 0) : 0
+        let pitch: CGFloat = sleep ? 0.3 : think ? -0.15 : speak ? sin(t * 4.5) * 0.05 + level * 0.06 : listen ? 0.05 + max(0, sin(t * 3.2)) * 0.07 * (sin(t * 0.7) > 0.3 ? 1 : 0) : sin(t * 0.6) * 0.04
+        head.eulerAngles = SCNVector3(ease("hp", RobotKit.mix(RobotKit.mix(pitch - (following ? follow!.y * 0.18 : 0), -0.4, stretchK), -0.25, yawnK)),
+                                      ease("hy", lookAround + (think ? gx * 0.22 : 0) - walk * 0.75 * glance + (following ? follow!.x * 0.35 : 0), 0.08),
                                       ease("hr", listen ? -0.16 : think ? -gx * 0.1 : happy ? sin(t * 6) * 0.14 : sleep ? -0.1 : 0))
         // Arms: hang and sway; wave with the +x arm; flail on error; up for joy.
         let sway = sin(t * 1.7 + 0.5) * 0.06
@@ -571,33 +633,47 @@ final class Robot {
         let ponder = ease("ponder", think ? 1 : 0, 0.08)
         let tap = sin(t * 8) * 0.07 * ponder
         let swing = sin(phase) * 0.26 * w   // arms swing against the legs
-        armPos.eulerAngles = Self.armLimit(SCNVector3(sway * (1 - attend) * (1 - w) - attend * 0.55 + swing, 0, 0.12 + wave + cheer + flail - attend * 0.3), side: 1)
-        armNeg.eulerAngles = Self.armLimit(SCNVector3(-sway * (1 - attend) * (1 - w) - attend * 0.55 - ponder * 0.85 + tap - swing, 0,
-                                                      -0.12 - cheer + flail * 0.7 + attend * 0.3 + ponder * 0.12), side: -1)
+        var pos = SCNVector3(sway * (1 - attend) * (1 - w) - attend * 0.55 + swing, 0, 0.12 + wave + cheer + flail - attend * 0.3)
+        var neg = SCNVector3(-sway * (1 - attend) * (1 - w) - attend * 0.55 - ponder * 0.85 + tap - swing, 0,
+                             -0.12 - cheer + flail * 0.7 + attend * 0.3 + ponder * 0.12)
+        // The shows, over everything else.
+        for (k, x, zPos, zNeg) in [(stretchK, 0.1, 2.15 + sin(t * 3) * 0.04, -2.15), (signK, 0.05, 2.0, -2.0),
+                                   (startleK, -0.2, 1.1, -1.1)] as [(CGFloat, CGFloat, CGFloat, CGFloat)] where k > 0 {
+            pos = SCNVector3(RobotKit.mix(pos.x, x, k), 0, RobotKit.mix(pos.z, zPos, k))
+            neg = SCNVector3(RobotKit.mix(neg.x, x, k), 0, RobotKit.mix(neg.z, zNeg, k))
+        }
+        neg = SCNVector3(RobotKit.mix(neg.x, -1.3, yawnK), 0, RobotKit.mix(neg.z, 0.3, yawnK))   // a hand in front of the yawn
+        armPos.eulerAngles = Self.armLimit(pos, side: 1)
+        armNeg.eulerAngles = Self.armLimit(neg, side: -1)
         // Legs dangle, out of step.
         let dangle = sleep ? 0.05 : 0.11
         legNeg.eulerAngles = SCNVector3((0.12 + sin(t * 1.7) * dangle) * (1 - g) + legSwing, 0, -0.04)
         legPos.eulerAngles = SCNVector3((0.12 + sin(t * 1.7 + 2.2) * dangle) * (1 - g) - legSwing, 0, 0.04)
         // Ears: perk forward to listen, droop asleep, wiggle for joy.
-        let ear = ease("ear", listen ? 0.4 : sleep ? -0.3 : 0)
+        let ear = ease("ear", listen ? 0.4 : sleep ? -0.3 : 0) + startleK * 0.5
         earNeg.eulerAngles.x = ear + (happy ? sin(t * 12) * 0.25 : sin(t * 2.1) * 0.04)
         earPos.eulerAngles.x = ear + (happy ? sin(t * 12 + 1.5) * 0.25 : sin(t * 2.3 + 1) * 0.04)
 
         // Thrusters: steady, pulsing with the voice, low asleep, sputtering on error.
         let sputter: CGFloat = error ? (sin(t * 23) + sin(t * 37) > 0.4 ? 1 : 0.08) : 1
-        let power = (ease("power", sleep ? 0.35 : happy ? 1.3 : speak ? 0.9 + level * 0.5 : 1, 0.15) * sputter + cos(t * 1.7) * 0.12) * (1 - g)
+        let power = (ease("power", sleep ? 0.35 : happy ? 1.3 : speak ? 0.9 + level * 0.5 : 1, 0.15) * sputter + cos(t * 1.7) * 0.12) * max(1 - g, party)
+            + party * 0.4
         for (i, th) in thrusters.enumerated() { th.update(power: power, flicker: CGFloat.random(in: 0...1) * 0.6 + CGFloat(i) * 0.1) }
         for th in feet { th.update(power: power * 0.85, flicker: CGFloat.random(in: 0...1)) }
 
         // Face.
         let cycle = t.truncatingRemainder(dividingBy: 3.7)
         let blink: CGFloat = cycle < 0.14 ? abs(cycle - 0.07) / 0.07 : (t.truncatingRemainder(dividingBy: 11.1) < 0.4 && cycle > 0.3 && cycle < 0.44 ? 0.1 : 1)
-        face.mood = poked ? .happy : mood
-        face.happyEyes = waving
+        face.mood = poked || party > 0 ? .happy : mood
+        face.happyEyes = waving || stretchK > 0.3
+        face.stretch = stretchK > 0.3
+        face.yawn = yawnK
+        face.spinner = expressive
         face.t = t
-        face.blink = blink
-        face.eyeScale = ease("es", listen ? 1.1 : speak ? 1 + level * 0.1 : 1)
-        face.look = CGPoint(x: ease("lx", think ? -gx * 0.011 : idle ? lookAround * -0.04 : 0), y: ease("ly", think ? 0.007 : sleep ? -0.004 : 0))
+        face.blink = yawnK > 0.2 ? 0.12 : blink
+        face.eyeScale = ease("es", startleK > 0.1 ? 1.45 : listen ? (expressive ? 1.32 : 1.1) : speak ? 1 + level * 0.1 : 1, startleK > 0.1 ? 0.5 : 0.1)
+        face.look = CGPoint(x: ease("lx", think ? -gx * 0.011 : following ? -follow!.x * 0.013 : idle ? lookAround * -0.04 : 0),
+                            y: ease("ly", think ? 0.007 : following ? follow!.y * 0.008 : sleep ? -0.004 : 0))
         face.mouth = ease("mouth", speak ? level : 0, 0.4)
         if face.key != drawnFace {
             drawnFace = face.key
@@ -613,7 +689,8 @@ final class Robot {
             z.scale = SCNVector3(s, s, s)
             z.opacity = sleep ? sin(p * .pi) * ease("zs", 1, 0.05) : ease("zs", 0, 0.2) * sin(p * .pi)
         }
-        sparkles.birthRate = mood == .happy || poked ? 30 : 0
+        sparkles.birthRate = mood == .happy || poked || party > 0 ? 30 : 0
+        wardrobe.update(t: t, outfit: outfit, focus: focus, sign: signK, party: t - partyAt, power: power)
         smoke.birthRate = error ? 14 : 0
         sparks.birthRate = error && sin(t * 5) > 0.6 ? 60 : 0
     }
